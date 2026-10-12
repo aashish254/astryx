@@ -54,9 +54,9 @@ and references from other packages are an open question (OQ2).
 
 ## Non-goals
 
-- How a docsite page looks, and how the docsite shows flat topics. FR14 states
-  which page holds a namespace's content and where each of its addresses leads;
-  the page design is the docsite's.
+- How a docsite page looks, and how the docsite shows flat topics beyond the
+  sidebar rule FR14 states. FR14 states which page holds a namespace's content
+  and where each of its addresses leads; the page design is the docsite's.
 - A top-level browse of every provider. It is a later phase.
 - Aliases and audiences. `aliases` and `audience` stay reserved fields that a
   doc may not set.
@@ -275,8 +275,9 @@ Phase 1 changes these surfaces:
 - the docsite reads the tree through `docs()`: each root namespace is one page
   and its guides' slugs redirect into it (FR14); the `cli` namespace has no page
   of its own, and the docsite lists the pages below it, `/docs/cli-integrations`
-  among them, each guide's slug redirecting into the listed page that holds
-  it.
+  among them: a guide's slug redirects into the listed page that holds it, and a
+  guide no listed page holds, such as `cli/component-lookups`, keeps a page of
+  its own.
 
 `architecture:cli-surface` INV25 and INV26 carry this record into the code.
 
