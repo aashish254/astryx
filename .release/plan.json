@@ -1,0 +1,878 @@
+{
+  "schemaVersion": 2,
+  "version": "0.7.0",
+  "branch": "release/v0.7.0",
+  "cutSha": "97a0d31091483ea2a3041abdb11e7b49330f3959",
+  "changesets": [
+    {
+      "path": ".changeset/app-theme-add-import-default.md",
+      "sha256": "d29f8520b04c25099077931c899b7fe20467ea8d53f52b52376e8104fd6acc97",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "CLN-0005 removes the deprecated `DEP-0005` copy default from `theme add`.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "The old contract copied theme source with `theme add <slug> [path] [--overwrite] [--package <package>]` and returned `theme.add` JSON. The `ThemeAddResponse` type and the `theme.add` response type are removed, with their `ThemeAddResponse.type`, `ThemeAddResponse.data`, and `ThemeAddResponse.meta` fields. The replacement imports the built theme with `theme add <slug> [--package <package>]` and returns `theme.app`; `--import` remains an accepted no-op. Plain `theme add` now returns `theme.app` with the owner `package` directly after `type`. Local themes carry no package.\n\nA path after `theme add` now exits 1 with `ERR_INVALID_ARGUMENT`, and `--overwrite` exits 1 with `ERR_INVALID_OPTION`; neither writes files. To migrate a script that copied source, run `theme eject` with the same slug, path, `--overwrite`, and `--package` arguments. A script that already runs `theme add --import` keeps the same meaning and needs no change."
+    },
+    {
+      "path": ".changeset/banner-explicit-announcements.md",
+      "sha256": "57667b80fc8594b552af2c1c9f6374704bb151cb8a0f502f1a3b47c2305ac0dd",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Stop deriving live-region roles from `Banner.status`. Banners are non-live by default; call `useAnnounce` from the actual async transition handler, or provide an explicit `role=\"status\"` for a persistent semantic mirror.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "`role=\"alert\"` is now opt-in rather than automatic for warning and error banners.\n\n\nOld usage:\n`Banner` derived `role=\"status\"` or `role=\"alert\"` from its `status` variant.\n\nReplacement:\nThe caller sets the role explicitly, or announces with `useAnnounce`.\n\nMigration:\nCall `useAnnounce` from the actual async transition handler, or provide an explicit `role=\"status\"` for a persistent semantic mirror.\n\nCodemod:\nNone — the right announcement depends on the callsite."
+    },
+    {
+      "path": ".changeset/baseprops-passthrough-nonfield.md",
+      "sha256": "22894e787f9182a65bfa96ddd9537ea3e6eedf76c77149324c368db80e5a512a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Layout, MetadataList, NavHeadingMenuItem and TopNavMegaMenuItem now apply the BaseProps they accept (id, role, aria-\\*, data-\\*, hidden, inert, dir, event handlers; TopNavMegaMenuItem also xstyle/className/style) instead of silently dropping them; NavHeadingMenu keeps arrow navigation when an item handler cancels.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": "Migration: remove any of those props you passed that you relied on being ignored; a TopNavMegaMenuItem styled through xstyle/className/style now shows that styling.\n\nFrom #5656 by @harjothkhara."
+    },
+    {
+      "path": ".changeset/bottom-sheet-default-padding.md",
+      "sha256": "cffd7fff15a5d035f4e9fe7166f6ac693cc17bdbfc540156afcfdc3a372dd7ec",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "BottomSheet pads its content by default, like Dialog. With no `padding` prop and no theme padding, the content box now pads by `--spacing-4` (it had no padding before) and publishes that inset.",
+      "contributors": [
+        "imdreamrunner"
+      ],
+      "body": "A sheet whose only child is a padded `Section` or a `Layout` renders as before, because both escape the inset. Content that supplies its own inset is now padded twice: drop that inset, or pass `padding={0}` to keep the unpadded content box. `astryx upgrade` ships `preserve-bottom-sheet-content-padding`, which adds `padding={0}` where needed.\n\nMigration: pass `padding={0}` to keep the unpadded content box, or drop your own inset to take the default; `astryx upgrade` adds `padding={0}` to every BottomSheet that sets no padding unless its only child is a padded Section or a Layout. An app whose theme already sets `bottom-sheet` padding on every edge is not affected by the new default; the codemod cannot see the theme, so remove the `padding={0}` it adds there to keep the theme inset. A sheet whose content wraps a `Layout` gets a TODO: `padding={0}` also removes the inset between that Layout's regions, which the Layout's own `padding` does not restore."
+    },
+    {
+      "path": ".changeset/bottom-sheet-padding-codemod.md",
+      "sha256": "e372dc906748188b6150cc84e6ca2ce844454cdde3327392d64d18d51821a391",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx upgrade` adds `padding={0}` to BottomSheet elements that do not set `padding`, keeping their unpadded content box now that BottomSheet pads like Dialog. Sheets whose only child is a Section or a Layout are left unchanged. A sheet with a Layout anywhere in its content also gets a TODO comment, because `padding={0}` removes the inset between that Layout's regions and the Layout's own `padding` restores only its outer edges. A shadowed `BottomSheet` binding is left alone, and a second run changes nothing.",
+      "contributors": [
+        "imdreamrunner"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/bottom-sheet-shared-escape.md",
+      "sha256": "2548f53144d797d07d0cfc90ce8de90a8868389b9c725a05c7e7167876062050",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A standalone `BottomSheet` now joins the shared layer dismissal stack, so one Escape press closes only the top-most layer. A Popover, Dialog, or menu opened inside the sheet closes first, and the next press closes the sheet. `purpose=\"required\"` still blocks Escape without letting the press close a layer behind it, a sheet that is animating out keeps the press, and the native close request answers with the same top-most and IME composition rules.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/breaking-icon-registry-require-upload.md",
+      "sha256": "213e421a6d164921dba29d9744d768820700267f2885eb1fb55baf9313d73e6b",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Require `upload` on complete `IconRegistry` types",
+      "contributors": [
+        "rubyycheung",
+        "cixzhang",
+        "Geervan"
+      ],
+      "body": "Old usage:\nA custom complete icon registry typed as `IconRegistry` that omitted the `upload` key.\n\nReplacement:\n`IconRegistry` now requires all semantic `IconName` keys, including `upload`.\n\nMigration:\nAdd an `upload` entry drawn in your registry's icon style to complete icon registries typed as `IconRegistry`.\n\nCodemod:\nNo `astryx upgrade` codemod applies (spec:AST-017 FR8) because icon artwork is bespoke design artwork tailored to each theme and cannot be automatically synthesized."
+    },
+    {
+      "path": ".changeset/cli-init-remove-reports-nothing-to-remove.md",
+      "sha256": "ba69f9c7d7cbf2c00ee0767e391f731f131c4675e0a5eee8d05c28d725e51fdb",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "`init --remove-agents` says when there was nothing to remove.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- incompatible-fix `IFIX-0004` / cleanup `CLN-0010`\n\nMigration: a consumer reading `data.removed` as a boolean keeps working; a consumer that narrowed on the literal `true` sees the corrected value."
+    },
+    {
+      "path": ".changeset/cli-install-command-ambiguous-package-manager.md",
+      "sha256": "e220429116861a71d1f7c7ae302f6e7e991be60208e6825675770d16a37ac8a2",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`template` and `build` choose the install command's package manager as AST-048 FR17 and FR19 specify. The nearest directory from the target up to the workspace root that has a `packageManager` field or a lockfile decides. With neither, the command uses npm, whatever package manager launched the CLI. When that directory's lockfiles disagree and nothing it commits picks one, `installCommand` is `null` and the note names the missing packages, the directory, and the lockfiles that disagree, instead of guessing a command that would write a second lockfile.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-option-pair-refusals.md",
+      "sha256": "222d91c6b801f22780aea1c393e827465a5f8925c80d5d6961a49947c193c810",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Four commands refuse silently ignored option pairs.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- incompatible-fix `IFIX-0005` / cleanup `CLN-0011`\n\nMigration: remove the option the command was ignoring."
+    },
+    {
+      "path": ".changeset/cli-refuse-invalid-silent-success.md",
+      "sha256": "e8af4ebc9f5ece81c6ed0e91f4452d48c3c4d250c49299dadb601a00a5d9e689",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Refuse invalid input that used to silently succeed.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- incompatible-fix `IFIX-0007` / cleanup `CLN-0013`\n\nMigration: pass a valid type or package, an integer limit, or the documented arguments, and catch `ERR_AMBIGUOUS_COMPONENT` for a multi-package name."
+    },
+    {
+      "path": ".changeset/cli-reject-empty-string-argument.md",
+      "sha256": "efefcedc940b3d2ecfbb96c863fed756c56214e08912d8df070e4fd10db1e62a",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "An empty-string argument no longer discards the rest of the command.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- incompatible-fix `IFIX-0003` / cleanup `CLN-0009`\n\nMigration: remove the empty string from the invocation; the documented way to list is to omit the argument."
+    },
+    {
+      "path": ".changeset/cli-validate-nothing-exits-nonzero.md",
+      "sha256": "8bde3f62aceb218246b616a9284c89c4a2a2b9120961fb90e6da31ff43d64eeb",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "`doctor integration validate` exits 1 when there is no package.json.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- incompatible-fix `IFIX-0008` / cleanup `CLN-0014`\n\nThe no-package.json case now carries a `no_package` error-severity issue, so the existing exit rule (exit 1 on error-severity issues) covers it. A directory with package.json but no integration manifest stays exit 0 as published.\n\nMigration: run the command in a directory that has a `package.json`, or handle exit 1 for that case."
+    },
+    {
+      "path": ".changeset/command-palette-list-composition-docs.md",
+      "sha256": "54747e5b52bb5030332b160f8cec94a948f3054f01e8d7dac4771ee828882dd0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Describe `CommandPaletteList` as the list `CommandPalette` renders itself, and as a component to render directly only for a standalone results list.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/context-menu-trigger-dom-props.md",
+      "sha256": "3c64926e23a36cfbe3f5c8d4fd12549e89891e04b8a6df1a51c51954f98ffc8b",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ContextMenu` puts only its four touch handlers on the trigger element. It used to spread everything `useLongPress` returns, which since the press model includes the hook's imperative `start`, `moveTo` and `cancel`, so React warned \"does not recognize the `moveTo` prop\" and \"Invalid values for props `start`, `cancel`\" on the first ContextMenu of a page. Long-press opening is unchanged.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/data-vars-stylex-ownership.md",
+      "sha256": "19d0feced9ecdd99ce1e58f89bdf658ad1c1089a66d37f69a856307f1cbe49eb",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Move canonical data-color defaults from generated theme CSS to the public StyleX `dataVars` group.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Import `dataVars` from `@astryxdesign/core/theme/dataTokens.stylex` for CSS-capable code. Canvas and other non-CSS APIs continue to use `resolveThemeToken()` or `useTheme().token()`. Rebuild committed theme CSS with `astryx theme build`; concrete themes now emit only explicitly authored data-color overrides.\n\n\nOld usage:\nGenerated theme CSS owned the canonical `--color-data-*` root defaults.\n\nReplacement:\nThe public StyleX `dataVars` group in `@astryxdesign/core/theme/dataTokens.stylex` owns the defaults; concrete themes emit only explicitly authored data-color overrides.\n\nMigration:\nImport `dataVars` from `@astryxdesign/core/theme/dataTokens.stylex` for CSS-capable code. Canvas and other non-CSS APIs continue to use `resolveThemeToken()` or `useTheme().token()`. Rebuild committed theme CSS with `astryx theme build`.\n\nCodemod:\n`astryx upgrade` runs `validate-data-token-ownership`, which rewrites nothing and reports fallback-less `var(--color-data-*)` uses (whole or embedded source strings, and stylesheets) and stale generated theme CSS for manual migration."
+    },
+    {
+      "path": ".changeset/date-input-native-change-action.md",
+      "sha256": "bf792c145ead88e2a3494695bba26fa33f003827397fc1085f4a28f4b1c3f9cb",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "DateInput: run changeAction with optimistic busy feedback on the native picker surface",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dialog-pointer-focus-ring.md",
+      "sha256": "6a59d93da6bc312284520c52a24f37a40508b419dfbcc30905fcb56ce214dca7",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Dialog's initial focus and the focus it returns on close now follow the last input: the shared focus indicator is hidden after a mouse click or tap and shown after keyboard input, including focus returned after a keyboard open and a mouse close (#7306). Text fields keep their own focus treatment.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-exit-policy.md",
+      "sha256": "25c93e1c52c2a53f55476f614e0357c3f46ccf1652a067a152c2dc9c192a9ac5",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Doctor fails when the CLI cannot load what astryx.config asks for",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "A new `configured-integrations` check fails when an integration named in astryx.config cannot be loaded: not installed, installed without a manifest, or a manifest that throws or fails its schema. Such an integration is withdrawn whole and contributes nothing. The config check fails, instead of warning, when astryx.config imports but the CLI cannot load the project from it.\n\nUnchanged: a problem inside one contribution kind (an invalid component doc, a missing or unreadable root, an unresolved replacement) stays a warning under `integration-issues` (spec:AST-035 FR9), and an autolinked dependency that cannot be loaded stays informational.\n\nClassification: incompatible-fix.\nReleased victim: published 0.6.8 (the latest stable) exits 0 for both cases.\nNo codemod: nothing in a project's source changes; the fix is to install the integration, repair its manifest, or edit `integrations` in astryx.config, which only the project's owner can decide.\n\nWhat counts as configured is every name astryx.config lists, read from the provider ledger: a package set aside for a provider conflict and the package being authored when its own config names it both count.\nMigration: install the integration, fix its manifest, or remove it from `integrations`; fix the astryx.config field the message names."
+    },
+    {
+      "path": ".changeset/dropdown-menu-header-footer.md",
+      "sha256": "4bee9fbd4c1bfd8d86ea7cbd3973871aac30a9658e55219947ca8c626a632e74",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`DropdownMenu` takes `header` and `footer`: content above and below the rows that sits in the popover beside the menu, never inside it. This is the place for a filter field or a \"Create\" button. The menu still holds only its rows, so it stays a valid menu to a screen reader. The controls keep their own keys and presses, and Tab walks header, menu, footer. The bottom sheet shows them above and below the actions.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-submenu-row-host-props.md",
+      "sha256": "82774b577d28557753e5f5fe4fca157ea16b3c471f278a53434161e0d2d2fe4c",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`DropdownMenuSubMenu` passes host attributes, DOM event handlers and a `ref` to its trigger row, as `DropdownMenuItem` does: a sub-menu row can carry `aria-keyshortcuts`, a `data-*` mark or an `id`, and a caller can reach the row element. The row keeps its own role, tab stop and popup state; a caller's `onClick`, `onKeyDown`, `onPointerMove`, `onMouseEnter` and `onMouseLeave` run after the row's own handling, except for an event the row consumes: the keys that open the flyout (the open arrow, Enter and Space) and a click on a disabled row. A caller's `id` names the row the flyout is labelled by.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-trigger-back-row.md",
+      "sha256": "80308f50a2f4c61b75eba8eb64c6daa3690feb5fbc62a1571a6e6577b5b20d85",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A DropdownMenu hung off its own control through `renderTrigger` names a drilled-in sub-menu's Back row after the menu: \"Back to <the menu's aria-label>\", or the name of the control it hangs off, instead of \"Back to Menu\".",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/field-input-styling-codemod.md",
+      "sha256": "e2b0fc474f4fe6746584dca2a23251ffc2332dffa030a0a956a7d9be19987c35",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx upgrade` runs `migrate-field-input-styling`, which renames root `xstyle`/`className`/`style` on Field-composed inputs to the part they styled before: `controlXstyle`/`controlClassName`/`controlStyle` on TextInput, TextArea, NumberInput, FileInput, DateInput, DateRangeInput, DateTimeInput, TimeInput, Selector, MultiSelector, and ComplexSelector, and `containerXstyle`/`containerClassName`/`containerStyle` on Typeahead, Tokenizer, CheckboxList, RadioList, and Slider. It rewrites JSX written directly on an Astryx import (named, aliased, or namespace). Spreads and wrappers that forward their own styling props are left for manual migration, and a callsite that already sets the target prop gets a TODO instead of a rename.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/field-input-styling-date-time.md",
+      "sha256": "1f30f3771ba3ce77778be597a7e3028734fe9ca59ceca8261e0656a1590e79a6",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "DateInput, DateRangeInput, DateTimeInput, and TimeInput no longer accept root `xstyle`, `className`, or `style`. Style the field with `containerXstyle`/`containerClassName`/`containerStyle` (the Field box; no effect inside InputGroup or a `horizontal-labels` FormLayout) and the visual control box with `controlXstyle`/`controlClassName`/`controlStyle`. Base props such as `ref`, `id`, `data-*`, `aria-*`, and DOM handlers reach the field's semantic control on every surface (the date, time, or date-time input; DateRangeInput's range trigger) instead of the wrapper, TimeInput no longer drops them, and a caller `id` is now honored there. A caller `aria-describedby` is added to the component's own description ids, and a caller `aria-labelledby` is read after the field's own label (on DateRangeInput, after its label and selected range); a caller `aria-label` on DateRangeInput replaces the trigger's name.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Migration: rename root `xstyle`/`className`/`style` on these components to `controlXstyle`/`controlClassName`/`controlStyle`, which style the same element as before (for DateTimeInput, the row holding the date and time segments). Rename by hand, or run `astryx upgrade` once it includes the `migrate-field-input-styling` transform, which rewrites JSX usage; styling passed through a wrapper's own props or a spread is never rewritten and now fails type-checking at that callsite, so rename it there. Untyped callers get a development warning and the value is ignored. A DOM handler or `data-*` attribute that relied on landing on the wrapper now lands on the control; a handler still runs after the component's own and still receives events the component handled.\n\nFrom #5656 by @harjothkhara."
+    },
+    {
+      "path": ".changeset/field-input-styling-fieldroot.md",
+      "sha256": "2037956382ff8e24240bff84fd7b27548b0f0878f85cb51fc64b198b406dc223",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Typeahead, Tokenizer, CheckboxList, RadioList, and Slider no longer accept root `xstyle`, `className`, or `style`. Style the field with `containerXstyle`/`containerClassName`/`containerStyle` (the Field box; no effect inside InputGroup or a `horizontal-labels` FormLayout) and the visual control box with `controlXstyle`/`controlClassName`/`controlStyle`. Base props now reach the primary semantic control: the combobox input for Typeahead and Tokenizer, the `role=\"group\"`/`role=\"radiogroup\"` element for CheckboxList and RadioList, and the `role=\"slider\"` thumb for Slider (the `role=\"group\"` control in range mode). A caller `aria-describedby` is kept alongside the field's own description and status, on these components and on TextInput, TextArea, and NumberInput, which previously dropped it. CLI templates use the new props.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Migration: rename root `xstyle`/`className`/`style` to the part they styled before: `containerXstyle`/`containerClassName`/`containerStyle` on all five components, except a Typeahead inside InputGroup, whose root styling painted the control surface and moves to `controlXstyle`/`controlClassName`/`controlStyle`. The release's `astryx upgrade` codemod, `migrate-field-input-styling`, performs these renames on JSX usage.\n\nNot rewritten by the codemod, so update by hand:\n- `ref` and `id`, plus `data-*` (except Typeahead and Tokenizer `data-testid`, which marked the control surface), `aria-*`, and DOM event handlers such as `onClick`, previously landed on the outer Field (or were dropped by RadioList and Slider). They now land on the primary semantic control. Update code that measured, queried, or listened on the outer field, and wrap the component in your own element when you need an outer boundary.\n- Typeahead and Tokenizer refs are now `HTMLInputElement`.\n- A consumer `onKeyDown` on Typeahead or Tokenizer still runs after the built-in key handling, cannot cancel it, and still fires for keys on the clear button and tokens; for keys on the input it now runs on the combobox input itself.\n- RadioList and Slider used to drop DOM event handlers; they now run after the component's own handling, so a Slider `onPointerDown`, `onKeyDown`, `onFocus`, or `onBlur` that never fired before now fires (on the thumb, or on the group in range mode).\n- Tokenizer's `onFocus`/`onBlur` keep their meaning: focus entering or leaving the field.\n- Styling passed through a wrapper's own props or a spread is not rewritten and now fails type-checking at that callsite.\n\nUntyped callers get a development warning and the value is ignored.\n\nFrom #5656 by @harjothkhara."
+    },
+    {
+      "path": ".changeset/field-input-styling-selectors.md",
+      "sha256": "9a0a742b80b2e262b9feeb29a6fa3caa974c32b3dbf841876e4ddb40b7855261",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Selector, MultiSelector, and ComplexSelector no longer accept root `xstyle`, `className`, or `style`. Style the field with `containerXstyle`/`containerClassName`/`containerStyle` (the Field box; no effect inside InputGroup, a `horizontal-labels` FormLayout, or with `renderTrigger`) and the visual control box with `controlXstyle`/`controlClassName`/`controlStyle`. Base props such as `ref`, `id`, `data-*` (including `data-testid`), `aria-*`, and DOM handlers reach the trigger button that carries the combobox role (or, with `renderTrigger`, the caller's control), and a caller `aria-describedby` is kept alongside the field's own description and status instead of being replaced. Handlers keep their existing order: a ComplexSelector `onClick` on its own trigger can still cancel opening, and newly forwarded handlers (including those reaching a `renderTrigger` control) run after the built-in toggle and keyboard handling. CLI templates use the new props.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Migration: rename root `xstyle`/`className`/`style` on these components to `controlXstyle`/`controlClassName`/`controlStyle`, which style the same element as before. Not a rename: a `data-testid` or other base prop now lands on the trigger button rather than the bordered box around it (query the box with `.closest()` if a test measured it), and with `renderTrigger` base props and `ref` now reach the caller's control. Rename JSX usage by hand, or with `astryx upgrade` once its `migrate-field-input-styling` transform is available; that transform does not follow styling passed through a wrapper's own props or a spread, which now fails type-checking at that callsite, so rename it there. Untyped callers get a development warning and the value is ignored.\n\nFrom #5656 by @harjothkhara."
+    },
+    {
+      "path": ".changeset/field-input-styling-text.md",
+      "sha256": "46466141d6c24da417e247acefb0ee6926c30cb119f8df005fa03f14bae93dd0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "TextInput, TextArea, NumberInput, and FileInput no longer accept root `xstyle`, `className`, or `style`. Style the field with `containerXstyle`/`containerClassName`/`containerStyle` (the Field box; no effect inside InputGroup or a `horizontal-labels` FormLayout) and the visual control box with `controlXstyle`/`controlClassName`/`controlStyle`. Base props such as `ref`, `id`, `data-*`, `aria-*`, and DOM handlers reach the native control, and a caller `id` is now honored there. CLI templates use the new props.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Migration: rename root `xstyle`/`className`/`style` on these components to `controlXstyle`/`controlClassName`/`controlStyle`, which style the same element as before. `astryx upgrade` rewrites JSX usage; styling passed through a wrapper's own props or a spread is not rewritten and now fails type-checking at that callsite, so rename it there. Untyped callers get a development warning and the value is ignored. Not rewritten by the codemod: a caller `id` used to be replaced by a generated one and now reaches the native control (the label stays associated), so remove an `id` you passed but relied on being ignored. Other base props already reached the native control and are unchanged.\n\nFrom #5656 by @harjothkhara."
+    },
+    {
+      "path": ".changeset/first-party-theme-spacing-rem.md",
+      "sha256": "46eec80eebdb59957524dd4f736c0d5da003c5ab26be598101f486c3e18129f4",
+      "packages": [
+        {
+          "name": "@astryxdesign/theme-matcha",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/theme-y2k",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "matcha's and y2k's spacing steps are rem (`--spacing-2: 0.75rem`), so their gaps and padding follow the reader's root font size like the core scale. Every step is the same pixel value at the default 16px root; a reader with a larger root font size now sees proportionally larger spacing on these themes. The CLI's copies of both theme templates and the annotated theme template's spacing example change the same way.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Migration: nothing to change to take the new behaviour. To keep fixed pixel spacing on one of these themes, extend it and override the steps in px, which is honoured as written: `defineTheme({name: 'app', extends: matchaTheme, tokens: {'--spacing-2': '12px'}})`."
+    },
+    {
+      "path": ".changeset/guide-theme-palette-refs.md",
+      "sha256": "190cb6eb59e74c5c593e86d1f8bbff33cc9dfed596aaae217a8373c38d282d30",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Teach generated palette references in the full custom-theme authoring guide.",
+      "contributors": [
+        "rubyycheung"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/item-swipe-on-demand.md",
+      "sha256": "d38e213a36541d9d40797a3a4af14add15334272ea09bd49fa34a0da21d4d5a0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "perf",
+      "headline": "An `Item` without `swipeActions` no longer bundles the swipe gesture. The panels and the drag that uncovers them now live in a module `Item` loads on demand the first time a row has swipe actions, so an app whose rows never swipe ships about 2.7 KB (gzip) less on its first load and a row that does swipe keeps its DOM, props and behavior; its gesture becomes live once that module has arrived, which on a first load is a moment after the row paints.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/lightbox-zoom-reset-same-frame.md",
+      "sha256": "05f8d8613f12b57dbb4d2c0be5d73ff5ab687636bd2d87bc174ae0ddf1c01d72",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Lightbox shows the next or previous image unzoomed from its first frame. The zoom and pan reset when the image changes now happens in the same update, instead of painting the new image at the previous image's zoom for one frame.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/markdown-source-lines-transform.md",
+      "sha256": "1c01862815feec2d5fdd1bce60dd4dac8402cb4398c6ee911ca1b67874c79681",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "With `markdownSourceLinesPlugin` installed, a transform plugin no longer falls back to its readable fallback on documents that contain a list or a quote. Blocks nested in a list item or a quote carry lines without offsets, and the transform check now accepts those Core-assigned lines while still refusing a transform that adds, shifts, or forges them.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/menu-pinch-zoom.md",
+      "sha256": "f300278e215b11fd0be26e224145d14d8faf94b4e1bea7854535cfea09ee4992",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A two-finger pinch over an open DropdownMenu, sub-menu flyout, ContextMenu or Selector list now zooms the page. The menus declared `touch-action: none` while their rows fit and `pan-y` once they scroll, and neither allows a pinch, so a phone could not zoom the page while a menu was open. They now declare `pinch-zoom` and `pan-y pinch-zoom`; a one-finger slide over the rows and the press model behave as before.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/menu-rows-only.md",
+      "sha256": "d8c0c4948e29492b4a5eb3a628446ede208a54b5e92eaa6636bf1b62021615d1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "DropdownMenu, ContextMenu and sub-menus no longer special-case text fields and buttons placed among their rows. This reverts an unreleased change. A menu holds only menu items; a control that is not a row belongs outside the menu.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/mobile-type-pin-touch-narrow.md",
+      "sha256": "69ed4ada243b2669838cb5a817a2ce409f1094a0f9413b753d35517d8a09efb3",
+      "packages": [
+        {
+          "name": "@astryxdesign/theme-butter",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/theme-chocolate",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/theme-neutral",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/theme-stone",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "On touch devices narrower than the `lg` breakpoint (`(width < 1024px) and (pointer: coarse)`), the 14px-base first-party themes now floor their type base to 16px and re-derive the ratio so Display 1 keeps its desktop size: neutral and chocolate (base 14, ratio 1.2 → 1.1736) and butter and stone (base 14, ratio 1.25 → 1.2225). On phones, body, label and code text rise from 14px to 16px; supporting text, the headings and Display 2 and 3 grow by 1–2px; only Display 1 holds its desktop size. Desktop sizes are unchanged. gothic, matcha and y2k already use a 16px base and need no rule. The CLI's theme templates carry the same rule, so a newly scaffolded theme gets it too.",
+      "contributors": [
+        "imdreamrunner"
+      ],
+      "body": "An app theme that extends one of these four themes and sets its own `typography.scale` or type-size tokens inherits this rule, and on touch + narrow screens the rule replaces those values (a base-18 child drops to a 16px body and a 42px Display 1). Append your own rule for the same condition with the values you want; a later rule for the same condition wins.\n\nMigration: nothing to change to take the new phone scale. To keep the previous 14px phone scale in an app, extend the theme and append a later rule for the same condition: `defineTheme({name: 'app', extends: neutralTheme, adaptations: {rules: [{when: {pointer: 'coarse', width: {below: 'lg'}}, value: {typography: {scale: {base: 14, ratio: 1.2}}}}]}})`. For butter and stone use `ratio: 1.25` and also set `tokens: {'--text-supporting-size': '12px'}` in that rule's value, because those themes pin supporting text at 12px rather than the 11px the scale alone gives. This cannot be rewritten by a codemod: whether an app wants the floor is a product choice."
+    },
+    {
+      "path": ".changeset/powersearch-empty-operator-single-save.md",
+      "sha256": "e2ce162ccea868e3578f53805c38c27f86f575a3234f5a2ae4f336b82814efd7",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The PowerSearch filter editor saves an \"empty\" operator filter (such as \"is empty\") exactly once, from the choice that completes it. Choosing such an operator, or switching to a field whose default operator is one, now saves from that choice instead of from an effect. The filter is no longer saved again when the parent re-renders with a new `onSave`, or twice in React StrictMode. Re-choosing the current operator or field saves nothing, and focus still returns to the search input after the editor closes. Clicking an existing empty-operator token in PowerSearch commits it once without opening the built-in editor; a `components.empty.Editor` override still opens.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/powersearch-filter-editor-no-save-on-open.md",
+      "sha256": "4d96a761684c8ed428fe4799b14bd21a5d520254fb239f8005d83732c0efb0f4",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "`PowerSearchFilterEditor` no longer calls `onSave` when it opens on an already-complete empty-operator filter (such as \"is empty\").",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Old usage: opening a standalone `PowerSearchFilterEditor` on a complete empty-operator filter saved that filter immediately, with no Apply rendered for it, and saved it again whenever the editor remounted.\n\nReplacement: the editor saves only from a user choice in it. Opening it saves nothing.\n\nMigration: if you relied on that save-on-open, call your own `onSave` handler with the filter at the point where you open the editor (or skip opening the editor for empty-operator filters, as PowerSearch now does). This cannot be rewritten by a codemod, because the right place to commit depends on your code."
+    },
+    {
+      "path": ".changeset/powersearch-value-save-once.md",
+      "sha256": "a448fc1762335c74141a43c55bbff38ba136875060d879ddde147129ae85a09a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The PowerSearch filter editor saves once when a value that saves on choice is picked (an enum option, a relative-date preset, a suggestion). The save no longer runs inside a React state updater, which React may call more than once, so it no longer fires twice in StrictMode.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/release-branch-process-docs.md",
+      "sha256": "421f163bddb084e40ab2c9a33553f94c9bcf1a2315e207e7124888a6068efd3e",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Clarify release-branch codemod promotion and version ownership.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/remove-astryx-env-vars.md",
+      "sha256": "7597e5403b835ff4f3048683aca6082add3261e1cd121366bbc2587b537297ca",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Stop reading the Astryx-owned agent variables ASTRYX_AGENT_ID, ASTRYX_AGENT_SESSION_ID, and ASTRYX_AGENT_METADATA",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "The CLI must not define or read an Astryx-owned environment variable (spec:AST-017 FR14). The theme-import change already stopped reading ASTRYX_THEME; these three were the last. A test now fails on any `process.env.ASTRYX_*` read in the CLI source.\n\nClassification: incompatible-fix. IFIX-0001 / CLN-0007.\nAuthority: spec:AST-017 FR14 (current): \"The CLI MUST NOT define or read an Astryx-owned environment variable.\"\nReleased victim: published 0.6.5 and every later release read ASTRYX_AGENT_ID, ASTRYX_AGENT_SESSION_ID, and ASTRYX_AGENT_METADATA to attribute debug events to an agent and its session.\nMigration: set `AGENT` and `AGENT_SESSION_ID`, which the CLI already reads, instead of the Astryx-prefixed variants. ASTRYX_AGENT_METADATA has no replacement variable."
+    },
+    {
+      "path": ".changeset/remove-deprecated-theming-compat.md",
+      "sha256": "a7ef8cce397c75caeda026b962db2e4fe3e1ff9fce0594131372d177a45bed19",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Remove the deprecated component-theming compatibility surface scheduled for 0.7.0. Components now emit only canonical target classes and reflected `data-*` prop/state selectors. Theme discovery and build output no longer expose deprecated targets, and `ThemePropsOptions` plus `ComponentThemingTarget.deprecatedFor` are removed. The `theme targets --json` response drops the `ThemeTargetEntry.deprecatedFor` field, because no target it lists is deprecated.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "Migration: run the required codemod `migrate-deprecated-theme-surface` with `astryx upgrade --from <your 0.6 version> --apply --path .` after upgrading. There is no prior deprecation patch (`DEP-0013`/`CLN-0022` and `DEP-0014`/`CLN-0023`, no prior transition).\n\nThe codemod renames removed target keys inside theme `components` maps (an imported `defineTheme()` call, an object typed as an Astryx theme, or a theme object with a static `name`), renames target classes in CSS, and replaces target-qualified bare prop/value/state classes with reflected `data-*` selectors, using every bare class the final 0.6 release emitted. It leaves dynamic/computed theme keys, unqualified or unknown classes, and CSS embedded in JavaScript/TypeScript strings for manual review. It adds `TODO(astryx upgrade)` when old and canonical keys coexist, and when a bare class Astryx once emitted has no known meaning on the target it qualifies.\n\nThe four per-component clear-icon aliases all become the shared `input-clear-icon`, which styles every input's clear icon. In CSS the codemod keeps each rule on its component with `:where(.astryx-<component> *)`, which adds no specificity. Theme keys cannot carry that scope, so the codemod adds a TODO naming the CSS selector to use.\n\nCode that passed `{legacyNames}` to `themeProps()` or set `deprecatedFor` in a component doc should delete that argument or field; the canonical target is unchanged.\n\nRename theme keys and CSS target classes with this complete mapping:\n\n- `base-table` → `table`\n- `checkbox` → `checkbox-indicator`\n- `codeblock` → `code-block`\n- `codeblock-copy-button` → `code-block-copy-button`\n- `codeblock-header` → `code-block-header`\n- `codeblock-title` → `code-block-title`\n- `date-input-clear-icon` → `input-clear-icon`\n- `date-range-input-clear-icon` → `input-clear-icon`\n- `hovercard` → `hover-card`\n- `multi-selector-clear-icon` → `input-clear-icon`\n- `navicon` → `nav-icon`\n- `popover-surface` → `popover`\n- `progressbar` → `progress-bar`\n- `progressbar-fill` → `progress-bar-fill`\n- `progressbar-mark` → `progress-bar-mark`\n- `progressbar-track` → `progress-bar-track`\n- `radio` → `radio-indicator`\n- `radio-dot` → `radio-indicator-dot`\n- `selector-clear-icon` → `input-clear-icon`\n- `statusdot` → `status-dot`\n- `textarea` → `text-area`\n\nFor custom CSS, replace removed bare selectors with the corresponding reflected attribute on a canonical target—for example, `.astryx-button.primary.sm` becomes `.astryx-button[data-variant=\"primary\"][data-size=\"sm\"]`, and `.astryx-switch.checked` becomes `.astryx-switch[data-checked=\"checked\"]`. Review unqualified classes such as `.primary` manually because they may be application-owned."
+    },
+    {
+      "path": ".changeset/remove-empty-search-results-text.md",
+      "sha256": "225e826713d8ab1d48d0bdab85e038390f64057c209918f8caceadf57c69f006",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Remove the deprecated `emptySearchResultsText` prop. Use `emptySearchText`.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "CLN-0001, CLN-0002, CLN-0003, and CLN-0004 complete DEP-0001 through DEP-0004 (spec:AST-056 FR7).\n\nOld usage:\n`emptySearchResultsText` on `Tokenizer`, `Typeahead`, and `BaseTypeahead`, and the `emptySearchResultsText` key on a `ChatComposerInput` trigger.\n\nReplacement:\n`emptySearchText`, shipped in 0.6.6. It takes a `ReactNode`, so every old string value stays valid. The old name is no longer in the types and is no longer read; a JavaScript caller that still passes it sees the default empty message.\n\nMigration:\nRename `emptySearchResultsText` to `emptySearchText`. Where both are set, keep `emptySearchText` and delete the old one — unless `emptySearchText` could be `null` or `undefined`: 0.6.x then fell back to the old value, so move that value into `emptySearchText` (for example `emptySearchText={value ?? 'Old copy'}`).\n\nCodemod:\n`astryx upgrade` runs `rename-empty-search-results-text`, a straight rename at the JSX boundary: the prop on imported `Tokenizer`, `Typeahead`, and `BaseTypeahead` elements, and the key on trigger objects written inline in `ChatComposerInput`'s `triggers`, each renamed as written. Like every Astryx codemod it does not follow variables, helpers, spreads, wrappers, or types; where it cannot attribute the value — `emptySearchText` already set, any spread onto one of these elements (whether or not the element writes the old name), a `triggers` value not written inline, a trigger object with a spread or computed key (whether or not it writes the old name) — it leaves a TODO instead of choosing a winner. The type checker reports any literal `emptySearchResultsText` it did not reach; the TODOs cover the values that reach an element through a spread, which it cannot."
+    },
+    {
+      "path": ".changeset/remove-layout-command.md",
+      "sha256": "a6e2477191287e646236ff5ba141753865d23ef3dc21829f32e3ba847dff4d28",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Remove the `astryx layout` command group (CLN-0006)",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "Removes the deprecated `astryx layout` command group (`expand`, `check`, `grammar`),\nits three response types (`layout.expand`, `layout.check`, `layout.grammar`), and\nthe programmatic API exports (`layoutExpand`, `layoutCheck`, `layoutGrammar`).\nCompletes the `CLN-0006` cleanup of `DEP-0006`.\n\nUse `astryx build` to choose the template to start from, `astryx template` to scaffold\nit, and `astryx docs layout` for layout guidance. The layout guide is unaffected. The error codes `ERR_LAYOUT_PARSE` and `ERR_LAYOUT_INVALID` are retained (append-only contract).\n\nRemoved JSON ids: `LayoutBlockReference.mode` `LayoutBlockReference.name` `LayoutCheckOptions.cwd` `LayoutCheckOptions.form` `LayoutCheckOptions.loose` `LayoutCheckResponse.data` `LayoutCheckResponse.data.compact` `LayoutCheckResponse.data.errors` `LayoutCheckResponse.data.form` `LayoutCheckResponse.data.outline` `LayoutCheckResponse.data.valid` `LayoutCheckResponse.data.warnings` `LayoutCheckResponse.type` `LayoutExpandOptions.cwd` `LayoutExpandOptions.form` `LayoutExpandOptions.loose` `LayoutExpandOptions.name` `LayoutExpandOptions.targetPath` `LayoutExpandResponse.data` `LayoutExpandResponse.data.blocksReferenced` `LayoutExpandResponse.data.code` `LayoutExpandResponse.data.componentsUsed` `LayoutExpandResponse.data.demoMediaReplaced` `LayoutExpandResponse.data.form` `LayoutExpandResponse.data.states` `LayoutExpandResponse.data.todos` `LayoutExpandResponse.data.warnings` `LayoutExpandResponse.data.written` `LayoutExpandResponse.type` `LayoutGrammarOptions.cwd` `LayoutGrammarResponse.data` `LayoutGrammarResponse.data.aliases` `LayoutGrammarResponse.data.text` `LayoutGrammarResponse.type` `LayoutIssue.col` `LayoutIssue.formatted` `LayoutIssue.line` `LayoutIssue.message` `LayoutIssue.suggestions`"
+    },
+    {
+      "path": ".changeset/rename-empty-search-results-text-codemod.md",
+      "sha256": "f072673b715e317480c1b84582328caa423b6f125c323e2b3fbec1ffd81a0f06",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx upgrade` renames `emptySearchResultsText` to `emptySearchText` on `Tokenizer`, `Typeahead`, `BaseTypeahead`, and `ChatComposerInput` trigger objects, for the release that removes the old name.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/reset-css-now-reaches-before-after-placeholder-a-kgb9.md",
+      "sha256": "1b24e9549f54bfa8005e2a40734720151362c53ce080981ccd34e243a2f5b6a2",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "`reset.css` now reaches `::before`, `::after`, `::placeholder` and the search field's cancel button, as its comments document. Three of its rules wrote the pseudo-element inside `:where()`, where pseudo-elements are invalid, so browsers dropped those parts of the selector and the rules never applied to them. Each pseudo-element now follows the `:where()`, as in `:where(*)::before`, and the rules stay in `@layer reset`, so any later layer or unlayered style still overrides them.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": "What changes on a page that loads the reset: a `::before` or `::after` with padding or a border used to size as `content-box` and now sizes as `border-box`; setting only `border-width` on one used to draw nothing and now draws a solid `currentColor` border; a placeholder with no color of its own used to show the browser's grey and now shows `--color-text-secondary` (or that token's own default, `light-dark(#4E606F, #AAAFB5)`, when no Astryx CSS defines it); and a `type=\"search\"` field no longer shows the browser's cancel button.\n\nTo keep the old result for one of your own elements, set it in your own CSS: `box-sizing: content-box` or `border-style: none` on the pseudo-element, a `color` on the `::placeholder`, or `appearance: auto` on the field's `::-webkit-search-cancel-button`. There is no codemod: whether a stylesheet relied on the old result cannot be read from its source."
+    },
+    {
+      "path": ".changeset/spacing-tokens-rem.md",
+      "sha256": "0f43790890f499b9333f26ff52c48bcae41f4efd5046c7fffeb655637f381acf",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "minor"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "Spacing tokens are rem (`--spacing-2: 0.5rem`), so gaps and padding follow the reader's root font size the way the type scale does. Every token value is unchanged at the default 16px root.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": "One change shows at the default root: the `useTableRowExpansion` chevron now sits centered in its fixed 40px column instead of running past its edge (its button moves from 24–48px to 8–32px of the column). Under a theme with a larger spacing scale, such as matcha, the chevron is visible again and the detail panel lines up with the first column instead of starting 20px past it.\n\n\nOld usage:\nThe `--spacing-*` defaults were fixed px (`--spacing-2: 8px`), so `useTheme().token()`, `resolveThemeToken()`, `tokenDefaults` and `spacingDefaults` returned px strings, and spacing stayed the same size when a reader raised the browser font size.\n\nReplacement:\nThe defaults are rem with the same value at a 16px root (`--spacing-2: 0.5rem`, `--spacing-4: 1rem`), and those readers return the rem string.\n\nMigration:\nCSS that reads `var(--spacing-*)` needs no change. Code that parses a spacing token as a px number converts the rem value with the root font size, or reads the element's computed length. A theme that wants fixed px spacing sets the tokens back, for example `defineTheme({tokens: {'--spacing-2': '8px'}})`.\n\nCodemod:\nNone. A token read and parsed at runtime cannot be found and rewritten statically, and CSS uses need no rewrite."
+    },
+    {
+      "path": ".changeset/stable-neutral-palette-refs.md",
+      "sha256": "6367fc0c7140051658322d6d4d2f8fca2d950ffa6cd2e623abd2b6de53ff6342",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-neutral",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Generate Neutral's runtime palette references from the stops its theme uses, and fail verification when the package or CLI template copy drifts.",
+      "contributors": [
+        "rubyycheung"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/theme-build-private-vars-fail.md",
+      "sha256": "130ab60313aa38aef82cdbb555b89475855e094caa630c1e3ebb983e04b7e7b1",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "minor"
+        }
+      ],
+      "category": "breaking",
+      "headline": "IFIX-0006 -> CLN-0012 makes `theme build` exit 1 when it reports private `--_*` variables.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "The old contract reported private-variable errors but exited 0. The corrected contract keeps the same warnings, receipts, generated files, and `--check` output, but exits 1.\n\nTo migrate, a CI step that relied on exit 0 must fix the theme's private `--_*` inputs."
+    },
+    {
+      "path": ".changeset/toast-viewport-modal-outlet.md",
+      "sha256": "0e99e2ad6fc487c334c5e3c8032d48ffce0d1281034f0995632ba21a3bf5482d",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Toasts stay visible and clickable while a Dialog is open. The `ToastViewport` from `LayerProvider` (or the one `useToast` mounts on its own) now moves into the open Dialog, and back when it closes. Before, a Dialog opened after the viewport mounted painted over it, and clicking a toast's close button hit the backdrop and closed the Dialog. Moving the viewport does not reset visible toasts or their timers. A viewport rendered with `isTopLayer={false}` keeps rendering in place.",
+      "contributors": [
+        "ksying"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/touch-datetime-no-stale-frame.md",
+      "sha256": "435e2dc2e9c3d14c5b2667121545bc661536f662b4422ce3db1e1e94914efc99",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "DateTimeInput's touch picker no longer paints a stale frame. Clearing the value from outside clears the time display in the same update, instead of showing the previous time for one frame, and narrowing `max` (or raising `min`) while the sheet is open keeps the visible month in range in the same update, instead of showing the out-of-range month and then jumping.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/vite-light-dark-targets.md",
+      "sha256": "dfca20b68291425a6f43cece3940753cbdd794b922045261551308ce1d24cb97",
+      "packages": [
+        {
+          "name": "@astryxdesign/build",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Preserve native `light-dark()` token values in Vite source builds by defaulting Lightning CSS to Astryx's supported browser floor.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    }
+  ]
+}
