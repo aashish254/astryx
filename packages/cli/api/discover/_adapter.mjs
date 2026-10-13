@@ -8,6 +8,7 @@
  * none of them touch the integration system, the filesystem, or a source. This
  * adapter does: it resolves the project's installed integrations and what each
  * one adds, calls every discover source and keeps a saved copy of each answer,
+ * reads the official list the CLI carries after them,
  * locates and loads a component's doc, and names the package manager's add
  * command. Keeping that I/O here (INV21) is what lets `list`, `detail`,
  * `detail/doc`, `detail/item`, and `search` stay pure projections.
@@ -29,11 +30,26 @@ import {loadDocs} from '../../foundation/discovery/component-loader.mjs';
 import {collectIdentities} from '../../foundation/integrations/contribution-inventory.mjs';
 import {detectPackageManager} from '../../foundation/env/package-manager.mjs';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
+import {CLI_ROOT, findInstalledPackage} from '../../foundation/fs/paths.mjs';
 import {parseDiscoverCatalog} from '../../authoring/discover/parse.mjs';
 import {AstryxError} from '../error.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
 
 const SOURCE_TIMEOUT_MS = 30_000;
+
+/** The name the official list goes by, as a source and on each of its entries. */
+export const OFFICIAL_SOURCE_NAME = 'Astryx';
+
+/** Where the official list comes from: the CLI package that carries it. */
+const OFFICIAL_SOURCE_FROM = '@astryxdesign/cli';
+
+/** The official list, generated from the repository when the CLI is built. */
+export const OFFICIAL_LIST_FILE = path.join(
+  CLI_ROOT,
+  'assets',
+  'discover',
+  'official-packages.json',
+);
 
 const DEPENDENCY_FIELDS = [
   'dependencies',
@@ -46,6 +62,18 @@ const DEPENDENCY_FIELDS = [
  * @typedef {import('./_package-scanner.mjs').ScannedPackage} ScannedPackage
  * @typedef {import('../../authoring/discover/type').DiscoverPackage} DiscoverPackage
  * @typedef {import('../../authoring/discover/type').DiscoverSource} DiscoverSource
+ */
+
+/**
+ * An official package as this CLI lists it, plus whether it always releases at
+ * Core's version, which decides the version its add command pins.
+ * @typedef {DiscoverPackage & {releasedWithCore: boolean}} OfficialPackage
+ */
+
+/**
+ * The official list as this CLI reads it. `error` says why the file could not
+ * be read; the list is then empty and discover reports it like a failed source.
+ * @typedef {{packages: OfficialPackage[], error?: string}} OfficialList
  */
 
 /**
@@ -64,7 +92,8 @@ const DEPENDENCY_FIELDS = [
  * @typedef {object} SourceState
  * @property {string} name the source's own name, or where it came from when it
  *   gave none
- * @property {string} from `astryx.config`, or the integration that exports it
+ * @property {string} from `astryx.config`, the integration that exports it, or
+ *   `@astryxdesign/cli` for the official list
  * @property {'fresh' | 'saved' | 'failed'} status
  * @property {string} [generatedAt]
  * @property {boolean} [complete]
@@ -73,9 +102,10 @@ const DEPENDENCY_FIELDS = [
  */
 
 /**
- * Everything every source returned, merged. When two sources list the same
- * package, the earlier source's entry is kept.
- * @typedef {{sources: SourceState[], packages: Array<DiscoverPackage & {source: string}>}} CatalogResult
+ * Everything every source returned, merged, the official list last. When two
+ * sources list the same package, the earlier source's entry is kept. `official`
+ * marks an entry the official list supplied.
+ * @typedef {{sources: SourceState[], packages: Array<DiscoverPackage & {source: string, official?: true}>}} CatalogResult
  */
 
 /**
@@ -227,11 +257,16 @@ export function declaredDependencies(project) {
 
 /**
  * The command that adds a package with the project's package manager. Discover
- * only prints it; it never runs it.
+ * only prints it; it never runs it. Asked for one version, it adds that
+ * version. Given the official list, it otherwise pins a version for an official
+ * package (spec:AST-051 FR2): the project's Core version when the package
+ * always releases at Core's version and the project has Core, else the version
+ * the official list shows.
  * @param {Project | undefined} project
+ * @param {{official?: OfficialPackage[]}} [options]
  * @returns {(name: string, version?: string) => string}
  */
-export function addCommand(project) {
+export function addCommand(project, {official = []} = {}) {
   const pm = detectPackageManager(project?.cwd ?? process.cwd());
   const verb =
     pm === 'pnpm'
@@ -241,7 +276,22 @@ export function addCommand(project) {
         : pm === 'bun'
           ? 'bun add'
           : 'npm install';
-  return (name, version) => `${verb} ${version ? `${name}@${version}` : name}`;
+  const byName = new Map(official.map(pkg => [pkg.package, pkg]));
+  /** @type {{version: string | undefined} | undefined} */
+  let core;
+  const coreVersion = () =>
+    (core ??= {version: installedVersion(project, '@astryxdesign/core')})
+      .version;
+  return (name, version) => {
+    const entry = byName.get(name);
+    const pin =
+      version ??
+      (entry == null
+        ? undefined
+        : ((entry.releasedWithCore ? coreVersion() : undefined) ??
+          entry.versions[0]?.version));
+    return `${verb} ${pin ? `${name}@${pin}` : name}`;
+  };
 }
 
 /**
@@ -347,8 +397,8 @@ async function callSource(source, request, label, timeoutMs) {
 }
 
 /**
- * Call every discover source — the project's `discover` first, then each
- * integration's in load order — once per distinct function. A source that
+ * Call the project's own discover sources — the project's `discover` first,
+ * then each integration's in load order — once per distinct function. A source that
  * throws, times out, or returns an invalid catalog falls back to its saved copy;
  * with none, it is reported and adds nothing. The others always count.
  *
@@ -358,7 +408,7 @@ async function callSource(source, request, label, timeoutMs) {
  * @param {{cacheDir?: string, timeoutMs?: number}} [options]
  * @returns {Promise<CatalogResult>}
  */
-export async function callSources(project, request = {}, options = {}) {
+async function callOwnSources(project, request = {}, options = {}) {
   const {cacheDir = defaultCacheDir(), timeoutMs = SOURCE_TIMEOUT_MS} = options;
   /** @type {CatalogResult} */
   const result = {sources: [], packages: []};
@@ -431,6 +481,198 @@ export async function callSources(project, request = {}, options = {}) {
     }
   }
   return result;
+}
+
+/**
+ * Call every discover source (see {@link callOwnSources}), then read the
+ * official list (spec:AST-051 FR10). The list comes last, so for a package
+ * another source also lists, that source's entry is kept (FR7); the list adds
+ * the official packages no other source lists. Official packages still come
+ * first in what discover shows, in the list's order.
+ *
+ * @param {Project | undefined} project
+ * @param {{package?: string, version?: string}} [request]
+ * @param {{cacheDir?: string, timeoutMs?: number, official?: OfficialList}} [options]
+ *   `official`: the list {@link officialList} read; read here when absent
+ * @returns {Promise<CatalogResult>}
+ */
+export async function callSources(project, request = {}, options = {}) {
+  const {official = officialList(), ...rest} = options;
+  const own = await callOwnSources(project, request, rest);
+  const seen = new Set(own.packages.map(pkg => pkg.package));
+  /** @type {CatalogResult['packages']} */
+  const added = [];
+  for (const {releasedWithCore: _pin, ...pkg} of official.packages) {
+    if (seen.has(pkg.package)) continue;
+    if (request.package && pkg.package !== request.package) continue;
+    added.push({...pkg, source: OFFICIAL_SOURCE_NAME, official: true});
+  }
+  return {
+    sources: [
+      ...own.sources,
+      official.error
+        ? {
+            name: OFFICIAL_SOURCE_NAME,
+            from: OFFICIAL_SOURCE_FROM,
+            status: 'failed',
+            error: official.error,
+          }
+        : {
+            name: OFFICIAL_SOURCE_NAME,
+            from: OFFICIAL_SOURCE_FROM,
+            status: 'fresh',
+            complete: true,
+          },
+    ],
+    packages: officialFirst(
+      [...own.packages, ...added],
+      official.packages,
+      pkg => pkg.package,
+    ),
+  };
+}
+
+/**
+ * Official packages first, in the official list's order; the rest keep theirs.
+ * @template T
+ * @param {T[]} items
+ * @param {OfficialPackage[]} official
+ * @param {(item: T) => string} nameOf
+ * @returns {T[]}
+ */
+export function officialFirst(items, official, nameOf) {
+  const order = new Map(official.map((pkg, index) => [pkg.package, index]));
+  const rank = (/** @type {T} */ item) => order.get(nameOf(item)) ?? order.size;
+  return [...items].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * The official list this CLI carries (spec:AST-051 FR10). The file holds no
+ * versions: every entry takes the CLI's own version, as its latest release on
+ * a release CLI and as a prerelease on a prerelease CLI. Only a canary CLI
+ * lists the canary-only packages.
+ *
+ * @param {{file?: string, version?: string}} [options] the list file and the
+ *   CLI version to read it for; both default to this CLI's own
+ * @returns {OfficialList}
+ */
+export function officialList({file = OFFICIAL_LIST_FILE, version} = {}) {
+  try {
+    const cli = version ?? packageVersion(CLI_ROOT);
+    if (cli == null) throw new Error('the CLI package names no version');
+    const list = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const canary = /-canary\./u.test(cli);
+    const prerelease = cli.includes('-');
+    /** @type {OfficialPackage[]} */
+    const packages = [];
+    for (const pkg of list.packages) {
+      if (pkg.canaryOnly && !canary) continue;
+      packages.push({
+        package: pkg.package,
+        integration: pkg.package,
+        aliases: [],
+        ...(pkg.description ? {description: pkg.description} : {}),
+        latest: prerelease ? null : cli,
+        versions: [{version: cli, publishedAt: null, prerelease, status: 'ok'}],
+        contributions: pkg.contributions,
+        releasedWithCore: pkg.releasedWithCore === true,
+      });
+    }
+    return {packages};
+  } catch (err) {
+    return {
+      packages: [],
+      error: `the official list could not be read (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
+}
+
+/**
+ * What the project has: its installed integrations plus each official package
+ * it declares whose entry the official list supplied, official packages first.
+ * A declared official package that another source lists stays as that source
+ * shows it (spec:AST-051 FR10). One that failed to load as an integration stays
+ * out. A declared one takes what it adds from the list and its version from
+ * the copy the project installed.
+ *
+ * @param {Project | undefined} project
+ * @param {InstalledPackage[]} installed from {@link describeInstalled}
+ * @param {CatalogResult} catalog
+ * @param {Set<string>} declared
+ * @param {OfficialPackage[]} official the official list, for the order
+ * @returns {Array<InstalledPackage & {declaredOfficial?: true}>}
+ */
+export function withDeclaredOfficial(
+  project,
+  installed,
+  catalog,
+  declared,
+  official,
+) {
+  const loaded = new Set(project?.loadedIntegrations.map(i => i.name) ?? []);
+  /** @type {Array<InstalledPackage & {declaredOfficial?: true}>} */
+  const added = [];
+  for (const pkg of catalog.packages) {
+    if (!pkg.official || !declared.has(pkg.package) || loaded.has(pkg.package))
+      continue;
+    const version = installedVersion(project, pkg.package);
+    added.push(
+      /** @type {InstalledPackage & {declaredOfficial: true}} */ (
+        /** @type {unknown} */ ({
+          name: pkg.package,
+          category: pkg.package,
+          ...(version ? {version} : {}),
+          ...(pkg.description ? {description: pkg.description} : {}),
+          ...itemLists(pkg.contributions),
+          declaredOfficial: true,
+        })
+      ),
+    );
+  }
+  return officialFirst([...installed, ...added], official, pkg => pkg.name);
+}
+
+/**
+ * Group contributions into the entry fields, one list per kind that has any.
+ * `components` is always present, like on a scanned package.
+ * @param {DiscoverPackage['contributions']} contributions
+ * @returns {Record<string, string[]>}
+ */
+function itemLists(contributions) {
+  /** @type {Record<string, string[]>} */
+  const lists = {components: []};
+  for (const [kind, field] of KIND_FIELDS) {
+    const names = contributions.filter(c => c.kind === kind).map(c => c.name);
+    if (names.length > 0) lists[field] = names;
+  }
+  return lists;
+}
+
+/**
+ * The version in a package directory's package.json, if it names one.
+ * @param {string} dir
+ * @returns {string | undefined}
+ */
+function packageVersion(dir) {
+  try {
+    const {version} = JSON.parse(
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
+    return typeof version === 'string' && version ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The version of `name` the project installed, if it installed it.
+ * @param {Project | undefined} project
+ * @param {string} name
+ * @returns {string | undefined}
+ */
+function installedVersion(project, name) {
+  const dir = findInstalledPackage(project?.cwd ?? process.cwd(), name);
+  return dir == null ? undefined : packageVersion(dir);
 }
 
 /** The list and detail entry fields for each item kind, in display order. */
