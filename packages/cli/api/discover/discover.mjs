@@ -31,6 +31,8 @@ import {
   discoverPackages,
   findComponent,
   hasSources,
+  officialDeclarations,
+  officialFirst,
   officialList,
   withDeclaredOfficial,
 } from './_adapter.mjs';
@@ -145,6 +147,23 @@ function similarItems(entry, wanted) {
 }
 
 /**
+ * Whether discover answers a query in this project, or answers every query
+ * with the list (spec:AST-051 FR1): it answers once the project loads an
+ * integration or has a discover source of its own. This is the rule
+ * `discover()` applies to the project it loads; the command reads it to keep
+ * the list's hints from suggesting queries that only return the list.
+ * @param {import('../../foundation/config/project.mjs').Project | undefined} project
+ * @returns {boolean}
+ */
+export function answersQueries(project) {
+  return (
+    project != null &&
+    (project.loadedIntegrations.some(i => !i.__loadError) ||
+      hasSources(project))
+  );
+}
+
+/**
  * @param {string} [query]
  * @param {import('./discover.type.mjs').DiscoverOptions} [options]
  * @returns {Promise<
@@ -168,9 +187,12 @@ export async function discover(query, options = {}) {
   const integrations = await describeInstalled(project, scanned);
   const declared = declaredDependencies(project);
   // The official list is always read, so discover always has a source.
-  const official = officialList();
+  const official = officialList({project});
+  const declarations = officialDeclarations(project, official.packages);
   const add = addCommand(project);
   const addOfficial = addCommand(project, {official: official.packages});
+  /** @param {{package: string, official?: true}} pkg */
+  const installFor = pkg => (pkg.official ? addOfficial : add)(pkg.package);
 
   /** @param {{package?: string, version?: string}} [request] */
   const catalogFor = request => callSources(project, request, {official});
@@ -184,7 +206,7 @@ export async function discover(query, options = {}) {
       project,
       integrations,
       catalog,
-      declared,
+      declarations,
       official.packages,
     );
 
@@ -197,7 +219,14 @@ export async function discover(query, options = {}) {
       configured,
       type,
       only,
-      available: availableEntries(catalog, packages, declared),
+      available: officialFirst(
+        availableEntries(catalog, packages, declared, {
+          officialDeclared: declarations.any,
+          install: installFor,
+        }),
+        official.packages,
+        entry => entry.name,
+      ),
       sources: catalog.sources,
     });
   }
@@ -225,8 +254,36 @@ export async function discover(query, options = {}) {
     const installedNames = new Set(packages.map(p => p.name));
     const entry = catalog.packages.find(p => p.package === target.name);
     const installedAs = entry
-      ? catalogState(entry, installedNames, declared).installedAs
+      ? catalogState(entry, installedNames, declared, declarations.any)
+          .installedAs
       : undefined;
+    const isIntegration = integrations.some(p => p.name === target.name);
+    // An entry only the official list supplies answers for what it lists.
+    // Any other version or item of that package keeps the answer discover
+    // gave before the list existed: ERR_UNKNOWN_PACKAGE.
+    const officialOnly = entry?.official === true && !isIntegration;
+    if (officialOnly && target.version) {
+      const local = packages.find(p => p.name === target.name)?.version;
+      if (
+        target.version !== local &&
+        !entry.versions.some(v => v.version === target.version)
+      ) {
+        throw new AstryxError(
+          `${target.name}@${target.version} is not a version discover can show: ${
+            entry.versions.length > 0
+              ? `it shows ${entry.versions.map(v => v.version).join(', ')}, the version that fits this project`
+              : 'it shows no version of it for this project'
+          }. Other versions are on the package registry.`,
+          [...new Set([...entry.versions.map(v => v.version), local])]
+            .filter(v => v != null)
+            .map(v => ({
+              name: `${target.name}@${v}`,
+              reason: 'version discover shows',
+            })),
+          ERROR_CODES.ERR_UNKNOWN_PACKAGE,
+        );
+      }
+    }
     const context = {
       catalog: entry,
       version: target.version,
@@ -237,9 +294,16 @@ export async function discover(query, options = {}) {
     if (!target.item) return detail(packages, target.name, context);
     const found = item(packages, target.name, target.item, context);
     if (found) return found;
+    if (officialOnly) {
+      throw new AstryxError(
+        `"${target.item}" not found in ${target.name}`,
+        similarItems(entry, target.item),
+        ERROR_CODES.ERR_UNKNOWN_PACKAGE,
+      );
+    }
     // Only an installed package has docs to fall back to. For one that is
     // only in a source, the item is what is unknown, not the package.
-    if (entry && !integrations.some(p => p.name === target.name)) {
+    if (entry && !isIntegration) {
       throw new AstryxError(
         `"${target.item}" not found in ${target.name}`,
         similarItems(entry, target.item),
@@ -275,7 +339,7 @@ export async function discover(query, options = {}) {
 
   const packages = installedFor(listing);
   return await search(packages, query, {
-    items: searchItems(packages, listing, declared),
+    items: searchItems(packages, listing, declared, declarations.any),
     type,
     only,
     limit: limit ?? DEFAULT_LIMIT,

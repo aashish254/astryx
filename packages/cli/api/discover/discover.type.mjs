@@ -72,6 +72,8 @@
  * @property {string[]} [aliases] The integration's other package names.
  * @property {string} source The discover source that lists it; `Astryx` for
  *   the official list.
+ * @property {string} [install] The package-manager command that adds it;
+ *   discover prints it and never runs it.
  */
 
 /**

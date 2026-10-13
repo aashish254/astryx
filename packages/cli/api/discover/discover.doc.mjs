@@ -90,12 +90,12 @@ export const doc = {
     {
       type: 'discover.list',
       description:
-        'What the project has: the integrations it loads and the official packages it declares (name, category, components, version, and a list per other kind they add), official packages first. meta.available lists what the project could add, official packages first, and meta.sources reports each source, the official list included. When the list is empty it carries meta.configured.',
+        'What the project has: the integrations it loads and the official packages it declares (name, category, components, version, and a list per other kind they add), official packages first. meta.available lists what the project could add, official packages first, each with the command that adds it, and meta.sources reports each source, the official list last. When it lists no integration it carries meta.configured.',
     },
     {
       type: 'discover.detail',
       description:
-        "One package: what the shown version adds, whether the project has it, its versions and latest release when a source knows them, and the command that adds it when the project does not have it. For an entry from the official list that command pins a version: the project's Core version for a package released with Core, otherwise the CLI's own.",
+        "One package: what the shown version adds, whether the project has it, its versions and latest release when a source knows them, and the command that adds it when the project does not have it. An entry from the official list shows, lists and pins one version: the project's Core version (installed, or declared exactly) for a package released with Core, otherwise a release CLI's own; with none known it pins none. A version or item the official list does not show answers ERR_UNKNOWN_PACKAGE.",
     },
     {
       type: 'discover.detail.doc',

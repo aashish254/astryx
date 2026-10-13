@@ -40,6 +40,9 @@ export const OFFICIAL_LIST_PATH = path.join(
 /** The folders the release workflow publishes from, in its order. */
 const PACKAGE_FOLDERS = ['packages', path.join('packages', 'themes')];
 
+/** The folder whose every published package is a theme package. */
+const THEMES_FOLDER = path.join('packages', 'themes');
+
 /**
  * @typedef {object} OfficialContribution
  * @property {import('../packages/cli/authoring/discover/type').DiscoverKind} kind
@@ -190,9 +193,19 @@ export async function buildOfficialList(repoRoot = REPO_ROOT) {
       const contributions = integration
         ? await integrationContributions(integration, pkg.name)
         : themeContributions(dir, pkg.name);
-      // Core, the CLI, and the build plugins are the base: they add nothing
-      // discover lists.
-      if (contributions.length === 0) continue;
+      if (contributions.length === 0) {
+        // A published theme package must read back, or it would silently
+        // drop out of the list.
+        if (folder === THEMES_FOLDER) {
+          const stem = `${toIdentifier(path.basename(dir))}Theme`;
+          throw new Error(
+            `${pkg.name} (${path.relative(repoRoot, dir)}) is published but has no src/${stem}.ts with a same-stem src/${stem}.doc.mjs descriptor, so the official list cannot read its theme.`,
+          );
+        }
+        // Core, the CLI, and the build plugins are the base: they add nothing
+        // discover lists.
+        continue;
+      }
       packages.push({
         package: pkg.name,
         ...(typeof pkg.description === 'string' && pkg.description

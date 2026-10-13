@@ -16,6 +16,7 @@ import {
   addCommand,
   callSources,
   OFFICIAL_LIST_FILE,
+  officialDeclarations,
   officialList,
   withDeclaredOfficial,
 } from './_adapter.mjs';
@@ -77,7 +78,6 @@ function official(name, extra = {}) {
       {version: '0.7.1', publishedAt: null, prerelease: false, status: 'ok'},
     ],
     contributions: [{kind: 'theme', name: name.split('-').pop()}],
-    releasedWithCore: true,
     ...extra,
   };
 }
@@ -258,7 +258,7 @@ describe('callSources', () => {
     ]);
   });
 
-  it('reads the official list last, so another source keeps its entry, and puts official packages first', async () => {
+  it('reads the official list last, so another source keeps its entry', async () => {
     const own = async () =>
       catalog('Own', [
         pkg('@a/two'),
@@ -282,14 +282,45 @@ describe('callSources', () => {
       ['Own', 'astryx.config', 'fresh'],
       OFFICIAL_STATE,
     ]);
+    // Source order: discover puts official packages first only where it
+    // shows them.
     expect(
       result.packages.map(p => [p.package, p.latest, p.source, !!p.official]),
     ).toEqual([
-      ['@astryxdesign/theme-gothic', '0.7.1', 'Astryx', true],
-      ['@astryxdesign/theme-matcha', '0.6.8', 'Own', false],
       ['@a/two', '1.0.0', 'Own', false],
+      ['@astryxdesign/theme-matcha', '0.6.8', 'Own', false],
+      ['@astryxdesign/theme-gothic', '0.7.1', 'Astryx', true],
     ]);
-    expect(result.packages[0]).not.toHaveProperty('releasedWithCore');
+  });
+
+  it('keeps a source’s package for an official integration it publishes under another name', async () => {
+    const own = async () =>
+      catalog('Own', [
+        pkg('@acme/gothic-fork', {
+          integration: '@astryxdesign/theme-gothic',
+          contributions: [{kind: 'theme', name: 'gothic'}],
+        }),
+        pkg('@acme/stone-mirror', {aliases: ['@astryxdesign/theme-stone']}),
+      ]);
+    const result = await callSources(
+      project({config: {discover: own}}),
+      {},
+      {
+        cacheDir,
+        official: {
+          packages: [
+            official('@astryxdesign/theme-gothic'),
+            official('@astryxdesign/theme-stone'),
+            official('@astryxdesign/theme-matcha'),
+          ],
+        },
+      },
+    );
+    expect(result.packages.map(p => [p.package, p.source])).toEqual([
+      ['@acme/gothic-fork', 'Own'],
+      ['@acme/stone-mirror', 'Own'],
+      ['@astryxdesign/theme-matcha', 'Astryx'],
+    ]);
   });
 
   it('answers a package request with only that official package', async () => {
@@ -329,60 +360,145 @@ describe('callSources', () => {
   });
 });
 
-describe('officialList', () => {
-  const kinds = (/** @type {{contributions: {kind: string}[]}[]} */ list) => [
-    ...new Set(list.flatMap(p => p.contributions.map(c => c.kind))),
-  ];
+/**
+ * A stand-in project folder whose installed Core is `version`.
+ * @param {string} dir
+ * @param {string} version
+ */
+function withCore(dir, version) {
+  const at = path.join(dir, 'node_modules', '@astryxdesign', 'core');
+  fs.mkdirSync(at, {recursive: true});
+  fs.writeFileSync(
+    path.join(at, 'package.json'),
+    JSON.stringify({name: '@astryxdesign/core', version}),
+  );
+  return project({cwd: dir});
+}
 
-  it('gives every official package the CLI release version as its latest release', () => {
+/** The version an entry lists, with its latest. */
+const versionsOf = (
+  /** @type {{latest: string | null, versions: {version: string, prerelease: boolean}[]} | undefined} */ entry,
+) =>
+  entry && {
+    latest: entry.latest,
+    versions: entry.versions.map(v => [v.version, v.prerelease]),
+  };
+
+/** @param {{package: string}[]} packages @param {string} name */
+const find = (packages, name) => packages.find(p => p.package === name);
+
+const NEUTRAL = '@astryxdesign/theme-neutral';
+
+/** The canary-only package names in the committed list. */
+function canaryOnlyNames() {
+  return JSON.parse(fs.readFileSync(OFFICIAL_LIST_FILE, 'utf8'))
+    .packages.filter((/** @type {{canaryOnly?: boolean}} */ p) => p.canaryOnly)
+    .map((/** @type {{package: string}} */ p) => p.package);
+}
+
+describe('officialList', () => {
+  it('gives every official package the release CLI’s version when the project has no Core', () => {
     const {packages, error} = officialList({version: '0.7.1'});
     expect(error).toBeUndefined();
     expect(packages.length).toBeGreaterThan(0);
     for (const entry of packages) {
       expect(entry.package.startsWith('@astryxdesign/')).toBe(true);
-      expect(entry.latest).toBe('0.7.1');
-      expect(entry.versions).toEqual([
-        {version: '0.7.1', publishedAt: null, prerelease: false, status: 'ok'},
-      ]);
+      expect(versionsOf(entry)).toEqual({
+        latest: '0.7.1',
+        versions: [['0.7.1', false]],
+      });
       expect(entry.contributions.length).toBeGreaterThan(0);
     }
-    expect(packages.map(p => p.package)).toContain(
-      '@astryxdesign/theme-neutral',
-    );
+    expect(packages.map(p => p.package)).toContain(NEUTRAL);
+    for (const name of canaryOnlyNames()) {
+      expect(find(packages, name)).toBeUndefined();
+    }
   });
 
-  it('lists the canary-only packages only on a canary CLI, as prereleases', () => {
-    const stable = officialList({version: '0.7.1'}).packages;
-    const canary = officialList({version: '0.7.2-canary.abc1234'}).packages;
-    const raw = JSON.parse(fs.readFileSync(OFFICIAL_LIST_FILE, 'utf8'));
-    const canaryOnly = raw.packages
-      .filter((/** @type {{canaryOnly?: boolean}} */ p) => p.canaryOnly)
-      .map((/** @type {{package: string}} */ p) => p.package);
+  it('gives a package released with Core the project’s Core version, older or newer than the CLI', () => {
+    for (const core of ['0.6.8', '0.8.0', '0.7.2-canary.def5678']) {
+      const entry = find(
+        officialList({version: '0.7.1', project: withCore(cacheDir, core)})
+          .packages,
+        NEUTRAL,
+      );
+      expect(versionsOf(entry), core).toEqual({
+        latest: core.includes('-') ? null : core,
+        versions: [[core, core.includes('-')]],
+      });
+    }
+  });
 
-    expect(canaryOnly.length).toBeGreaterThan(0);
-    for (const name of canaryOnly) {
-      expect(stable.map(p => p.package)).not.toContain(name);
-      expect(canary.map(p => p.package)).toContain(name);
+  it('pins the exact Core version a fresh clone declares, and nothing for a range', () => {
+    fs.writeFileSync(
+      path.join(cacheDir, 'package.json'),
+      JSON.stringify({dependencies: {'@astryxdesign/core': '0.6.8'}}),
+    );
+    const p = project({cwd: path.join(cacheDir, 'src')});
+    expect(
+      versionsOf(
+        find(officialList({version: '0.7.1', project: p}).packages, NEUTRAL),
+      ),
+    ).toEqual({latest: '0.6.8', versions: [['0.6.8', false]]});
+
+    fs.writeFileSync(
+      path.join(cacheDir, 'package.json'),
+      JSON.stringify({devDependencies: {'@astryxdesign/core': '^0.6.8'}}),
+    );
+    expect(
+      versionsOf(
+        find(officialList({version: '0.7.1', project: p}).packages, NEUTRAL),
+      ),
+    ).toEqual({latest: null, versions: []});
+  });
+
+  it('on a canary CLI with no Core, pins only the canary-only packages', () => {
+    const canary = officialList({
+      version: '0.7.2-canary.abc1234',
+      project: project({cwd: cacheDir}),
+    }).packages;
+    expect(versionsOf(find(canary, NEUTRAL))).toEqual({
+      latest: null,
+      versions: [],
+    });
+    const names = canaryOnlyNames();
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(versionsOf(find(canary, name)), name).toEqual({
+        latest: null,
+        versions: [['0.7.2-canary.abc1234', true]],
+      });
     }
-    for (const entry of canary) {
-      expect(entry.latest).toBeNull();
-      expect(entry.versions).toEqual([
-        {
-          version: '0.7.2-canary.abc1234',
-          publishedAt: null,
-          prerelease: true,
-          status: 'ok',
-        },
-      ]);
+  });
+
+  it('lists the canary-only packages beside a canary Core, never beside a released one', () => {
+    const released = officialList({
+      version: '0.7.2-canary.abc1234',
+      project: withCore(cacheDir, '0.7.1'),
+    }).packages;
+    expect(versionsOf(find(released, NEUTRAL))).toEqual({
+      latest: '0.7.1',
+      versions: [['0.7.1', false]],
+    });
+    for (const name of canaryOnlyNames()) {
+      expect(find(released, name), name).toBeUndefined();
     }
-    expect(kinds(canary)).toContain('component');
+
+    const beside = officialList({
+      version: '0.7.2-canary.abc1234',
+      project: withCore(cacheDir, '0.7.2-canary.def5678'),
+    }).packages;
+    for (const name of canaryOnlyNames()) {
+      expect(versionsOf(find(beside, name)), name).toEqual({
+        latest: null,
+        versions: [['0.7.2-canary.def5678', true]],
+      });
+    }
   });
 
   it('reads back as a valid discover catalog on a release and a canary CLI', () => {
     for (const version of ['0.7.1', '0.7.2-canary.abc1234']) {
-      const packages = officialList({version}).packages.map(
-        ({releasedWithCore: _pin, ...entry}) => entry,
-      );
+      const {packages} = officialList({version});
       const parsed = parseDiscoverCatalog(
         catalog('Astryx', packages),
         'the official list',
@@ -399,6 +515,61 @@ describe('officialList', () => {
     expect(result.packages).toEqual([]);
     expect(result.error).toContain('the official list could not be read');
   });
+
+  it('pins exactly the version each entry lists, or none', () => {
+    for (const [cli, core] of [
+      ['0.7.1', '0.6.8'],
+      ['0.7.1', '0.8.0'],
+      ['0.7.2-canary.abc1234', undefined],
+      ['0.7.2-canary.abc1234', '0.7.2-canary.def5678'],
+    ]) {
+      const dir = fs.mkdtempSync(path.join(cacheDir, 'pin-'));
+      const p = core ? withCore(dir, core) : project({cwd: dir});
+      const {packages} = officialList({version: cli, project: p});
+      const add = addCommand(p, {official: packages});
+      for (const entry of packages) {
+        const listed = entry.versions[0]?.version;
+        expect(add(entry.package).split(' ').pop(), `${cli} ${core}`).toBe(
+          listed ? `${entry.package}@${listed}` : entry.package,
+        );
+      }
+    }
+  });
+});
+
+describe('officialDeclarations', () => {
+  const list = [
+    official('@astryxdesign/theme-gothic'),
+    official('@astryxdesign/theme-matcha'),
+    official('@astryxdesign/theme-stone'),
+  ];
+
+  it('reads the project’s own package.json from a subfolder, aliases included, and keeps peers apart', () => {
+    fs.writeFileSync(
+      path.join(cacheDir, 'package.json'),
+      JSON.stringify({
+        dependencies: {
+          'my-gothic': 'npm:@astryxdesign/theme-gothic@0.7.0',
+          react: '19.0.0',
+        },
+        devDependencies: {'@astryxdesign/theme-matcha': '0.7.0'},
+        peerDependencies: {'@astryxdesign/theme-stone': '>=0.7.0'},
+      }),
+    );
+    const declared = officialDeclarations(
+      project({cwd: path.join(cacheDir, 'src', 'components')}),
+      list,
+    );
+    expect([...declared.dependency]).toEqual([
+      ['@astryxdesign/theme-gothic', 'my-gothic'],
+      ['@astryxdesign/theme-matcha', '@astryxdesign/theme-matcha'],
+    ]);
+    expect([...declared.any].sort()).toEqual([
+      '@astryxdesign/theme-gothic',
+      '@astryxdesign/theme-matcha',
+      '@astryxdesign/theme-stone',
+    ]);
+  });
 });
 
 describe('withDeclaredOfficial', () => {
@@ -414,6 +585,11 @@ describe('withDeclaredOfficial', () => {
 
   /** @param {object[]} packages */
   const result = packages => ({sources: [], packages});
+  /** @param {Array<[string, string]>} entries */
+  const declares = entries => ({
+    dependency: new Map(entries),
+    any: new Set(entries.map(([name]) => name)),
+  });
   const gothic = {
     ...official('@astryxdesign/theme-gothic', {description: 'Dark.'}),
     source: 'Astryx',
@@ -426,7 +602,7 @@ describe('withDeclaredOfficial', () => {
       project({cwd: cacheDir}),
       [{name: '@acme/ui', category: '@acme/ui', components: []}],
       result([gothic]),
-      new Set(['@astryxdesign/theme-gothic', '@acme/ui']),
+      declares([['@astryxdesign/theme-gothic', '@astryxdesign/theme-gothic']]),
       [gothic],
     );
     expect(installed).toEqual([
@@ -443,6 +619,21 @@ describe('withDeclaredOfficial', () => {
     ]);
   });
 
+  it('reads the version of a package installed under an npm alias', () => {
+    install(cacheDir, 'my-gothic', '0.6.8');
+    const [entry] = withDeclaredOfficial(
+      project({cwd: cacheDir}),
+      [],
+      result([gothic]),
+      declares([['@astryxdesign/theme-gothic', 'my-gothic']]),
+      [gothic],
+    );
+    expect(entry).toMatchObject({
+      name: '@astryxdesign/theme-gothic',
+      version: '0.6.8',
+    });
+  });
+
   it('leaves a declared official package alone when another source supplied its entry', () => {
     const fromOwn = {...gothic, source: 'Own', official: undefined};
     expect(
@@ -450,7 +641,9 @@ describe('withDeclaredOfficial', () => {
         project({cwd: cacheDir}),
         [],
         result([fromOwn]),
-        new Set(['@astryxdesign/theme-gothic']),
+        declares([
+          ['@astryxdesign/theme-gothic', '@astryxdesign/theme-gothic'],
+        ]),
         [gothic],
       ),
     ).toEqual([]);
@@ -467,7 +660,9 @@ describe('withDeclaredOfficial', () => {
         }),
         [],
         result([gothic]),
-        new Set(['@astryxdesign/theme-gothic']),
+        declares([
+          ['@astryxdesign/theme-gothic', '@astryxdesign/theme-gothic'],
+        ]),
         [gothic],
       ),
     ).toEqual([]);
@@ -478,9 +673,13 @@ describe('addCommand with the official list', () => {
   /** What the command adds, whichever package manager runs the tests. */
   const target = (/** @type {string} */ command) => command.split(' ').pop();
   const list = [
-    official('@astryxdesign/theme-gothic'),
+    official('@astryxdesign/theme-gothic', {
+      latest: '0.6.8',
+      versions: [
+        {version: '0.6.8', publishedAt: null, prerelease: false, status: 'ok'},
+      ],
+    }),
     official('@astryxdesign/charts', {
-      releasedWithCore: false,
       latest: null,
       versions: [
         {
@@ -493,13 +692,7 @@ describe('addCommand with the official list', () => {
     }),
   ];
 
-  it('pins the project’s Core version for a package released with Core', () => {
-    const at = path.join(cacheDir, 'node_modules', '@astryxdesign', 'core');
-    fs.mkdirSync(at, {recursive: true});
-    fs.writeFileSync(
-      path.join(at, 'package.json'),
-      JSON.stringify({name: '@astryxdesign/core', version: '0.6.8'}),
-    );
+  it('pins the version an official entry lists', () => {
     const add = addCommand(project({cwd: cacheDir}), {official: list});
     expect(target(add('@astryxdesign/theme-gothic'))).toBe(
       '@astryxdesign/theme-gothic@0.6.8',
@@ -509,11 +702,8 @@ describe('addCommand with the official list', () => {
     );
   });
 
-  it('pins the version shown when the project has no Core, and leaves other packages alone', () => {
+  it('adds a version that was asked for, and leaves other packages alone', () => {
     const add = addCommand(project({cwd: cacheDir}), {official: list});
-    expect(target(add('@astryxdesign/theme-gothic'))).toBe(
-      '@astryxdesign/theme-gothic@0.7.1',
-    );
     expect(target(add('@acme/ui'))).toBe('@acme/ui');
     expect(target(add('@astryxdesign/theme-gothic', '0.7.0'))).toBe(
       '@astryxdesign/theme-gothic@0.7.0',

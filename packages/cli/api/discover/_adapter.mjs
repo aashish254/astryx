@@ -65,9 +65,20 @@ const DEPENDENCY_FIELDS = [
  */
 
 /**
- * An official package as this CLI lists it, plus whether it always releases at
- * Core's version, which decides the version its add command pins.
- * @typedef {DiscoverPackage & {releasedWithCore: boolean}} OfficialPackage
+ * An official package as this CLI lists it, with at most one version: the one
+ * discover shows and its add command pins (spec:AST-051 FR2, FR10). With none,
+ * the add command pins nothing.
+ * @typedef {DiscoverPackage} OfficialPackage
+ */
+
+/**
+ * The official packages the project's package.json declares: the real package
+ * name of each, mapped to the name it is installed under (an npm alias such as
+ * `"my-theme": "npm:@astryxdesign/theme-gothic@0.7.0"` installs under
+ * `my-theme`). `dependency` holds those declared in dependencies,
+ * devDependencies or optionalDependencies, which make a package the project's
+ * own; `any` adds peerDependencies, which only keep it from being offered.
+ * @typedef {{dependency: Map<string, string>, any: Set<string>}} OfficialDeclarations
  */
 
 /**
@@ -256,12 +267,105 @@ export function declaredDependencies(project) {
 }
 
 /**
+ * The nearest package.json at or above the project's folder, read. Discover
+ * runs from any folder of a project; this is the project's own manifest.
+ * @param {Project | undefined} project
+ * @returns {{dir: string, pkg: Record<string, any>} | null}
+ */
+function nearestManifest(project) {
+  let dir = project?.cwd ?? process.cwd();
+  for (;;) {
+    const file = path.join(dir, 'package.json');
+    if (fs.existsSync(file)) {
+      try {
+        return {dir, pkg: JSON.parse(fs.readFileSync(file, 'utf8'))};
+      } catch {
+        return null;
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/** The fields that make a declared package the project's own. */
+const OWN_DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+];
+
+/**
+ * The package a dependency entry installs: its own name, or the target of an
+ * npm alias (`npm:<name>@<range>`).
+ * @param {string} name
+ * @param {unknown} spec
+ * @returns {string}
+ */
+function declaredPackage(name, spec) {
+  if (typeof spec !== 'string' || !spec.startsWith('npm:')) return name;
+  const target = spec.slice('npm:'.length);
+  const at = target.indexOf('@', 1);
+  return at > 0 ? target.slice(0, at) : target;
+}
+
+/**
+ * What the project's own package.json, the nearest one above the folder
+ * discover runs in, declares among the official packages.
+ * @param {Project | undefined} project
+ * @param {OfficialPackage[]} official
+ * @returns {OfficialDeclarations}
+ */
+export function officialDeclarations(project, official) {
+  const names = new Set(official.map(pkg => pkg.package));
+  /** @type {OfficialDeclarations} */
+  const declared = {dependency: new Map(), any: new Set()};
+  const manifest = nearestManifest(project);
+  if (manifest == null) return declared;
+  for (const field of DEPENDENCY_FIELDS) {
+    for (const [local, spec] of Object.entries(manifest.pkg?.[field] ?? {})) {
+      const real = declaredPackage(local, spec);
+      if (!names.has(real)) continue;
+      declared.any.add(real);
+      if (
+        OWN_DEPENDENCY_FIELDS.includes(field) &&
+        !declared.dependency.has(real)
+      )
+        declared.dependency.set(real, local);
+    }
+  }
+  return declared;
+}
+
+/**
+ * The project's Core version: the installed copy's, else an exact version its
+ * own package.json declares (a fresh clone before install). `range` reports a
+ * declared range with nothing installed, which pins nothing.
+ * @param {Project | undefined} project
+ * @returns {{version?: string, range?: true} | null}
+ */
+function projectCore(project) {
+  const installed = installedVersion(project, '@astryxdesign/core');
+  if (installed) return {version: installed};
+  const manifest = nearestManifest(project);
+  for (const field of OWN_DEPENDENCY_FIELDS) {
+    const spec = manifest?.pkg?.[field]?.['@astryxdesign/core'];
+    if (typeof spec !== 'string') continue;
+    const exact = spec.replace(/^=/u, '').trim();
+    return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(exact)
+      ? {version: exact}
+      : {range: true};
+  }
+  return null;
+}
+
+/**
  * The command that adds a package with the project's package manager. Discover
  * only prints it; it never runs it. Asked for one version, it adds that
- * version. Given the official list, it otherwise pins a version for an official
- * package (spec:AST-051 FR2): the project's Core version when the package
- * always releases at Core's version and the project has Core, else the version
- * the official list shows.
+ * version. Given the official list, it otherwise pins an official package to
+ * the one version its entry lists (spec:AST-051 FR2), so the pinned version is
+ * always one discover shows and can look up.
  * @param {Project | undefined} project
  * @param {{official?: OfficialPackage[]}} [options]
  * @returns {(name: string, version?: string) => string}
@@ -277,19 +381,8 @@ export function addCommand(project, {official = []} = {}) {
           ? 'bun add'
           : 'npm install';
   const byName = new Map(official.map(pkg => [pkg.package, pkg]));
-  /** @type {{version: string | undefined} | undefined} */
-  let core;
-  const coreVersion = () =>
-    (core ??= {version: installedVersion(project, '@astryxdesign/core')})
-      .version;
   return (name, version) => {
-    const entry = byName.get(name);
-    const pin =
-      version ??
-      (entry == null
-        ? undefined
-        : ((entry.releasedWithCore ? coreVersion() : undefined) ??
-          entry.versions[0]?.version));
+    const pin = version ?? byName.get(name)?.versions[0]?.version;
     return `${verb} ${pin ? `${name}@${pin}` : name}`;
   };
 }
@@ -485,10 +578,11 @@ async function callOwnSources(project, request = {}, options = {}) {
 
 /**
  * Call every discover source (see {@link callOwnSources}), then read the
- * official list (spec:AST-051 FR10). The list comes last, so for a package
- * another source also lists, that source's entry is kept (FR7); the list adds
- * the official packages no other source lists. Official packages still come
- * first in what discover shows, in the list's order.
+ * official list (spec:AST-051 FR10). The list comes last, so a source keeps
+ * its entry for an official package, or for any package of the same
+ * integration (FR7); the list adds the official packages no source covers.
+ * The result stays in source order; discover puts official packages first
+ * only where it shows them ({@link officialFirst}).
  *
  * @param {Project | undefined} project
  * @param {{package?: string, version?: string}} [request]
@@ -497,12 +591,16 @@ async function callOwnSources(project, request = {}, options = {}) {
  * @returns {Promise<CatalogResult>}
  */
 export async function callSources(project, request = {}, options = {}) {
-  const {official = officialList(), ...rest} = options;
+  const {official = officialList({project}), ...rest} = options;
   const own = await callOwnSources(project, request, rest);
-  const seen = new Set(own.packages.map(pkg => pkg.package));
+  // A source's entry wins for its package and for the integration it
+  // publishes under any name (FR7), so a fork or mirror keeps its place.
+  const seen = new Set(
+    own.packages.flatMap(pkg => [pkg.package, pkg.integration, ...pkg.aliases]),
+  );
   /** @type {CatalogResult['packages']} */
   const added = [];
-  for (const {releasedWithCore: _pin, ...pkg} of official.packages) {
+  for (const pkg of official.packages) {
     if (seen.has(pkg.package)) continue;
     if (request.package && pkg.package !== request.package) continue;
     added.push({...pkg, source: OFFICIAL_SOURCE_NAME, official: true});
@@ -524,11 +622,9 @@ export async function callSources(project, request = {}, options = {}) {
             complete: true,
           },
     ],
-    packages: officialFirst(
-      [...own.packages, ...added],
-      official.packages,
-      pkg => pkg.package,
-    ),
+    // Source order: the first entry per integration is the one discover
+    // keeps. Official packages are put first only where discover shows them.
+    packages: [...own.packages, ...added],
   };
 }
 
@@ -548,34 +644,64 @@ export function officialFirst(items, official, nameOf) {
 
 /**
  * The official list this CLI carries (spec:AST-051 FR10). The file holds no
- * versions: every entry takes the CLI's own version, as its latest release on
- * a release CLI and as a prerelease on a prerelease CLI. Only a canary CLI
- * lists the canary-only packages.
+ * versions. Each entry lists at most one: the version its add command pins
+ * (FR2), so what discover shows, what it can look up, and what it installs
+ * agree. That version is the project's Core version (installed, else declared
+ * exactly) for a package released with Core and for a canary-only package; a
+ * release CLI's own version for a package released with Core when the project
+ * has no Core; and a canary CLI's own version for a canary-only package when
+ * the project has no Core. Otherwise the entry lists none and pins nothing:
+ * a canary CLI may have been published without some packages, and a declared
+ * Core range names no single version. Canary-only packages are listed only by
+ * a canary CLI, and never beside a released Core, which they cannot install
+ * with.
  *
- * @param {{file?: string, version?: string}} [options] the list file and the
- *   CLI version to read it for; both default to this CLI's own
+ * @param {{file?: string, version?: string, project?: Project}} [options] the
+ *   list file and the CLI version to read it for, both defaulting to this
+ *   CLI's own, and the project whose Core decides the versions
  * @returns {OfficialList}
  */
-export function officialList({file = OFFICIAL_LIST_FILE, version} = {}) {
+export function officialList({
+  file = OFFICIAL_LIST_FILE,
+  version,
+  project,
+} = {}) {
   try {
     const cli = version ?? packageVersion(CLI_ROOT);
     if (cli == null) throw new Error('the CLI package names no version');
+    const core = project == null ? null : projectCore(project);
     const list = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const canary = /-canary\./u.test(cli);
-    const prerelease = cli.includes('-');
+    const canaryCli = /-canary\./u.test(cli);
     /** @type {OfficialPackage[]} */
     const packages = [];
     for (const pkg of list.packages) {
-      if (pkg.canaryOnly && !canary) continue;
+      const canaryOnly = pkg.canaryOnly === true;
+      if (canaryOnly && !canaryCli) continue;
+      /** @type {string | undefined} */
+      let pin;
+      if (core?.version) {
+        const releasedCore = !core.version.includes('-');
+        if (canaryOnly && releasedCore) continue;
+        if (canaryOnly || pkg.releasedWithCore === true) pin = core.version;
+      } else if (core?.range) {
+        if (canaryOnly) continue;
+      } else if (canaryOnly) {
+        pin = cli;
+      } else if (pkg.releasedWithCore === true && !canaryCli) {
+        pin = cli;
+      }
+      const prerelease = pin != null && pin.includes('-');
       packages.push({
         package: pkg.package,
         integration: pkg.package,
         aliases: [],
         ...(pkg.description ? {description: pkg.description} : {}),
-        latest: prerelease ? null : cli,
-        versions: [{version: cli, publishedAt: null, prerelease, status: 'ok'}],
+        latest: pin != null && !prerelease ? pin : null,
+        versions:
+          pin == null
+            ? []
+            : [{version: pin, publishedAt: null, prerelease, status: 'ok'}],
         contributions: pkg.contributions,
-        releasedWithCore: pkg.releasedWithCore === true,
       });
     }
     return {packages};
@@ -589,16 +715,16 @@ export function officialList({file = OFFICIAL_LIST_FILE, version} = {}) {
 
 /**
  * What the project has: its installed integrations plus each official package
- * it declares whose entry the official list supplied, official packages first.
- * A declared official package that another source lists stays as that source
- * shows it (spec:AST-051 FR10). One that failed to load as an integration stays
- * out. A declared one takes what it adds from the list and its version from
- * the copy the project installed.
+ * its own package.json declares as a dependency whose entry the official list
+ * supplied, official packages first. A declared official package that a source
+ * lists stays as that source shows it (FR7). One that failed to load as an
+ * integration stays out. A declared one takes what it adds from the list and
+ * its version from the copy the project installed, under an npm alias too.
  *
  * @param {Project | undefined} project
  * @param {InstalledPackage[]} installed from {@link describeInstalled}
  * @param {CatalogResult} catalog
- * @param {Set<string>} declared
+ * @param {OfficialDeclarations} declared from {@link officialDeclarations}
  * @param {OfficialPackage[]} official the official list, for the order
  * @returns {Array<InstalledPackage & {declaredOfficial?: true}>}
  */
@@ -613,9 +739,9 @@ export function withDeclaredOfficial(
   /** @type {Array<InstalledPackage & {declaredOfficial?: true}>} */
   const added = [];
   for (const pkg of catalog.packages) {
-    if (!pkg.official || !declared.has(pkg.package) || loaded.has(pkg.package))
-      continue;
-    const version = installedVersion(project, pkg.package);
+    const local = declared.dependency.get(pkg.package);
+    if (!pkg.official || local == null || loaded.has(pkg.package)) continue;
+    const version = installedVersion(project, local);
     added.push(
       /** @type {InstalledPackage & {declaredOfficial: true}} */ (
         /** @type {unknown} */ ({
