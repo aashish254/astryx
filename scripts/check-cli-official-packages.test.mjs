@@ -35,6 +35,15 @@ describe('the official package list is in sync with the repository', () => {
     expect(committed).toBe(serializeOfficialList(await buildOfficialList()));
   });
 
+  it('releases every listed package with Core, unless it is canary-only', async () => {
+    // A package outside Core's version group would show and pin a version it
+    // was never released at: a renamed package must move with the group.
+    const loose = (await buildOfficialList()).packages
+      .filter(p => !p.canaryOnly && !p.releasedWithCore)
+      .map(p => p.package);
+    expect(loose).toEqual([]);
+  });
+
   it('lists every public theme package and no base package', async () => {
     const names = (await buildOfficialList()).packages.map(p => p.package);
     const themes = fs
@@ -130,7 +139,6 @@ describe('buildOfficialList on a stand-in repository', () => {
     });
     theme('probe', {name: '@astryxdesign/theme-probe', private: true});
     theme('reef', {name: '@acme/theme-reef'});
-    theme('bare', {name: '@astryxdesign/theme-bare'}, {descriptor: false});
 
     expect(await buildOfficialList(root)).toEqual({
       packages: [
@@ -161,6 +169,24 @@ describe('buildOfficialList on a stand-in repository', () => {
         },
       ],
     });
+  });
+
+  it('refuses a published theme package with no descriptor', async () => {
+    theme('bare', {name: '@astryxdesign/theme-bare'}, {descriptor: false});
+    await expect(buildOfficialList(root)).rejects.toThrow(
+      '@astryxdesign/theme-bare (packages/themes/bare) is published but has no src/bareTheme.ts with a same-stem src/bareTheme.doc.mjs descriptor',
+    );
+  });
+
+  it('refuses a published theme package whose folder is not its file name', async () => {
+    theme('ocean', {name: '@astryxdesign/theme-ocean'});
+    fs.renameSync(
+      path.join(root, 'packages', 'themes', 'ocean'),
+      path.join(root, 'packages', 'themes', 'theme-ocean'),
+    );
+    await expect(buildOfficialList(root)).rejects.toThrow(
+      'has no src/themeOceanTheme.ts with a same-stem src/themeOceanTheme.doc.mjs descriptor',
+    );
   });
 
   it('refuses a published theme package whose descriptor does not read', async () => {

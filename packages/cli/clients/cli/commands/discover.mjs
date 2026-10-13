@@ -27,7 +27,10 @@ import {
   code,
 } from '../formatters/index.mjs';
 import {cliError, rejectEmptyArgument} from '../lib/cli-error.mjs';
-import {discover as discoverApi} from '../../../api/discover/discover.mjs';
+import {
+  answersQueries,
+  discover as discoverApi,
+} from '../../../api/discover/discover.mjs';
 import {Project} from '../../../foundation/config/project.mjs';
 import {warnOnIntegrationIssues} from '../../../foundation/integrations/integration-warnings.mjs';
 import {getCliInvocation} from '../../../foundation/env/package-manager.mjs';
@@ -268,8 +271,12 @@ export function registerDiscover(program) {
         // Non-blocking nudge: if any configured integration has validation
         // issues, print one compact line to stderr pointing at
         // doctor integration validate. Best-effort; suppressed in --json mode.
+        // Whether a query gets its own answer here or the list (FR1); the
+        // list's hints must not suggest queries that only return it again.
+        let queries = true;
         try {
           const project = await Project.load(process.cwd());
+          queries = answersQueries(project);
           await warnOnIntegrationIssues(project, {json});
         } catch {
           // Never let the nudge break the command.
@@ -348,12 +355,30 @@ export function registerDiscover(program) {
               );
             }
             blocks.push(...sourceNotes(sources));
-            if (query?.trim()) {
-              // A query answered with the list: this project loads no
-              // integration and has no discover source of its own.
+            if (!queries) {
+              // This project loads no integration and has no discover source
+              // of its own, so every query returns this list. Point at the
+              // add commands above instead of at queries.
+              if (query?.trim()) {
+                blocks.push(
+                  text(
+                    `This project loads no integration and has no discover source of its own, so discover lists everything instead of answering "${query}".`,
+                  ),
+                );
+              }
+              const themes = available.flatMap(entry =>
+                Array.isArray(entry.themes) ? entry.themes : [],
+              );
               blocks.push(
                 text(
-                  `This project loads no integration and has no discover source of its own, so discover lists everything instead of answering "${query}".`,
+                  [
+                    'To add a package, run its install command.',
+                    ...(themes.length > 0
+                      ? [
+                          `Then use a theme it adds: ${run} theme add <theme>, for example ${run} theme add ${themes[0]}`,
+                        ]
+                      : []),
+                  ].join('\n'),
                 ),
               );
             } else {
@@ -376,7 +401,7 @@ export function registerDiscover(program) {
             const d = result.data;
             /** @type {import('../formatters/index.mjs').Block[]} */
             const blocks = [record(d, {omit: ['versions', 'install']})];
-            if (d.versions) {
+            if (d.versions && d.versions.length > 0) {
               const shown = d.version;
               const lines = versionLines(d.versions, {
                 shown,
@@ -385,12 +410,12 @@ export function registerDiscover(program) {
                   : undefined,
                 latest: d.latest,
               });
-              const prereleases = d.versions.filter(v => v.prerelease).length;
+              // The shown version is listed even when it is a prerelease.
+              const prereleases = d.versions.filter(
+                v => v.prerelease && v.version !== shown,
+              ).length;
               blocks.push(
-                section(
-                  'Versions',
-                  `${d.versions.length} published, newest first`,
-                ),
+                section('Versions', `${d.versions.length} known, newest first`),
               );
               if (lines.length > 0) blocks.push(list(lines));
               if (prereleases > 0) {
@@ -423,7 +448,7 @@ export function registerDiscover(program) {
             }
             blocks.push(
               text(
-                d.installed
+                d.installed && d.components.length > 0
                   ? `Usage: ${run} discover ${d.name}/<ComponentName>`
                   : `See one item: ${run} discover ${d.name}/<item>`,
               ),
