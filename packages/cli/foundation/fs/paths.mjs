@@ -3,16 +3,16 @@
 /**
  * @file Path resolution utilities for Astryx CLI
  *
- * Finds the project root and its workspace root, the project's
- * @astryxdesign/core and the other packages it installed, and the CLI package
- * root.
+ * Finds the Astryx project a folder belongs to and its workspace root, the
+ * project's @astryxdesign/core and the other packages it installed, and the
+ * CLI package root.
  */
 
 import * as fs from 'node:fs';
 import {createRequire} from 'node:module';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {satisfiesRange} from '../env/semver.mjs';
 import {listDir, pathExists} from './listing-cache.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,13 +24,27 @@ export const CLI_ROOT = path.resolve(__dirname, '..', '..');
 const CORE_PACKAGE = '@astryxdesign/core';
 
 /**
- * How many folders, counting the start, each lookup of the project's packages
- * always searches: the reach each one had before it learned the workspace
- * root, so nothing it found before goes missing. Past this reach a lookup
- * stops at the workspace root.
+ * How many folders, counting the start, the read lookups always search: the
+ * reach they had in released versions, so nothing they found before goes
+ * missing. Past this reach they continue only up to the workspace root of the
+ * Astryx project the start folder belongs to.
  */
 const CORE_REACH = 5;
 const INSTALLED_REACH = 6;
+
+/** Package scopes whose declaration makes a package.json an Astryx project. */
+const ASTRYX_SCOPES = ['@astryxdesign/', '@xds/'];
+
+/** package.json fields in which a package declares what it depends on. */
+const DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+];
+
+/** Folders that mark a repository root; the project search stops there. */
+const REPOSITORY_MARKERS = ['.git', '.hg', '.sl'];
 
 /**
  * `startDir` and every folder above it, nearest first, up to the filesystem
@@ -92,6 +106,69 @@ function isCoreSource(dir) {
 }
 
 /**
+ * `p` resolved through symlinks when it exists, so folders compare equal
+ * however they were reached.
+ *
+ * @param {string} p
+ * @returns {string}
+ */
+function realDir(p) {
+  try {
+    return fs.realpathSync(path.resolve(p));
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * The home folder, resolved through symlinks, or null when there is none.
+ *
+ * @returns {string|null}
+ */
+function homeFolder() {
+  try {
+    const home = os.homedir();
+    return home ? realDir(home) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `child` lies strictly inside `parent`.
+ *
+ * @param {string} child
+ * @param {string} parent
+ * @returns {boolean}
+ */
+function isInside(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * Whether the package.json in `dir` declares an Astryx package, in any
+ * dependency field.
+ *
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function declaresAstryx(dir) {
+  const pkg = readPackageJson(dir);
+  if (pkg == null) return false;
+  return DEPENDENCY_FIELDS.some(field => {
+    const deps = pkg[field];
+    return (
+      deps != null &&
+      typeof deps === 'object' &&
+      Object.keys(deps).some(name =>
+        ASTRYX_SCOPES.some(scope => name.startsWith(scope)),
+      )
+    );
+  });
+}
+
+/**
  * The project root: the directory of the nearest package.json at or above
  * `startDir`, or null when there is none.
  *
@@ -101,6 +178,35 @@ function isCoreSource(dir) {
 export function findPackageRoot(startDir) {
   for (const dir of foldersUpFrom(startDir)) {
     if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+  }
+  return null;
+}
+
+/**
+ * The Astryx project `startDir` belongs to: the nearest folder at or above it
+ * whose package.json declares an Astryx package (`@astryxdesign/*`, or the
+ * legacy `@xds/*`), or that a workspace whose root declares one lists as a
+ * member. The search stops at a repository root, and it never reaches the
+ * home folder from a folder inside it: the home folder is the project only
+ * when the search starts there and it declares Astryx. Returns null when no
+ * folder qualifies.
+ *
+ * @param {string} startDir
+ * @returns {string|null}
+ */
+export function findAstryxProject(startDir) {
+  const start = path.resolve(startDir);
+  const home = homeFolder();
+  for (const dir of foldersUpFrom(start)) {
+    if (home != null && realDir(dir) === home) {
+      return dir === start && declaresAstryx(dir) ? dir : null;
+    }
+    if (declaresAstryx(dir) || isAstryxWorkspaceMember(dir)) return dir;
+    if (
+      REPOSITORY_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))
+    ) {
+      return null;
+    }
   }
   return null;
 }
@@ -135,92 +241,200 @@ export function findWorkspaceRoot(startDir) {
 }
 
 /**
- * The folders that hold the project's own packages, nearest first: `startDir`
- * and each folder above it up to its workspace root, where a workspace keeps
- * the packages its members share, and never fewer than `reach` folders. Each
- * folder says whether it lies above the project root, where a package belongs
- * to the workspace rather than to the project itself.
+ * The highest folder a lookup for `project`'s packages searches: its
+ * workspace root, where a workspace keeps the packages its members share. For
+ * a project inside the home folder, never the home folder or above.
+ *
+ * @param {string} project
+ * @returns {string}
+ */
+function workspaceBound(project) {
+  const workspace = findWorkspaceRoot(project);
+  const home = homeFolder();
+  if (
+    home != null &&
+    isInside(realDir(project), home) &&
+    !isInside(realDir(workspace), home)
+  ) {
+    return project;
+  }
+  return workspace;
+}
+
+/**
+ * Escape `text` for use inside a regular expression.
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * A regular expression for a workspace pattern, tested against a member's
+ * path relative to the workspace root: `*` and `?` stay within one folder
+ * name, `**` spans any number of folders, and `{a,b}` is either name.
+ *
+ * @param {string} pattern
+ * @returns {RegExp}
+ */
+function workspacePatternRegExp(pattern) {
+  const glob = pattern
+    .trim()
+    .replace(/^(?:\.\/)+/, '')
+    .replace(/\/+$/, '');
+  let source = '';
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i];
+    if (char === '*' && glob[i + 1] === '*') {
+      // `**/` also matches no folder at all.
+      source += glob[i + 2] === '/' ? '(?:.*/)?' : '.*';
+      i += glob[i + 2] === '/' ? 2 : 1;
+    } else if (char === '*') {
+      source += '[^/]*';
+    } else if (char === '?') {
+      source += '[^/]';
+    } else if (char === '{' && glob.indexOf('}', i) !== -1) {
+      const end = glob.indexOf('}', i);
+      source += `(?:${glob
+        .slice(i + 1, end)
+        .split(',')
+        .map(escapeRegExp)
+        .join('|')})`;
+      i = end;
+    } else {
+      source += escapeRegExp(char);
+    }
+  }
+  return new RegExp(`^${source}$`);
+}
+
+/**
+ * The `packages` list in the pnpm-workspace.yaml in `dir`, as block or flow
+ * YAML; empty when there is none.
+ *
+ * @param {string} dir
+ * @returns {string[]}
+ */
+function pnpmWorkspacePatterns(dir) {
+  let text;
+  try {
+    text = fs.readFileSync(path.join(dir, 'pnpm-workspace.yaml'), 'utf-8');
+  } catch {
+    return [];
+  }
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex(line => /^packages\s*:/.test(line));
+  if (start === -1) return [];
+  /** @param {string} item */
+  const unquote = item => item.trim().replace(/^(['"])(.*)\1$/, '$2');
+  const inline = lines[start]
+    .replace(/^packages\s*:/, '')
+    .replace(/\s#.*$/, '')
+    .trim();
+  if (inline.startsWith('[')) {
+    return inline
+      .replace(/^\[|\]$/g, '')
+      .split(',')
+      .map(unquote)
+      .filter(Boolean);
+  }
+  /** @type {string[]} */
+  const patterns = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.trim() === '' || line.trim().startsWith('#')) continue;
+    const item = /^\s*-\s*(.+?)\s*(?:\s#.*)?$/.exec(line);
+    if (!item) break;
+    patterns.push(unquote(item[1]));
+  }
+  return patterns;
+}
+
+/**
+ * Whether the workspace rooted at `root` lists `dir` as a member: a pattern
+ * in its package.json `workspaces` (an array, or `{packages: [...]}`) or its
+ * pnpm-workspace.yaml `packages` matches `dir`, and no `!` pattern excludes
+ * it.
+ *
+ * @param {string} dir
+ * @param {string} root
+ * @returns {boolean}
+ */
+function isWorkspaceMember(dir, root) {
+  const rel = path.relative(root, dir).split(path.sep).join('/');
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  const workspaces = readPackageJson(root)?.workspaces;
+  const patterns = [
+    ...(Array.isArray(workspaces) ? workspaces : (workspaces?.packages ?? [])),
+    ...pnpmWorkspacePatterns(root),
+  ].filter(pattern => typeof pattern === 'string');
+  const matches = (/** @type {string} */ pattern) =>
+    workspacePatternRegExp(pattern).test(rel);
+  return (
+    patterns.some(pattern => !pattern.startsWith('!') && matches(pattern)) &&
+    !patterns.some(
+      pattern => pattern.startsWith('!') && matches(pattern.slice(1)),
+    )
+  );
+}
+
+/**
+ * Whether `dir` is a member its workspace lists, where the workspace root
+ * declares an Astryx package. Such a member uses the Astryx its workspace
+ * installs, so it is an Astryx project of its own.
+ *
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function isAstryxWorkspaceMember(dir) {
+  if (!fs.existsSync(path.join(dir, 'package.json'))) return false;
+  const root = workspaceBound(dir);
+  return root !== dir && declaresAstryx(root) && isWorkspaceMember(dir, root);
+}
+
+/**
+ * The folders a read lookup searches, nearest first: `startDir` and the
+ * `reach - 1` folders above it, as released versions did, then on up to the
+ * workspace root of the Astryx project `startDir` belongs to, if any.
  *
  * @param {string} startDir
  * @param {number} reach
- * @returns {Generator<{dir: string, aboveProject: boolean}>}
+ * @returns {Generator<string>}
  */
-function* projectFolders(startDir, reach) {
-  const projectRoot = findPackageRoot(startDir);
-  const workspaceRoot = findWorkspaceRoot(startDir);
+function* readFolders(startDir, reach) {
+  const project = findAstryxProject(startDir);
+  const bound = project == null ? null : workspaceBound(project);
   let searched = 0;
-  let aboveProject = false;
-  let pastWorkspace = false;
+  let pastBound = bound == null;
   for (const dir of foldersUpFrom(startDir)) {
-    if (pastWorkspace && searched >= reach) return;
-    yield {dir, aboveProject};
+    if (pastBound && searched >= reach) return;
+    yield dir;
     searched++;
-    if (dir === projectRoot) aboveProject = true;
-    if (dir === workspaceRoot) pastWorkspace = true;
+    if (dir === bound) pastBound = true;
   }
-}
-
-/** package.json fields in which a project declares the version it needs. */
-const DECLARING_FIELDS = [
-  'dependencies',
-  'devDependencies',
-  'optionalDependencies',
-  'peerDependencies',
-];
-
-/**
- * Whether a package found above the project root is the one the project
- * declares: its version satisfies every range the nearest package.json
- * declares for `name`. A project that declares no range for it accepts it, and
- * so does a declaration that is not a version range, such as `workspace:*`.
- * A project that declares a version its workspace does not hold has not
- * installed that version, so the workspace's copy is not its package.
- *
- * @param {string} startDir
- * @param {string} name
- * @param {string} packageDir
- * @returns {boolean}
- */
-function isDeclaredVersion(startDir, name, packageDir) {
-  const projectRoot = findPackageRoot(startDir);
-  const declared = projectRoot ? readPackageJson(projectRoot) : null;
-  const version = readPackageJson(packageDir)?.version;
-  if (declared == null || typeof version !== 'string') return true;
-  return DECLARING_FIELDS.every(field => {
-    const ranges = declared[field];
-    const range =
-      ranges && typeof ranges === 'object' ? ranges[name] : undefined;
-    return typeof range !== 'string' || satisfiesRange(version, range);
-  });
 }
 
 /**
  * Find the project's @astryxdesign/core.
  *
- * Searches the folders that hold the project's packages, nearest first:
- * `startDir` up to its workspace root, and never fewer than five folders. In
- * each folder a `packages/core` whose package.json names @astryxdesign/core
- * (the Astryx repository's own source) comes first, then an installed
- * `node_modules/@astryxdesign/core`. A Core found above the project root
- * counts only when the project declares that version. When no folder holds
- * one, it asks Yarn Plug'n'Play, which keeps no node_modules.
+ * Searches `startDir` and the four folders above it, as released versions
+ * did, then on up to the workspace root of the Astryx project it belongs to.
+ * In each folder a `packages/core` whose package.json names
+ * @astryxdesign/core (the Astryx repository's own source) comes first, then
+ * an installed `node_modules/@astryxdesign/core`. It takes the first it finds,
+ * whatever version the project declares: that is the copy Node loads. When no
+ * folder holds one, it asks Yarn Plug'n'Play, which keeps no node_modules.
  *
  * @param {string} [startDir]
  * @returns {string|null} the Core package directory, or null when there is none
  */
 export function findCoreDir(startDir = process.cwd()) {
-  for (const {dir, aboveProject} of projectFolders(startDir, CORE_REACH)) {
+  for (const dir of readFolders(startDir, CORE_REACH)) {
     const source = path.join(dir, 'packages', 'core');
-    const found = isCoreSource(source)
-      ? source
-      : installedIn(dir, CORE_PACKAGE);
-    if (found == null) continue;
-    if (aboveProject && !isDeclaredVersion(startDir, CORE_PACKAGE, found)) {
-      break;
-    }
-    return found;
+    if (isCoreSource(source)) return source;
+    const installed = installedIn(dir, CORE_PACKAGE);
+    if (installed) return installed;
   }
-
   return findPnpPackage(startDir, CORE_PACKAGE);
 }
 
@@ -278,16 +492,17 @@ export function findNodeModulesPackage(startDir, name) {
  * Reading package.json off disk also sidesteps packages that don't export it,
  * so the version is always available to range-check.
  *
- * Searches the node_modules of `startDir` and the folders above it up to its
- * workspace root, and never fewer than six folders, then asks PnP, which
- * covers the Yarn default layout where that chain does not exist.
+ * Searches the node_modules of `startDir` and the five folders above it, as
+ * released versions did, then on up to the workspace root of the Astryx
+ * project it belongs to. Then it asks PnP, which covers the Yarn default
+ * layout where that chain does not exist.
  *
  * @param {string} startDir
  * @param {string} name
  * @returns {string|null} the package directory, or null when not installed
  */
 export function findInstalledPackage(startDir, name) {
-  for (const {dir} of projectFolders(startDir, INSTALLED_REACH)) {
+  for (const dir of readFolders(startDir, INSTALLED_REACH)) {
     const packageDir = installedIn(dir, name);
     if (packageDir) return packageDir;
   }
@@ -295,29 +510,44 @@ export function findInstalledPackage(startDir, name) {
 }
 
 /**
- * The first of `names` the project at `startDir` installed. It searches the
- * node_modules of `startDir` and each folder above it up to its workspace
- * root, nearest first; an earlier name wins within one folder. A package found
- * above the project root counts only when the project declares that version,
- * and otherwise the search stops. Then it asks Plug'n'Play, in name order.
+ * The first of `names` the Astryx project of `startDir` installed, for a
+ * command that writes to the project (`upgrade`).
+ *
+ * It searches the node_modules of the project root, nearest name first. For
+ * a member its workspace lists, it then searches each folder above the
+ * project up to the workspace root, where the workspace installs the packages
+ * its members share; otherwise the search stops at the project root. Then it
+ * asks Plug'n'Play, in name order. With no Astryx project it looks only in the
+ * node_modules of `startDir` itself, as released versions did.
  *
  * @param {string} startDir
  * @param {readonly string[]} names in order of preference
  * @returns {{name: string, packageDir: string}|null}
  */
 export function findProjectPackageOf(startDir, names) {
-  search: for (const {dir, aboveProject} of projectFolders(startDir, 1)) {
+  const project = findAstryxProject(startDir);
+  if (project == null) {
+    const dir = path.resolve(startDir);
     for (const name of names) {
       const packageDir = installedIn(dir, name);
-      if (packageDir == null) continue;
-      if (aboveProject && !isDeclaredVersion(startDir, name, packageDir)) {
-        break search;
-      }
-      return {name, packageDir};
+      if (packageDir) return {name, packageDir};
     }
+    return null;
+  }
+  const workspace = workspaceBound(project);
+  const top =
+    workspace !== project && isWorkspaceMember(project, workspace)
+      ? workspace
+      : project;
+  for (const dir of foldersUpFrom(project)) {
+    for (const name of names) {
+      const packageDir = installedIn(dir, name);
+      if (packageDir) return {name, packageDir};
+    }
+    if (dir === top) break;
   }
   for (const name of names) {
-    const packageDir = findPnpPackage(startDir, name);
+    const packageDir = findPnpPackage(project, name);
     if (packageDir) return {name, packageDir};
   }
   return null;

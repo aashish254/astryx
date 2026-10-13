@@ -68,7 +68,7 @@ export const doc = {
       flag: '--path <dir>',
       param: 'options.path',
       description:
-        "Source directory to scan, relative to where you run the command. The default is the project's src folder, from any folder in the project",
+        "Source directory to scan, relative to where you run the command, however you spell it. Without --path, the project's src folder, from any folder in the project",
       default: './src',
     },
     {

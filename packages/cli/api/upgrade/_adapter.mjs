@@ -36,7 +36,7 @@ import {
 } from '../../foundation/agent-docs/agent-docs.mjs';
 import {formatCliCommand} from '../../foundation/env/package-manager.mjs';
 import {
-  findPackageRoot,
+  findAstryxProject,
   findProjectPackageOf,
 } from '../../foundation/fs/paths.mjs';
 import {Project, providerLedgerOf} from '../../foundation/config/project.mjs';
@@ -77,16 +77,18 @@ const execFileAsync = promisify(execFile);
  * @property {boolean} [registry]
  */
 
-/** The `path` an upgrade scans when the caller names none. */
-const DEFAULT_SOURCE_PATH = './src';
-
 /**
- * Where an upgrade runs: the project root, the nearest folder at or above
- * `cwd` with a package.json, so a run from any folder inside a project
- * upgrades that project exactly as a run from its root does. Its source,
- * config, agent docs and protection declarations all live there. A `path` the
- * caller names stays relative to `cwd`, where they typed it, and the default
- * `./src` is the project's own. With no package.json, `cwd` itself.
+ * Where an upgrade runs: the root of the Astryx project `cwd` belongs to, the
+ * nearest folder at or above it whose package.json declares an Astryx
+ * package or that an Astryx workspace lists as a member, so a run from any
+ * folder inside a project upgrades that project exactly as a run from its
+ * root does. Its source, config, agent docs and
+ * protection declarations all live there. The search stops at a repository
+ * root and never reaches the home folder from inside it (see
+ * `findAstryxProject`). A `path` the caller names, in any spelling (`./src`,
+ * `src`, `src/`), is read from `cwd`, where they typed it. With no `path`,
+ * the upgrade scans `./src` at the project root. With no Astryx project, the
+ * upgrade runs in `cwd` as released versions did.
  * @param {UpgradeOptions} options
  * @param {string} cwd
  * @returns {{options: UpgradeOptions, cwd: string, origin?: string}} `origin`
@@ -94,22 +96,21 @@ const DEFAULT_SOURCE_PATH = './src';
  */
 export function scopeToProject(options, cwd) {
   const here = path.resolve(cwd);
-  const root = findPackageRoot(here) ?? here;
+  const root = findAstryxProject(here) ?? here;
   if (root === here) return {options, cwd};
   const namedPath =
-    options.path != null && options.path !== DEFAULT_SOURCE_PATH
-      ? {path: path.resolve(here, options.path)}
-      : {};
+    options.path == null ? {} : {path: path.resolve(here, options.path)};
   return {options: {...options, ...namedPath}, cwd: root, origin: here};
 }
 
 /**
- * Detect the installed target version: the Core the project at `cwd`
- * installed, in its own node_modules or, for a workspace member, in a folder
- * up to its workspace root. The nearest folder wins, the current name before
- * the legacy one, then Yarn Plug'n'Play. A Core a workspace holds counts only
- * when it is the version the project declares, so a project that declares a
- * version it has not installed reports nothing installed.
+ * Detect the installed target version: the Core the Astryx project of `cwd`
+ * installed, in its own node_modules or, for a member its workspace lists, in
+ * a folder up to the workspace root. The nearest folder wins, the current
+ * name before the legacy one, then Yarn Plug'n'Play. A Core above a project
+ * no workspace lists does not count, so a nested project that has not
+ * installed its own reports nothing installed. With no Astryx project, only
+ * the node_modules of `cwd` itself is read, as released versions did.
  * @param {string} cwd
  * @returns {{version: string, packageName: string}|null}
  */

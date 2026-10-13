@@ -4,7 +4,7 @@ import {describe, it, expect, beforeEach, afterEach} from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import {findCoreDir, findProjectRoot, listComponents, discoverExternalPackages, existsCaseExact, findInstalledPackage, findNodeModulesPackage, findPackageRoot, findProjectPackageOf, findWorkspaceRoot} from './paths.mjs';
+import {findAstryxProject, findCoreDir, findProjectRoot, listComponents, discoverExternalPackages, existsCaseExact, findInstalledPackage, findNodeModulesPackage, findPackageRoot, findProjectPackageOf, findWorkspaceRoot} from './paths.mjs';
 
 let tmpDir;
 
@@ -40,6 +40,26 @@ function writeProject(dir, fields = {}) {
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: path.basename(dir), ...fields}));
   return dir;
 }
+
+/**
+ * Run `fn` with `home` as the home folder.
+ * @template T
+ * @param {string} home @param {() => T} fn
+ * @returns {T}
+ */
+function withHome(home, fn) {
+  const previous = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    return fn();
+  } finally {
+    if (previous === undefined) delete process.env.HOME;
+    else process.env.HOME = previous;
+  }
+}
+
+/** Declares Core, which makes a package.json an Astryx project. */
+const DECLARES_CORE = {dependencies: {'@astryxdesign/core': '^0.7.0'}};
 
 /** @param {string} root @param {string} name @param {string} version */
 function install(root, name, version) {
@@ -122,11 +142,24 @@ describe('findCoreDir', () => {
     expect(findCoreDir(route)).toBe(nmCore);
   });
 
-  it('does not search past the root of a project outside any workspace', () => {
+  it('searches only the folder and the four above it outside any Astryx project', () => {
     install(tmpDir, '@astryxdesign/core', '0.7.0');
     const project = writeProject(path.join(tmpDir, 'a', 'b', 'c', 'd', 'e', 'app'));
 
     expect(findCoreDir(project)).toBeNull();
+  });
+
+  // A package.json that only sets the module type is not the project, so a
+  // folder deep below it still reaches the Core the project installs.
+  it('looks past a nested package.json that declares no Astryx package', () => {
+    writeProject(tmpDir, DECLARES_CORE);
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    fs.mkdirSync(path.join(tmpDir, 'src'), {recursive: true});
+    fs.writeFileSync(path.join(tmpDir, 'src', 'package.json'), JSON.stringify({type: 'module'}));
+    const deep = path.join(tmpDir, 'src', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6');
+    fs.mkdirSync(deep, {recursive: true});
+
+    expect(findCoreDir(deep)).toBe(nmCore);
   });
 
   // Released CLIs searched the folder and the four above it, whatever package.json
@@ -141,20 +174,18 @@ describe('findCoreDir', () => {
     expect(findCoreDir(src)).toBe(nmCore);
   });
 
-  it('does not take a Core from above a project that declares another version', () => {
-    writeProject(tmpDir, {dependencies: {'@astryxdesign/core': '0.8.0'}});
-    install(tmpDir, '@astryxdesign/core', '0.8.0');
-    const nested = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '0.9.0'}});
+  // Node loads the hoisted copy whatever the member declares: an override or
+  // resolution can force it, and a peer range can be stale. Reads answer from
+  // the copy that loads.
+  it.each([
+    ['a range the copy is outside of', {devDependencies: {'@astryxdesign/core': '~0.6.8'}}],
+    ['only a stale peer range', {peerDependencies: {'@astryxdesign/core': '^0.6.8'}}],
+  ])('takes a workspace Core when the member declares %s', (_label, fields) => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*'], overrides: {'@astryxdesign/core': '0.7.1'}});
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), fields);
 
-    expect(findCoreDir(nested)).toBeNull();
-  });
-
-  it('does not take a workspace Core that a member declares another version of', () => {
-    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
-    install(tmpDir, '@astryxdesign/core', '0.7.1');
-    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {devDependencies: {'@astryxdesign/core': '0.6.8'}});
-
-    expect(findCoreDir(member)).toBeNull();
+    expect(findCoreDir(member)).toBe(nmCore);
   });
 
   it('takes a workspace Core that a member declares with a workspace protocol', () => {
@@ -200,7 +231,7 @@ describe('findInstalledPackage', () => {
   });
 
   it('finds a package from any depth inside the project', () => {
-    writeProject(tmpDir);
+    writeProject(tmpDir, DECLARES_CORE);
     const installed = install(tmpDir, '@astryxdesign/core', '0.7.0');
     const deep = path.join(tmpDir, 'apps', 'web', 'src', 'app', '(shop)', 'orders', '[id]');
     fs.mkdirSync(deep, {recursive: true});
@@ -263,7 +294,7 @@ describe('findProjectPackageOf', () => {
   const NAMES = ['@astryxdesign/core', '@xds/core'];
 
   it('takes the earlier name when one folder installs both', () => {
-    writeProject(tmpDir);
+    writeProject(tmpDir, DECLARES_CORE);
     const current = install(tmpDir, '@astryxdesign/core', '0.7.0');
     install(tmpDir, '@xds/core', '0.3.0');
 
@@ -271,12 +302,12 @@ describe('findProjectPackageOf', () => {
   });
 
   it('takes the nearest folder over an earlier name further up', () => {
-    writeProject(tmpDir);
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
     install(tmpDir, '@astryxdesign/core', '0.7.0');
-    const app = path.join(tmpDir, 'apps', 'legacy');
-    const legacy = install(app, '@xds/core', '0.3.0');
+    const member = writeProject(path.join(tmpDir, 'apps', 'legacy'), {dependencies: {'@xds/core': '0.3.0'}});
+    const legacy = install(member, '@xds/core', '0.3.0');
 
-    expect(findProjectPackageOf(app, NAMES)).toEqual({name: '@xds/core', packageDir: legacy});
+    expect(findProjectPackageOf(member, NAMES)).toEqual({name: '@xds/core', packageDir: legacy});
   });
 
   it('returns null when none is installed', () => {
@@ -284,7 +315,7 @@ describe('findProjectPackageOf', () => {
   });
 
   it('finds the package from a subfolder of the project', () => {
-    writeProject(tmpDir);
+    writeProject(tmpDir, DECLARES_CORE);
     const current = install(tmpDir, '@astryxdesign/core', '0.7.0');
     const deep = path.join(tmpDir, 'src', 'l1', 'l2');
     fs.mkdirSync(deep, {recursive: true});
@@ -295,26 +326,149 @@ describe('findProjectPackageOf', () => {
   it('finds a package the workspace hoists to its root', () => {
     writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
     const hoisted = install(tmpDir, '@astryxdesign/core', '0.7.0');
-    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '^0.7.0'}});
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), DECLARES_CORE);
 
     expect(findProjectPackageOf(member, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: hoisted});
   });
 
-  // A Core in a parent folder, such as a home folder, is not this project's.
-  it('does not take a package from a folder above a project outside any workspace', () => {
+  // A member uses what its workspace installs, whatever its own package.json
+  // says: an override or resolution can force the copy, and a range or peer
+  // range can be stale. Membership decides, not the declared version.
+  it.each([
+    ['0.6.8', 'dependencies'],
+    ['~0.6.8', 'dependencies'],
+    ['0.7.0 - 0.8.0', 'dependencies'],
+    ['>= 0.7.0', 'dependencies'],
+    ['^0.6.0 || ^0.7.0', 'dependencies'],
+    ['npm:@astryxdesign/core@^0.7.0', 'dependencies'],
+    ['workspace:*', 'dependencies'],
+    ['latest', 'dependencies'],
+    ['^0.6.8', 'peerDependencies'],
+  ])('takes the hoisted package for a member that declares %s in %s', (range, field) => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+    const hoisted = install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {[field]: {'@astryxdesign/core': range}});
+
+    expect(findProjectPackageOf(member, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: hoisted});
+  });
+
+  it.each([
+    ['Yarn object-form workspaces', {workspaces: {packages: ['apps/*']}}, null],
+    ['a ** pattern', {workspaces: ['apps/**']}, null],
+    ['a brace pattern', {workspaces: ['{apps,tools}/*']}, null],
+    ['a pnpm-workspace.yaml block list', {}, "packages:\n  - 'apps/*'  # apps\n  - \"tools/*\"\nonlyBuiltDependencies: []\n"],
+    ['a pnpm-workspace.yaml flow list', {}, "packages: ['tools/*', apps/*]\n"],
+  ])('takes the hoisted package for a member that %s lists', (_label, rootFields, yaml) => {
+    writeProject(tmpDir, {private: true, ...rootFields});
+    if (yaml) fs.writeFileSync(path.join(tmpDir, 'pnpm-workspace.yaml'), yaml);
+    const hoisted = install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), DECLARES_CORE);
+
+    expect(findProjectPackageOf(member, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: hoisted});
+  });
+
+  it.each([
+    ['lists other folders', {workspaces: ['packages/*']}],
+    ['excludes it with a ! pattern', {workspaces: ['apps/*', '!apps/web']}],
+  ])('stops at the project root when the workspace %s', (_label, rootFields) => {
+    writeProject(tmpDir, {private: true, ...rootFields});
+    install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const project = writeProject(path.join(tmpDir, 'apps', 'web'), DECLARES_CORE);
+
+    expect(findProjectPackageOf(project, NAMES)).toBeNull();
+  });
+
+  // A project nested in another, outside any workspace, has its own install.
+  it('stops at the root of a nested project outside any workspace', () => {
+    writeProject(tmpDir, {dependencies: {'@astryxdesign/core': '0.8.0'}});
+    install(tmpDir, '@astryxdesign/core', '0.8.0');
+    const nested = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '0.9.0'}});
+
+    expect(findProjectPackageOf(nested, NAMES)).toBeNull();
+  });
+
+  // With no Astryx project, released versions read only this folder's own
+  // node_modules.
+  it('reads only the folder itself when no Astryx project contains it', () => {
     writeProject(tmpDir);
     install(tmpDir, '@astryxdesign/core', '0.7.1');
     const plain = writeProject(path.join(tmpDir, 'plain'));
 
     expect(findProjectPackageOf(plain, NAMES)).toBeNull();
+    const own = install(plain, '@astryxdesign/core', '0.7.1');
+    expect(findProjectPackageOf(plain, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: own});
   });
 
-  it('does not take a hoisted package that the project declares another version of', () => {
-    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+  it('never takes a package from the home folder for a folder inside it', () => {
+    writeProject(tmpDir, DECLARES_CORE);
     install(tmpDir, '@astryxdesign/core', '0.7.1');
-    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '0.6.8'}});
+    const desktop = path.join(tmpDir, 'Desktop');
+    fs.mkdirSync(desktop, {recursive: true});
+    const plain = writeProject(path.join(tmpDir, 'plain'));
 
-    expect(findProjectPackageOf(member, NAMES)).toBeNull();
+    withHome(tmpDir, () => {
+      expect(findProjectPackageOf(desktop, NAMES)).toBeNull();
+      expect(findProjectPackageOf(plain, NAMES)).toBeNull();
+    });
+  });
+});
+
+describe('findAstryxProject', () => {
+  it('is the nearest folder whose package.json declares an Astryx package', () => {
+    writeProject(tmpDir, DECLARES_CORE);
+    const tool = writeProject(path.join(tmpDir, 'tools', 'lint'));
+    const deep = path.join(tool, 'src');
+    fs.mkdirSync(deep, {recursive: true});
+
+    expect(findAstryxProject(deep)).toBe(tmpDir);
+    const app = writeProject(path.join(tmpDir, 'apps', 'web'), {devDependencies: {'@astryxdesign/cli': '0.7.1'}});
+    expect(findAstryxProject(app)).toBe(app);
+  });
+
+  it('counts a peer declaration and the legacy scope', () => {
+    const integration = writeProject(path.join(tmpDir, 'integration'), {peerDependencies: {'@astryxdesign/core': '^0.7.0'}});
+    const legacy = writeProject(path.join(tmpDir, 'legacy'), {dependencies: {'@xds/core': '0.3.0'}});
+
+    expect(findAstryxProject(integration)).toBe(integration);
+    expect(findAstryxProject(legacy)).toBe(legacy);
+  });
+
+  it('stops at a repository root', () => {
+    writeProject(tmpDir, DECLARES_CORE);
+    const repo = writeProject(path.join(tmpDir, 'repo'));
+    fs.mkdirSync(path.join(repo, '.git'));
+    const tools = path.join(repo, 'tools');
+    fs.mkdirSync(tools, {recursive: true});
+
+    expect(findAstryxProject(tools)).toBeNull();
+  });
+
+  it('counts the home folder only when the search starts there', () => {
+    writeProject(tmpDir, DECLARES_CORE);
+    const desktop = path.join(tmpDir, 'Desktop');
+    fs.mkdirSync(desktop, {recursive: true});
+
+    withHome(tmpDir, () => {
+      expect(findAstryxProject(desktop)).toBeNull();
+      expect(findAstryxProject(tmpDir)).toBe(tmpDir);
+    });
+  });
+
+  it('returns null when no folder declares Astryx', () => {
+    writeProject(tmpDir);
+
+    expect(findAstryxProject(tmpDir)).toBeNull();
+  });
+
+  it('counts a member its workspace lists when the workspace root declares Astryx', () => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*'], ...DECLARES_CORE});
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'));
+    const tests = writeProject(path.join(member, 'e2e'));
+
+    expect(findAstryxProject(path.join(member, 'src'))).toBe(member);
+    expect(findAstryxProject(tests)).toBe(member);
+    const other = writeProject(path.join(tmpDir, 'tools', 'lint'));
+    expect(findAstryxProject(other)).toBe(tmpDir);
   });
 });
 
