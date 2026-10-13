@@ -660,11 +660,10 @@ async function validateIncompleteThemeExports(
   const expectedCss = path.join(expectedDir, `${localTheme.slug}.css`);
   try {
     if (outputs.some(output => output.kind !== 'font stylesheet')) {
-      const receipt = await themeBuild(
-        source,
-        {out: expectedCss},
-        {cwd: packageDir},
-      );
+      // The scratch directory is the write root; the package stays the cwd,
+      // so the build selects the package's Core and its paths as before.
+      const scratchBuild = {out: expectedCss, __writeRoot: expectedDir};
+      const receipt = await themeBuild(source, scratchBuild, {cwd: packageDir});
       if (receipt == null || receipt.type !== 'theme.build') {
         throw new Error('the theme build produced no complete receipt');
       }
@@ -847,11 +846,12 @@ async function validatePackedThemeExports(
     );
     const expectedCss = path.join(expectedDir, `${localTheme.slug}.css`);
     try {
-      const receipt = await themeBuild(
-        source,
-        {out: expectedCss},
-        {cwd: localIntegration.__packageDir},
-      );
+      // The scratch directory is the write root; the package stays the cwd,
+      // so the build selects the package's Core and its paths as before.
+      const scratchBuild = {out: expectedCss, __writeRoot: expectedDir};
+      const receipt = await themeBuild(source, scratchBuild, {
+        cwd: localIntegration.__packageDir,
+      });
       if (receipt == null || receipt.type !== 'theme.build') {
         issues.push(
           error(
