@@ -15,8 +15,6 @@ type SupportingContent = 'frameworks' | 'install-and-source';
 
 type HomePageVariantConfig = {
   primaryHref: string;
-  primaryTarget?: string;
-  primaryRel?: string;
   supportingContent: SupportingContent;
 };
 
@@ -37,8 +35,6 @@ export const HOME_PAGE_VARIANTS: Record<
   },
   e2: {
     primaryHref: GITHUB_REPO,
-    primaryTarget: '_blank',
-    primaryRel: 'noopener noreferrer',
     supportingContent: 'frameworks',
   },
 };

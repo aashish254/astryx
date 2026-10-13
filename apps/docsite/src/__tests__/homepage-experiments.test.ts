@@ -44,8 +44,6 @@ describe('homepage experiments', () => {
   it('changes only the primary destination on /e2', () => {
     expect(HOME_PAGE_VARIANTS.e2).toEqual({
       primaryHref: GITHUB_REPO,
-      primaryTarget: '_blank',
-      primaryRel: 'noopener noreferrer',
       supportingContent: HOME_PAGE_VARIANTS.control.supportingContent,
     });
   });

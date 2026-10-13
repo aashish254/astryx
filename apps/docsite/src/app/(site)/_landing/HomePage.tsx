@@ -234,8 +234,6 @@ function HeroContent({
               size="lg"
               label="Get started"
               href={config.primaryHref}
-              target={config.primaryTarget}
-              rel={config.primaryRel}
             />
             <Button
               variant="secondary"
