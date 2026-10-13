@@ -69,7 +69,7 @@ export default {
         },
         {
           type: 'prose',
-          text: 'Note: `isFamilyDefault` needs `@astryxdesign/cli` 0.6.8 or later. A stable CLI before 0.6.8 rejects the field and drops that template, and one before 0.6.4 also hides your doc topics. Declare the CLI floor as an optional peer ({@link generic:versioning}); `integration verify` fails until you do.',
+          text: 'Note: `isFamilyDefault` needs `@astryxdesign/cli` 0.7.1 or later. A stable CLI before 0.7.1 rejects the field and drops that template, and one before 0.6.4 also hides your doc topics. Declare the CLI floor as an optional peer ({@link generic:versioning}); `integration verify` fails until you do.',
         },
       ],
     },

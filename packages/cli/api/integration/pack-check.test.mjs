@@ -1102,9 +1102,9 @@ describe('integrationPackCheck', () => {
 
     peer(undefined);
     expect(await codes()).toContain('family_default_needs_cli');
-    peer('>=0.6.7');
+    peer('>=0.7.0');
     expect(await codes()).toContain('family_default_needs_cli');
-    peer('>=0.6.8');
+    peer('>=0.7.1');
     expect(await codes()).not.toContain('family_default_needs_cli');
   }, 120_000);
 

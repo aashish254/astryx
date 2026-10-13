@@ -142,7 +142,7 @@ describe('keywordsCliProblem', () => {
 });
 
 describe('familyDefaultCliProblem', () => {
-  // Published 0.6.4 through 0.6.7 reject a page's `isFamilyDefault` and drop
+  // Published 0.6.4 through 0.7.0 reject a page's `isFamilyDefault` and drop
   // the template; 0.6.3 and earlier also hide the package's doc topics. The
   // floor is tied to the next patch slot.
   it('asks a package that sets isFamilyDefault for a CLI from the floor', () => {
@@ -159,7 +159,7 @@ describe('familyDefaultCliProblem', () => {
         }),
       ).toBeNull();
     }
-    for (const range of ['>=0.6.7', '>=0.6.6', '^0.6.4', '^0.6.0']) {
+    for (const range of ['>=0.7.0', '>=0.6.8', '^0.6.4', '^0.6.0']) {
       expect(
         familyDefaultCliProblem({
           peerDependencies: {'@astryxdesign/cli': range},
@@ -405,7 +405,7 @@ describe('every feature check names its CLI floor', () => {
       componentReplacesCliProblem: '0.6.7',
       // Tied to the next patch slot: the first stable release that reads a
       // page's `isFamilyDefault`.
-      familyDefaultCliProblem: '0.6.8',
+      familyDefaultCliProblem: '0.7.1',
       // Measured on published releases: 0.6.4 applies a template's
       // `replaces`, and 0.6.6 reads its `keywords`.
       replacesCliProblem: '0.6.4',

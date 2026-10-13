@@ -107,7 +107,7 @@ export interface PageTemplateDoc extends BaseTemplateDoc {
    *  for `"Dashboard - Analytics"`), so the field requires `category`. Set it
    *  on at most one page per family. An integration's default replaces the
    *  one Astryx ships; when two integrations declare one family, it has no
-   *  default. Integration templates need `@astryxdesign/cli` 0.6.8 or later:
+   *  default. Integration templates need `@astryxdesign/cli` 0.7.1 or later:
    *  earlier CLIs reject the field and drop that template, and CLIs before
    *  0.6.4 also hide the package's doc topics. */
   isFamilyDefault?: boolean;

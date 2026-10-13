@@ -58,7 +58,7 @@ export const COMPONENT_REPLACES_CLI = '0.6.7';
 
 /**
  * The first stable CLI release that reads a page template's
- * `isFamilyDefault` (spec:AST-048). Published 0.6.4 through 0.6.7 reject the
+ * `isFamilyDefault` (spec:AST-048). Published 0.6.4 through 0.7.0 reject the
  * field and drop that template but keep the package's doc topics; 0.6.3 and
  * earlier also hide them.
  *
@@ -66,7 +66,7 @@ export const COMPONENT_REPLACES_CLI = '0.6.7';
  * reads the field. If that slot moves, change this constant and its row in
  * the floor table test together.
  */
-export const FAMILY_DEFAULT_CLI = '0.6.8';
+export const FAMILY_DEFAULT_CLI = '0.7.1';
 
 /**
  * The first stable CLI release that reads typed theme descriptors, the theme
@@ -278,7 +278,7 @@ export function keywordsCliProblem(pkg) {
 /**
  * Why a package with a page template that sets `isFamilyDefault` would lose
  * that template on an older CLI, or null when its declared CLI range admits
- * only CLIs that read the field. Published 0.6.4 through 0.6.7 reject the
+ * only CLIs that read the field. Published 0.6.4 through 0.7.0 reject the
  * field and drop that template; 0.6.3 and earlier also hide the package's doc
  * topics.
  * @param {any} pkg package.json
