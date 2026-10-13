@@ -59,6 +59,7 @@ import {
 } from '../hooks/scrollbarGutter';
 import {mergeProps, composeEventHandlers} from '../utils';
 import {layerTextReset} from '../Layer/layerTextReset.stylex';
+import {layerStructureReset} from '../Layer/layerStructureReset.stylex';
 import {LayerContentBoundary} from '../Layer/layerScopedContext';
 import {overlayPaddingReset} from '../Layout/padding.stylex';
 import {LayerDepthProvider} from '../Layer/LayerDepthContext';
@@ -78,7 +79,8 @@ const styles = stylex.create({
     position: 'fixed',
     margin: 0,
     padding: 0,
-    border: 'none',
+    borderWidth: 0,
+    borderStyle: 'none',
     maxWidth: 'none',
     maxHeight: 'none',
     // Full viewport overlay — the dialog itself is the full-screen container
@@ -97,8 +99,10 @@ const styles = stylex.create({
     // depended on it being a scroll container.
     overflow: 'clip',
     overscrollBehavior: 'contain',
-    // Prevent touch gestures (pull-to-refresh, background scroll) passing through
-    touchAction: 'none',
+    // Stop pans passing through (pull-to-refresh, background scroll), but
+    // leave pinch to the browser: the open nav covers the whole viewport, and
+    // pinch-zoom is how phone readers resize text (WCAG 1.4.4).
+    touchAction: 'pinch-zoom',
     outline: 'none',
     // Native <dialog> uses display:none when closed.
     // Open state applied via isOpen prop to avoid :where([open]) specificity issues.
@@ -229,9 +233,9 @@ const styles = stylex.create({
     overflowY: 'auto',
     overflowX: 'hidden',
     overscrollBehavior: 'contain',
-    // Re-enable vertical touch scrolling inside the drawer content
-    // (dialog root has touch-action: none to block pull-to-refresh)
-    touchAction: 'pan-y',
+    // Re-enable vertical touch scrolling inside the drawer content (the
+    // dialog root allows only pinch-zoom, to block pull-to-refresh)
+    touchAction: 'pan-y pinch-zoom',
     paddingInline: spacingVars['--spacing-2'],
     paddingBlock: spacingVars['--spacing-2'],
   },
@@ -592,6 +596,7 @@ export function MobileNav({
         themeProps('mobile-nav', {side: resolvedSide}),
         stylex.props(
           layerTextReset.reset,
+          layerStructureReset.reset,
           styles.dialog,
           overlayPaddingReset.reset,
           isOpen && styles.open,

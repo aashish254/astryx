@@ -157,8 +157,15 @@ export type ChatComposerTrigger = {
    * Used when loading a previous message for editing.
    */
   deserialize?: (value: string) => ChatComposerToken | null;
-  /** Text shown when no results found. @default 'No results' */
-  emptySearchResultsText?: string;
+  /**
+   * Content shown when the query matched nothing (`spec:AST-056` FR1).
+   * Takes a `ReactNode`, so a dead end can carry a link or a create row.
+   *
+   * `null` means "not given", exactly as `undefined` does, so it falls
+   * through to the default. Pass an empty string to render nothing.
+   * @default 'No results'
+   */
+  emptySearchText?: ReactNode;
   /** Text shown during async search. @default 'Searching\u2026' */
   loadingText?: string;
   /** Accessible label for the menu. @default 'Suggestions' */
@@ -238,18 +245,7 @@ const styles = stylex.create({
     position: 'relative',
     display: 'flex',
     flexDirection: 'column',
-    // The single-line floor, not just the line-height: `editable` and
-    // `placeholder` both add `spacingVars['--spacing-1']` padding on the
-    // block axis on top of their shared line-height, and normally that's
-    // what keeps the root this tall (the editable region reserves its own
-    // padded box even when empty). A disabled, empty editable stops
-    // reserving that empty line at all in Chromium (contentEditable=false
-    // collapses to just its padding), and the absolutely positioned
-    // placeholder that would otherwise stand in for it doesn't contribute
-    // to layout height — so without this explicit floor accounting for the
-    // same padding, the root shrinks by that padding's height the moment
-    // isDisabled flips true, moving anything bottom-aligned beside it.
-    minHeight: `calc(${LINE_HEIGHT_PX}px + 2 * ${spacingVars['--spacing-1']})`,
+    minHeight: `${LINE_HEIGHT_PX}px`,
   },
   editable: {
     outline: 'none',
@@ -269,7 +265,7 @@ const styles = stylex.create({
     fontFamily: typographyVars['--font-family-body'],
     color: colorVars['--color-text-primary'],
     caretColor: colorVars['--color-accent'],
-    padding: spacingVars['--spacing-1'],
+    paddingInline: spacingVars['--spacing-1'],
   },
   placeholder: {
     position: 'absolute',
@@ -288,7 +284,7 @@ const styles = stylex.create({
     lineHeight: `${LINE_HEIGHT_PX}px`,
     fontFamily: typographyVars['--font-family-body'],
     userSelect: 'none',
-    padding: spacingVars['--spacing-1'],
+    paddingInline: spacingVars['--spacing-1'],
   },
   disabled: {
     opacity: 0.5,
@@ -296,7 +292,9 @@ const styles = stylex.create({
   },
   tokenSpan: {
     display: 'inline-flex',
-    verticalAlign: 'middle',
+    alignItems: 'center',
+    height: '1lh',
+    verticalAlign: 'top',
   },
 });
 

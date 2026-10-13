@@ -12,7 +12,12 @@
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import * as stylex from '@stylexjs/stylex';
 import {Toolbar} from './Toolbar';
+import {
+  paddingBlockStyles,
+  paddingInlineStyles,
+} from '../Layout/padding.stylex';
 
 describe('Toolbar', () => {
   it('renders with toolbar role', () => {
@@ -148,6 +153,30 @@ describe('Toolbar', () => {
     expect(toolbar).toHaveAttribute('data-size', 'sm');
   });
 
+  it.each([
+    ['sm', 2],
+    ['md', 2],
+  ] as const)(
+    'uses the %s block inset without overriding container inline padding',
+    (size, blockPadding) => {
+      const {container} = render(<Toolbar label="Actions" size={size} />);
+      const sectionInner = container.querySelector('.astryx-section');
+      const expectedBlockClasses = stylex
+        .props(paddingBlockStyles[blockPadding])
+        .className?.split(' ')
+        .filter(Boolean);
+      const compactInlineClasses = stylex
+        .props(paddingInlineStyles[1])
+        .className?.split(' ')
+        .filter(Boolean);
+
+      expect(sectionInner).toBeInTheDocument();
+      expect(expectedBlockClasses).not.toHaveLength(0);
+      expect(sectionInner).toHaveClass(...(expectedBlockClasses ?? []));
+      expect(sectionInner).not.toHaveClass(...(compactInlineClasses ?? []));
+    },
+  );
+
   it('defaults to md size', () => {
     render(<Toolbar label="Actions" />);
     const toolbar = screen.getByRole('toolbar');
@@ -179,6 +208,66 @@ describe('Toolbar', () => {
     const sectionInner = container.querySelector('.astryx-section');
     expect(sectionInner).toBeInTheDocument();
     expect(sectionInner).toHaveAttribute('data-variant', 'transparent');
+  });
+
+  describe('slot clipping', () => {
+    // The slot wrappers are the direct parents of the caller's content. A slot
+    // that clips its overflow cuts off anything its children paint outside
+    // their own box (box-shadow, focus rings, hover halos).
+    function slotOf(testId: string): HTMLElement {
+      const slot = screen.getByTestId(testId).parentElement;
+      if (slot == null) {
+        throw new Error(`expected "${testId}" to sit inside a slot`);
+      }
+      return slot;
+    }
+
+    function clipsOverflow(el: HTMLElement): boolean {
+      const style = getComputedStyle(el);
+      return [style.overflow, style.overflowX, style.overflowY].some(value =>
+        ['hidden', 'clip', 'auto', 'scroll'].includes(value),
+      );
+    }
+
+    it('does not clip any slot in the three-slot layout', () => {
+      render(
+        <Toolbar
+          label="Actions"
+          startContent={<span data-testid="start">Start</span>}
+          centerContent={<span data-testid="center">Center</span>}
+          endContent={<span data-testid="end">End</span>}
+        />,
+      );
+      expect(clipsOverflow(slotOf('start'))).toBe(false);
+      expect(clipsOverflow(slotOf('center'))).toBe(false);
+      expect(clipsOverflow(slotOf('end'))).toBe(false);
+    });
+
+    it('does not clip any slot in the two-slot layout', () => {
+      render(
+        <Toolbar
+          label="Actions"
+          startContent={<span data-testid="start">Start</span>}
+          endContent={<span data-testid="end">End</span>}
+        />,
+      );
+      expect(clipsOverflow(slotOf('start'))).toBe(false);
+      expect(clipsOverflow(slotOf('end'))).toBe(false);
+    });
+
+    it('still lets the center slot shrink below its content width', () => {
+      render(
+        <Toolbar
+          label="Actions"
+          startContent={<span data-testid="start">Start</span>}
+          centerContent={<span data-testid="center">Center</span>}
+          endContent={<span data-testid="end">End</span>}
+        />,
+      );
+      // The `auto` track only shrinks for an item whose minimum width is zero.
+      // Dropping the clip must not turn a narrow toolbar into a wider one.
+      expect(parseFloat(getComputedStyle(slotOf('center')).minWidth)).toBe(0);
+    });
   });
 
   it('navigates with ArrowRight/ArrowLeft in horizontal orientation', async () => {

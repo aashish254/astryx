@@ -1136,12 +1136,56 @@ describe('ChatComposerInput', () => {
 
     it('supports configurable empty/loading text', () => {
       const trigger = createMentionTrigger({
-        emptySearchResultsText: 'Nobody found',
+        emptySearchText: 'Nobody found',
         loadingText: 'Looking up...',
         menuLabel: 'People',
       });
       const {container} = render(<ChatComposerInput triggers={[trigger]} />);
       expect(container).toBeTruthy();
+    });
+
+    // A trigger's `emptySearchResultsText` was renamed to `emptySearchText`
+    // and widened from `string` to `ReactNode` (`spec:AST-056` FR1). The
+    // overlap ended in a minor release (`CLN-0004`, `spec:AST-017` FR31).
+    it('renders an element emptySearchText when the query matched nothing', async () => {
+      const user = userEvent.setup();
+      const trigger = createMentionTrigger({
+        emptySearchText: (
+          <span>
+            Nobody by that name. <a href="/invite">Invite them</a>
+          </span>
+        ),
+      });
+      render(<ChatComposerInput triggers={[trigger]} />);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.keyboard('@zzzzz');
+
+      await waitFor(() => {
+        expect(screen.getByText('Invite them')).toBeInTheDocument();
+      });
+    });
+
+    it('no longer reads the removed emptySearchResultsText key (CLN-0004)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const user = userEvent.setup();
+      const trigger = createMentionTrigger({
+        // @ts-expect-error -- removed in the minor release (CLN-0004)
+        emptySearchResultsText: 'Nobody found',
+      });
+      render(<ChatComposerInput triggers={[trigger]} />);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.keyboard('@zzzzz');
+
+      await waitFor(() => {
+        expect(screen.getByText('No results')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Nobody found')).not.toBeInTheDocument();
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('is deprecated'),
+      );
+      warn.mockRestore();
     });
   });
 

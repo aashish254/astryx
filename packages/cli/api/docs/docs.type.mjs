@@ -49,6 +49,7 @@
  * astryx --json docs <topic> --index
  * @typedef {object} DocsIndexResponse
  * @property {'docs.index'} type
+ * @property {string} package the npm package that owns the topic
  * @property {DocsIndex} data
  */
 
@@ -56,15 +57,39 @@
  * astryx --json docs <topic>
  * @typedef {object} DocsDetailResponse
  * @property {'docs.detail'} type
- * @property {import('@astryxdesign/cli/authoring').ReferenceDoc & {links: DocsLinks}} data
- *   the whole doc, and the moves from it
+ * @property {string} package the npm package that owns the topic
+ * @property {Omit<DocsReadDoc, 'sections'> & {sections: DocsDetailSection[], links: DocsLinks}} data
+ *   the whole doc, each section naming the package that wrote it, and the
+ *   moves from it
+ */
+
+/**
+ * A topic section as a read returns it. A read inlines each token reference
+ * and each `reference` block the author wrote, so its content holds only the
+ * stable ReferenceContentBlock kinds.
+ * @typedef {Omit<import('@astryxdesign/cli/authoring').ReferenceSection, 'content'>
+ *   & {content: import('@astryxdesign/cli/authoring').ReferenceContentBlock[]}} DocsReadSection
+ */
+
+/**
+ * A section of a whole-topic read: the read section, naming the package that
+ * wrote it.
+ * @typedef {DocsReadSection & {package: string}} DocsDetailSection
+ */
+
+/**
+ * A topic as a read returns it: every section a {@link DocsReadSection}.
+ * @typedef {Omit<import('@astryxdesign/cli/authoring').ReferenceDoc, 'sections'>
+ *   & {sections: DocsReadSection[]}} DocsReadDoc
  */
 
 /**
  * The doc a link opens (spec:AST-047 FR9). A docs read resolves every link:
- * an inline `{@link <target>}` reads as `link.command`, a `reference` block
- * carries `link` (null when the target names no doc), and each `workflow` step
- * carries `links`, one per reference.
+ * an inline `{@link <target>}` reads as `link.command`, a `reference` block in
+ * a namespace doc carries `link` (null when the target names no doc), and each
+ * `workflow` step carries `links`, one per reference. A topic read inlines a
+ * section's `reference` block as the doc it includes, then a line naming where
+ * that comes from and the command that opens it.
  * @typedef {import('../../foundation/doc-compiler/links.mjs').DocLink} DocLink
  */
 
@@ -99,7 +124,8 @@
  */
 
 /**
- * @typedef {object} DocsIndexSection
+ * One section of a topic's index, before it names its package.
+ * @typedef {object} DocsIndexEntry
  * @property {string} id stable key; pass it as the section argument
  * @property {string} title
  * @property {string} summary the section's first line of text, at most 240
@@ -107,10 +133,18 @@
  */
 
 /**
+ * One section of a topic's index, naming the package that wrote it: the
+ * topic's own, or the extension's that contributed it.
+ * @typedef {DocsIndexEntry & {package: string}} DocsIndexSection
+ */
+
+/**
  * astryx --json docs <topic> <section>
  * @typedef {object} DocsDetailSectionResponse
  * @property {'docs.detail.section'} type
- * @property {import('@astryxdesign/cli/authoring').ReferenceSection & {links: DocsLinks}} data
+ * @property {string} package the npm package that wrote the section: the
+ *   topic's own, or the extension's that contributed it
+ * @property {DocsReadSection & {links: DocsLinks}} data
  *   the section, and the moves from it: up to its topic's index, and across to
  *   the sections before and after it
  */
@@ -119,6 +153,7 @@
  * astryx --json docs <route>, for a namespace or a typed doc in the docs tree
  * @typedef {object} DocsNodeResponse
  * @property {'docs.node'} type
+ * @property {string} package the package that owns the node
  * @property {DocsNode} data
  */
 
@@ -137,7 +172,9 @@
  * @property {string} summary
  * @property {DocsNodeLink[]} breadcrumb the namespaces above it, top first
  * @property {DocsNodeSlot[]} slots a namespace's slots that hold children, in
- *   order; empty for a typed doc
+ *   order; empty for a typed doc, and for a depth read of 0
+ * @property {number} [childCount] with a depth read of 0, how many docs sit
+ *   right below the namespace
  * @property {import('@astryxdesign/cli/authoring').ReferenceContentBlock[]} content
  *   a typed doc's content; empty for a namespace
  * @property {DocsLinks} links the moves from the node: up to its parent (the
@@ -162,9 +199,19 @@
  * @typedef {object} DocsNodeChild
  * @property {string} route pass it to `astryx docs` to go one level down
  * @property {string} name the last segment of its route
+ * @property {string} package the package that owns the child
  * @property {string} kind
  * @property {string} title
  * @property {string} summary
+ * @property {DocsNodeSlot[]} [slots] with a depth read, its own slots, while
+ *   the read goes deeper
+ * @property {number} [childCount] with a depth read, how many docs sit right
+ *   below it where the read stops
+ * @property {import('@astryxdesign/cli/authoring').ReferenceContentBlock[]} [content]
+ *   with a depth read at compact or full detail: a namespace's intro or a typed
+ *   doc's content
+ * @property {DocsReadSection[]} [sections] with a depth read at compact or full
+ *   detail: a guide's sections
  */
 
 /**
@@ -175,6 +222,12 @@
  * @property {boolean} [dense]
  * @property {boolean} [index] return a topic's section index instead of its
  *   whole doc
+ * @property {number | 'all'} [depth] how many levels below a docs-tree
+ *   namespace to read: 0 for the namespace alone, 1 for its children (the
+ *   default), 'all' for every level
+ * @property {'brief' | 'compact' | 'full'} [detail] how much of each doc below
+ *   the named one a depth read returns: brief (the default) is its identity,
+ *   compact and full add its text
  * @property {string} [cwd] project directory whose configured integrations
  *   contribute topics; defaults to process.cwd()
  */
