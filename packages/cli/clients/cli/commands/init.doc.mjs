@@ -17,12 +17,13 @@ export const doc = {
   description:
     'Non-interactive project setup (no prompts, so it behaves the same for humans, ' +
     'agents, and CI). By default it writes the agent-docs block, including guidance ' +
-    'from configured integrations, so each agent reads it once: to AGENTS.md, as a ' +
-    'one-line import of AGENTS.md in GEMINI.md, and, when the project has a CLAUDE.md ' +
-    'or .claude/CLAUDE.md, to .claude/CLAUDE.md (never root CLAUDE.md). It then prints ' +
-    'getting-started steps. Agent docs go to the project ' +
-    'root, the nearest folder at or above this one with a package.json, and never into ' +
-    "the home folder. --features and --all print only the chosen features' " +
+    'from configured integrations, to AGENTS.md and to the Claude Code file the project ' +
+    'has (CLAUDE.md, else .claude/CLAUDE.md), and a one-line import of AGENTS.md to ' +
+    'GEMINI.md unless Gemini CLI already reads AGENTS.md. It then prints getting-started ' +
+    'steps. Agent docs go to the project root: the nearest folder at or above this one ' +
+    'whose package.json declares an @astryxdesign package, else the nearest with any ' +
+    'package.json, else this folder. In the home folder or a settings folder in it, no ' +
+    "agent docs are written. --features and --all print only the chosen features' " +
     'guidance (no getting-started steps); the theme feature also writes an annotated theme template.',
   fn: 'init',
   options: [
@@ -74,7 +75,7 @@ export const doc = {
   exitCodes: [
     {
       code: 0,
-      when: 'success, including agent docs that could not be written for a reason other than a path escape, such as running in the home folder (reported as docsError)',
+      when: 'success, including agent docs that could not be written for a reason other than a path escape, such as running in the home folder or a settings folder in it, or a GEMINI.md skipped because it resolves outside the project (reported as docsError)',
     },
     {
       code: 1,

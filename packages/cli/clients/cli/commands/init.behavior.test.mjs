@@ -208,6 +208,52 @@ describe('astryx init in the home folder', () => {
     expect(exists('AGENTS.md')).toBe(false);
     expect(read('.claude/CLAUDE.md')).toBe(personal);
   });
+
+  it.each(['.gemini', '.claude'])('refuses the settings folder ~/%s', async folder => {
+    const dir = path.join(tmpDir, folder);
+    fs.mkdirSync(dir, {recursive: true});
+    const before = fs.readdirSync(dir);
+
+    const json = await runCli(['init', '--json'], {cwd: dir});
+    expect(json.status).toBe(0);
+    const env = JSON.parse(json.stdout);
+    expect(env.data.docsWritten).toEqual([]);
+    expect(env.data.docsError.message).toMatch(/settings folders in it/);
+    expect(fs.readdirSync(dir)).toEqual(before);
+    expect(read('.claude/CLAUDE.md')).toBe(personal);
+  });
+});
+
+describe('astryx init and the project root', () => {
+  it('writes where it runs when no folder above has a package.json, as before', async () => {
+    const notes = path.join(tmpDir, 'notes');
+    fs.mkdirSync(notes);
+
+    const json = await runCli(['init', '--json'], {cwd: notes});
+    expect(json.status).toBe(0);
+    const env = JSON.parse(json.stdout);
+    expect(env.data.docsWritten).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(env.data.docsError).toBeNull();
+    expect(fs.readdirSync(notes).sort()).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.readdirSync(tmpDir)).toEqual(['notes']);
+  });
+
+  it('writes at the project root that declares Astryx, past a nested package that does not', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({name: 'app', dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
+    const functions = path.join(tmpDir, 'functions');
+    fs.mkdirSync(path.join(functions, 'src'), {recursive: true});
+    fs.writeFileSync(path.join(functions, 'package.json'), '{"name":"functions"}\n');
+
+    const json = await runCli(['init', '--json'], {cwd: path.join(functions, 'src')});
+    expect(JSON.parse(json.stdout).data.docsWritten).toEqual([
+      '../../AGENTS.md',
+      '../../GEMINI.md',
+    ]);
+    expect(fs.readdirSync(functions).sort()).toEqual(['package.json', 'src']);
+  });
 });
 
 describe('astryx init --remove-agents', () => {

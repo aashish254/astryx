@@ -4,9 +4,9 @@
  * @file init.run leaf — non-interactive project setup + feature installer.
  *
  * `run(options, ctx)` is the default / `--features` / `--all` path behind
- * `astryx init`. It installs the agent-docs cheat sheet so each agent reads it
- * once (AGENTS.md, a GEMINI.md import, and a .claude/CLAUDE.md copy for Claude
- * Code projects), points at the theme + page-building workflows, and
+ * `astryx init`. It installs the agent-docs cheat sheet at the project root so
+ * every agent reads it (AGENTS.md, a copy in the project's Claude Code file, and
+ * a GEMINI.md import), points at the theme + page-building workflows, and
  * (optionally) scaffolds a starter template — with NO prompts, so it behaves
  * identically for humans, agents, CI, and piped I/O. It performs the side
  * effects and returns an
@@ -96,16 +96,20 @@ async function applyAgents(cwd, options, invocation, data) {
         ? options.agentDocsPath
         : [options.agentDocsPath]
       : undefined;
-    // The docs belong at the project root, not in the subfolder init ran in.
-    // Explicit --agent-docs-path entries stay relative to where init ran.
-    const root = resolveAgentDocsRoot(cwd);
+    // The docs belong at the project root, not in the subfolder init ran in;
+    // with no project above, they go where init ran, as before. Explicit
+    // --agent-docs-path entries stay relative to where init ran.
+    const root = resolveAgentDocsRoot(cwd) ?? cwd;
     const targetDir = paths ? cwd : root;
     assertAgentDocsTarget(targetDir);
     const renderedBlock = await renderAgentDocsBlock(root);
+    /** @type {string[]} */
+    const skipped = [];
     const files = installAgentDocs(targetDir, {
       agent: options.agent,
       paths,
       renderedBlock,
+      onSkipped: (rel, reason) => skipped.push(`${rel} was not written: ${reason}`),
     });
     // Each file is reported from where init ran, as before.
     const written =
@@ -116,6 +120,13 @@ async function applyAgents(cwd, options, invocation, data) {
           );
     data.docsWritten = written;
     logger.log(`[ok] AI agent docs installed -> ${written.join(', ')}`);
+    // A file only the current layout writes (GEMINI.md) that resolves outside
+    // the project is skipped and reported; the exit code stays 0.
+    if (skipped.length > 0) {
+      const message = skipped.join(' ');
+      logger.error(`Error: ${message}`);
+      data.docsError = {kind: 'install-failed', message};
+    }
   } catch (err) {
     // PathSafetyError carries a precise, user-actionable message — surface it
     // (and flag exit 1) instead of the generic "could not install" warning so
@@ -125,8 +136,9 @@ async function applyAgents(cwd, options, invocation, data) {
       data.docsError = {kind: 'path-safety', message: err.message};
       return;
     }
-    // The home folder is never a project: nothing is written, the reason is
-    // printed, and the exit code stays the soft-failure one.
+    // The home folder and its settings folders are never a project: nothing is
+    // written, the reason is printed, and the exit code stays the soft-failure
+    // one.
     if (err instanceof AgentDocsHomeError) {
       logger.error(`Error: ${err.message}`);
       data.docsError = {kind: 'install-failed', message: err.message};
