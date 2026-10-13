@@ -215,6 +215,7 @@ export async function run(options = {}, {cwd = process.cwd(), origin} = {}) {
     packageName: installed.packageName,
     options,
     cwd,
+    sourcePath: path_,
   });
 
   const versionManifests = await getCoreVersionManifests(

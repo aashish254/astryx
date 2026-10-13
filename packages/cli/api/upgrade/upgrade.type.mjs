@@ -113,7 +113,7 @@
  * whatever else the response reports.
  * @typedef {object} CliBehindCore
  * @property {string} cliVersion The running CLI's version, the last release it has codemods for.
- * @property {string} command The same upgrade, run with the CLI release that matches the installed Core.
+ * @property {string} command The same upgrade, run with the CLI release that matches the installed Core. It names the directory this run scanned as an absolute `--path`, so it scans the same directory from any folder, and quotes each argument for the shell of the platform it was printed on.
  */
 
 /**

@@ -13,7 +13,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {runCli} from '../../../test-utils/run-cli.mjs';
 import {CLI_ROOT} from '../../../foundation/fs/paths.mjs';
-import {getDlxPrefix} from '../../../foundation/env/package-manager.mjs';
+import {
+  getDlxPrefix,
+  quoteCommandArgument,
+} from '../../../foundation/env/package-manager.mjs';
 
 const CLI_VERSION = JSON.parse(
   fs.readFileSync(path.join(CLI_ROOT, 'package.json'), 'utf8'),
@@ -45,13 +48,31 @@ afterEach(() => {
   fs.rmSync(tmpDir, {recursive: true, force: true});
 });
 
+/**
+ * The pinned command the CLI prints for this project. It names the source
+ * directory as the CLI resolved it, from the folder it ran in.
+ * @param {...string} rest the arguments after `--path <dir>`
+ */
+function pinned(...rest) {
+  const src = path.join(fs.realpathSync(tmpDir), 'src');
+  return [
+    getDlxPrefix(tmpDir),
+    `@astryxdesign/cli@${NEWER_CORE}`,
+    'upgrade',
+    '--from',
+    CLI_VERSION,
+    '--path',
+    quoteCommandArgument(src),
+    ...rest,
+  ].join(' ');
+}
+
 describe('astryx upgrade with a CLI older than the installed Core', () => {
   it('says it cannot finish and prints the upgrade pinned to the matching CLI', async () => {
     const r = await runCli(['upgrade', '--from', CLI_VERSION, '--apply'], {
       cwd: tmpDir,
     });
     const output = `${r.stdout}\n${r.stderr}`;
-    const command = `${getDlxPrefix(tmpDir)} @astryxdesign/cli@${NEWER_CORE} upgrade --from ${CLI_VERSION} --apply`;
 
     expect(r.status).toBe(0);
     expect(output).not.toMatch(/up to date/i);
@@ -59,7 +80,10 @@ describe('astryx upgrade with a CLI older than the installed Core', () => {
     expect(r.stderr).toContain(
       `This CLI (${CLI_VERSION}) is older than the installed @astryxdesign/core (${NEWER_CORE})`,
     );
-    expect(r.stderr).toContain(`\`${command}\``);
+    // The command has a line of its own, so it copies exactly.
+    expect(r.stderr).toContain(
+      `the CLI that matches your Core:\n  ${pinned('--apply')}\n`,
+    );
     expect(r.stdout.trim().split('\n').at(-1)).toBe('Upgrade incomplete');
     expect(output.split('\n').filter(line => NON_ASCII.test(line))).toEqual([]);
   });
@@ -75,7 +99,7 @@ describe('astryx upgrade with a CLI older than the installed Core', () => {
     expect(parsed.data.status).toBe('no_codemods');
     expect(parsed.data.cliBehindCore).toEqual({
       cliVersion: CLI_VERSION,
-      command: `${getDlxPrefix(tmpDir)} @astryxdesign/cli@${NEWER_CORE} upgrade --from ${CLI_VERSION}`,
+      command: pinned(),
     });
   });
 });

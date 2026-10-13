@@ -38,6 +38,7 @@ import {
   CLI_PACKAGE,
   formatCliCommand,
   getDlxPrefix,
+  quoteCommandArgument,
 } from '../../foundation/env/package-manager.mjs';
 import {isValidSemver, semverGt} from '../../foundation/env/semver.mjs';
 import {
@@ -148,14 +149,6 @@ function readRunningCliVersion() {
   }
 }
 
-/** An argument every common shell reads as one word without quotes. */
-const PLAIN_ARGUMENT = /^[\w@%+=:,./\\-]+$/u;
-
-/** @param {string} value */
-function commandArgument(value) {
-  return PLAIN_ARGUMENT.test(value) ? value : `"${value}"`;
-}
-
 /**
  * Whether the installed Core is newer than this CLI, so part of the requested
  * range has no codemods here.
@@ -166,23 +159,34 @@ function commandArgument(value) {
  * releases' migrations. The returned command repeats this upgrade with the CLI
  * release that matches the installed Core.
  *
+ * The command names `sourcePath`, the directory this run scanned, as an
+ * absolute `--path`, so it scans that directory from any folder. A package
+ * runner can run the CLI somewhere other than where the command was typed
+ * (Yarn 1 runs `yarn astryx` at the project root), and a relative path would
+ * then name another directory. Every argument is quoted for the shell of the
+ * platform the command is printed on.
+ *
  * Returns null when the CLI covers the whole range (`to` is not newer than
  * both the CLI and `from`), when the CLI's own version cannot be read, or when
  * the target is legacy `@xds/core`, which no CLI release shares a version with.
  *
- * @param {{from: string, to: string, packageName: string, options: UpgradeOptions, cwd: string}} input
+ * @param {{from: string, to: string, packageName: string, options: UpgradeOptions, cwd: string, sourcePath: string}} input
  * @returns {import('./upgrade.type.mjs').CliBehindCore | null}
  */
-export function detectCliBehindCore({from, to, packageName, options, cwd}) {
+export function detectCliBehindCore({
+  from,
+  to,
+  packageName,
+  options,
+  cwd,
+  sourcePath,
+}) {
   if (packageName !== '@astryxdesign/core') return null;
   const cliVersion = readRunningCliVersion();
   if (!cliVersion || !semverGt(to, cliVersion) || !semverGt(to, from)) {
     return null;
   }
-  const args = ['upgrade', '--from', from];
-  if (options.path && options.path !== './src') {
-    args.push('--path', options.path);
-  }
+  const args = ['upgrade', '--from', from, '--path', sourcePath];
   if (options.codemod) args.push('--codemod', options.codemod);
   for (const name of options.skipCodemod ?? []) {
     args.push('--skip-codemod', name);
@@ -197,8 +201,9 @@ export function detectCliBehindCore({from, to, packageName, options, cwd}) {
     cliVersion,
     command: [
       getDlxPrefix(cwd),
-      `${CLI_PACKAGE}@${to}`,
-      ...args.map(commandArgument),
+      ...[`${CLI_PACKAGE}@${to}`, ...args].map(arg =>
+        quoteCommandArgument(arg),
+      ),
     ].join(' '),
   };
 }
