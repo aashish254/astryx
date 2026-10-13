@@ -35,7 +35,10 @@ import {
   renderAgentDocsBlock,
 } from '../../foundation/agent-docs/agent-docs.mjs';
 import {formatCliCommand} from '../../foundation/env/package-manager.mjs';
-import {findInstalledPackageOf} from '../../foundation/fs/paths.mjs';
+import {
+  findPackageRoot,
+  findProjectPackageOf,
+} from '../../foundation/fs/paths.mjs';
 import {Project, providerLedgerOf} from '../../foundation/config/project.mjs';
 import {loadIntegrations} from '../../foundation/integrations/integrations.mjs';
 import {resolveProviders} from '../../foundation/integrations/provider-resolution.mjs';
@@ -74,20 +77,44 @@ const execFileAsync = promisify(execFile);
  * @property {boolean} [registry]
  */
 
+/** The `path` an upgrade scans when the caller names none. */
+const DEFAULT_SOURCE_PATH = './src';
+
+/**
+ * Where an upgrade runs: the project root, the nearest folder at or above
+ * `cwd` with a package.json, so a run from any folder inside a project
+ * upgrades that project exactly as a run from its root does. Its source,
+ * config, agent docs and protection declarations all live there. A `path` the
+ * caller names stays relative to `cwd`, where they typed it, and the default
+ * `./src` is the project's own. With no package.json, `cwd` itself.
+ * @param {UpgradeOptions} options
+ * @param {string} cwd
+ * @returns {{options: UpgradeOptions, cwd: string, origin?: string}} `origin`
+ *   is the folder the command ran in, when the project root is above it
+ */
+export function scopeToProject(options, cwd) {
+  const here = path.resolve(cwd);
+  const root = findPackageRoot(here) ?? here;
+  if (root === here) return {options, cwd};
+  const namedPath =
+    options.path != null && options.path !== DEFAULT_SOURCE_PATH
+      ? {path: path.resolve(here, options.path)}
+      : {};
+  return {options: {...options, ...namedPath}, cwd: root, origin: here};
+}
+
 /**
  * Detect the installed target version: the Core the project at `cwd`
- * installed, found from any folder inside it. The nearest folder whose
- * node_modules holds Core wins, the current name before the legacy one, then
- * Yarn Plug'n'Play; so a workspace member whose Core is hoisted to the root
- * finds it.
+ * installed, in its own node_modules or, for a workspace member, in a folder
+ * up to its workspace root. The nearest folder wins, the current name before
+ * the legacy one, then Yarn Plug'n'Play. A Core a workspace holds counts only
+ * when it is the version the project declares, so a project that declares a
+ * version it has not installed reports nothing installed.
  * @param {string} cwd
  * @returns {{version: string, packageName: string}|null}
  */
 export function detectInstalledTargetVersion(cwd) {
-  const found = findInstalledPackageOf(cwd, [
-    '@astryxdesign/core',
-    '@xds/core',
-  ]);
+  const found = findProjectPackageOf(cwd, ['@astryxdesign/core', '@xds/core']);
   if (!found) return null;
   try {
     const pkg = JSON.parse(
@@ -185,16 +212,32 @@ export async function runPostCodemodHooks(hooks, context) {
 /**
  * @typedef {object} AgentDocsRefreshPlan
  * @property {string} cwd
+ * @property {string} [origin] the folder the command ran in, when the upgrade
+ *   runs at a project root above it
  * @property {string|null} renderedBlock
  * @property {import('./upgrade.type.mjs').AgentDocsSummary} summary
  */
+
+/**
+ * The advice to run `init`, phrased for where the command ran: when the
+ * upgrade runs at a project root above that folder, it names the root, so the
+ * agent docs are installed beside the project's package.json.
+ * @param {string} cwd the folder the upgrade runs at
+ * @param {string} [origin] the folder the command ran in
+ * @returns {string}
+ */
+function initAdvice(cwd, origin) {
+  const command = `\`${formatCliCommand('astryx init --features agents')}\``;
+  if (origin == null) return command;
+  return `${command} in ${path.relative(origin, cwd) || '.'} (the project root)`;
+}
 
 /**
  * Compute the expected managed block and report staleness without writing.
  * Apply-mode callers commit the prepared bytes only after codemods and hooks
  * succeed.
  *
- * @param {{cwd: string, installedVersion: string, apply: boolean, fresh?: boolean}} ctx
+ * @param {{cwd: string, installedVersion: string, apply: boolean, fresh?: boolean, origin?: string}} ctx
  * @returns {Promise<AgentDocsRefreshPlan>}
  */
 export async function prepareAgentDocsRefresh({
@@ -202,6 +245,7 @@ export async function prepareAgentDocsRefresh({
   installedVersion,
   apply,
   fresh = false,
+  origin,
 }) {
   const initial = inspectAgentDocs(cwd, installedVersion);
   /** @type {import('./upgrade.type.mjs').AgentDocsSummary} */
@@ -217,9 +261,9 @@ export async function prepareAgentDocsRefresh({
   if (initial.status === 'missing') {
     summary.action = 'nudge-init';
     logger.warn(
-      `No Astryx agent-docs block found - AI agents have no component index. Run \`${formatCliCommand('astryx init --features agents')}\` to install it.`,
+      `No Astryx agent-docs block found - AI agents have no component index. Run ${initAdvice(cwd, origin)} to install it.`,
     );
-    return {cwd, renderedBlock: null, summary};
+    return {cwd, origin, renderedBlock: null, summary};
   }
 
   let renderedBlock;
@@ -232,16 +276,18 @@ export async function prepareAgentDocsRefresh({
     summary.action = 'error';
     summary.files = initial.files.map(file => file.path);
     logger.warn(
-      `Could not render the expected agent docs. Run \`${formatCliCommand('astryx init --features agents')}\` to update them manually.`,
+      `Could not render the expected agent docs. Run ${initAdvice(cwd, origin)} to update them manually.`,
     );
-    return {cwd, renderedBlock: null, summary};
+    return {cwd, origin, renderedBlock: null, summary};
   }
 
   const inspection = inspectAgentDocs(cwd, installedVersion, renderedBlock);
   summary.status = inspection.status;
   summary.fromVersions = inspection.blockVersions;
   summary.files = inspection.staleFiles;
-  if (inspection.status === 'current') return {cwd, renderedBlock, summary};
+  if (inspection.status === 'current') {
+    return {cwd, origin, renderedBlock, summary};
+  }
 
   summary.action = 'would-refresh';
   if (!apply) {
@@ -249,7 +295,7 @@ export async function prepareAgentDocsRefresh({
       `Agent docs differ from the installed Astryx and integration configuration. Re-run with --apply to refresh (${summary.files.join(', ')}).`,
     );
   }
-  return {cwd, renderedBlock, summary};
+  return {cwd, origin, renderedBlock, summary};
 }
 
 /**
@@ -258,7 +304,7 @@ export async function prepareAgentDocsRefresh({
  * @returns {import('./upgrade.type.mjs').AgentDocsSummary}
  */
 export function applyAgentDocsRefresh(plan) {
-  const {cwd, renderedBlock, summary} = plan;
+  const {cwd, origin, renderedBlock, summary} = plan;
   if (summary.action !== 'would-refresh' || renderedBlock == null)
     return summary;
 
@@ -274,14 +320,14 @@ export function applyAgentDocsRefresh(plan) {
       logger.log(`[ok] Agent docs refreshed -> ${written.join(', ')}`);
     } else {
       logger.warn(
-        `Agent docs look stale but couldn't be refreshed. Run \`${formatCliCommand('astryx init --features agents')}\` to reinstall the block.`,
+        `Agent docs look stale but couldn't be refreshed. Run ${initAdvice(cwd, origin)} to reinstall the block.`,
       );
     }
   } catch {
     summary.action = 'error';
     summary.refreshed = false;
     logger.warn(
-      `Could not refresh agent docs. Run \`${formatCliCommand('astryx init --features agents')}\` to update them manually.`,
+      `Could not refresh agent docs. Run ${initAdvice(cwd, origin)} to update them manually.`,
     );
   }
   return summary;

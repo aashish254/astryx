@@ -74,7 +74,8 @@ export const doc = {
     {
       name: 'options.path',
       type: 'string',
-      description: 'Source directory to scan.',
+      description:
+        "Source directory to scan. A path you name is relative to `ctx.cwd`; the default, `./src`, is the project's own `src`.",
       default: './src',
     },
     {
@@ -100,7 +101,8 @@ export const doc = {
     {
       name: 'ctx.cwd',
       type: 'string',
-      description: 'Directory to run the upgrade in.',
+      description:
+        'Any folder in the project to upgrade. The upgrade runs at the project root, the nearest folder at or above it with a package.json.',
       default: 'process.cwd()',
     },
   ],
@@ -132,10 +134,13 @@ export const doc = {
       when: '`from` is missing (and neither `list` nor `registry` is set); `list` and `registry` are both set; `list` is combined with `from`, `force`, `apply`, `path` (non-default), `codemod`, `skipCodemod`, `integration` or `installDeps`; `registry` is combined with `from`, `force`, `codemod`, `skipCodemod`, `integration` or `installDeps`; an `integration` specifier is invalid or not installed; or astryx.config fails to load or validate and no pending config codemod repairs it',
     },
     {code: 'ERR_INVALID_VERSION', when: '`from` is not a valid semver string'},
-    {code: 'ERR_PATH_TRAVERSAL', when: '`path` resolves outside cwd'},
+    {
+      code: 'ERR_PATH_TRAVERSAL',
+      when: '`path` resolves outside the project root',
+    },
     {
       code: 'ERR_VERSION_DETECT',
-      when: 'neither @astryxdesign/core nor legacy @xds/core is installed in cwd; with `registry`, only when copied-composition receipts exist and @astryxdesign/core is not installed',
+      when: 'the project has installed neither @astryxdesign/core nor legacy @xds/core, in its own node_modules or in a folder up to its workspace root, or the Core its workspace holds is not the version the project declares; with `registry`, only when copied-composition receipts exist and @astryxdesign/core is not installed',
     },
     {
       code: 'ERR_DEP_MISSING',

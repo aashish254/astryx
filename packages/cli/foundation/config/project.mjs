@@ -55,7 +55,7 @@ import {
   discoverValidIntegrationComponents,
 } from '../discovery/component-discovery.mjs';
 import {resolveComponentReplacements} from '../discovery/component-replacement.mjs';
-import {findCoreDir} from '../fs/paths.mjs';
+import {findCoreDir, findPackageRoot} from '../fs/paths.mjs';
 import {
   applyTemplateReplacements,
   effectiveTemplateDiscovery,
@@ -228,22 +228,6 @@ export const CONFIG_BASENAMES = [
 /** Default issue tracker used when neither config nor integration routes one. */
 export const DEFAULT_ISSUES_URL =
   'https://github.com/facebook/astryx/issues/new';
-
-/**
- * Find the directory of the nearest package.json walking up from startDir.
- * @param {string} startDir
- * @returns {string|null}
- */
-function findPackageRoot(startDir) {
-  let dir = startDir;
-  for (let i = 0; i < 50; i++) {
-    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
 
 /**
  * Whether this project accepts `debug` handlers contributed by the
