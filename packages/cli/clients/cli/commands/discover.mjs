@@ -201,6 +201,52 @@ function versionLines(versions, marks) {
 }
 
 /**
+ * Whether a package entry adds anything besides themes.
+ * @param {Record<string, unknown>} entry
+ * @returns {boolean}
+ */
+function addsMoreThanThemes(entry) {
+  return ITEM_FIELDS.some(field => {
+    const names = entry[field];
+    return field !== 'themes' && Array.isArray(names) && names.length > 0;
+  });
+}
+
+/**
+ * The "Add it" blocks for a package the project does not have: the command
+ * that adds it, then what makes its items usable. A theme still needs
+ * `theme add` once the package is installed; anything else loads on the next
+ * command.
+ * @param {string} install the package-manager command
+ * @param {string[]} themes theme slugs the package or item adds
+ * @param {boolean} addsOther whether it adds anything besides themes
+ * @param {string} run how to invoke the CLI
+ * @returns {import('../formatters/index.mjs').Block[]}
+ */
+function addBlocks(install, themes, addsOther, run) {
+  /** @type {import('../formatters/index.mjs').Block[]} */
+  const blocks = [section('Add it'), code(install)];
+  if (themes.length > 0) {
+    blocks.push(
+      text(
+        themes.length === 1
+          ? 'Then use its theme:'
+          : 'Then use one of its themes:',
+      ),
+      code(themes.map(slug => `${run} theme add ${slug}`).join('\n')),
+    );
+  }
+  if (addsOther || themes.length === 0) {
+    blocks.push(
+      text(
+        'Astryx loads an integration on the next command once it is a dependency.',
+      ),
+    );
+  }
+  return blocks;
+}
+
+/**
  * @param {import('commander').Command} program
  */
 export function registerDiscover(program) {
@@ -263,70 +309,10 @@ export function registerDiscover(program) {
         switch (result.type) {
           case 'discover.list': {
             const listOpts = itemListOptions(Boolean(options.components));
-            const available = result.meta?.available;
+            // Discover always has a source, the official list, so the list
+            // always has an Available side.
+            const available = result.meta?.available ?? [];
             const sources = result.meta?.sources ?? [];
-
-            // No discover source: the list of what this project has, as always.
-            if (available === undefined) {
-              if (result.data.length === 0) {
-                if (options.available) {
-                  // The user specifically asked for available packages but
-                  // there is no source to answer from. Say so honestly.
-                  emit(
-                    text('No discover source is configured.'),
-                    text(
-                      [
-                        'Available integrations are listed by discover sources.',
-                        'A project can set one in astryx.config.mjs, and installed',
-                        'integrations can provide one.',
-                      ].join(' '),
-                    ),
-                    text(
-                      [
-                        `Find Astryx packages on npm: npm search @astryxdesign`,
-                        `Learn more: ${run} docs cli/integrations`,
-                      ].join('\n'),
-                    ),
-                  );
-                } else if (result.meta && result.meta.configured === false) {
-                  emit(
-                    text('No integrations configured.'),
-                    text('Add integration package names to astryx.config.mjs:'),
-                    code(
-                      "export default {\n  integrations: ['@scope/your-integration'],\n};",
-                    ),
-                    text(
-                      [
-                        `Find Astryx packages on npm: npm search @astryxdesign`,
-                        `Learn more: ${run} docs cli/integrations`,
-                      ].join('\n'),
-                    ),
-                  );
-                } else {
-                  emit(
-                    text(
-                      'No external components found in configured integrations.',
-                    ),
-                    text(
-                      `Find more packages: ${run} discover --available (needs a discover source)`,
-                    ),
-                  );
-                }
-                break;
-              }
-              emit(
-                records(result.data, listOpts),
-                text(
-                  [
-                    'Usage:',
-                    `  ${run} discover <package>            Browse a package`,
-                    `  ${run} discover <package>/Component  View component docs`,
-                    `  ${run} discover <search>             Search all packages`,
-                  ].join('\n'),
-                ),
-              );
-              break;
-            }
 
             const kind = options.type
               ? (KIND_PLURALS[options.type] ?? options.type)
@@ -341,7 +327,9 @@ export function registerDiscover(program) {
                   : text(
                       kind
                         ? `None of this project's integrations add ${kind}.`
-                        : 'None yet.',
+                        : result.meta?.configured
+                          ? 'No external components found in configured integrations.'
+                          : 'None yet.',
                     ),
               );
             }
@@ -360,16 +348,26 @@ export function registerDiscover(program) {
               );
             }
             blocks.push(...sourceNotes(sources));
-            blocks.push(
-              text(
-                [
-                  'Usage:',
-                  `  ${run} discover <package>            Browse a package and its versions`,
-                  `  ${run} discover <package>/<item>     View one item`,
-                  `  ${run} discover <search>             Search every item and package`,
-                ].join('\n'),
-              ),
-            );
+            if (query?.trim()) {
+              // A query answered with the list: this project loads no
+              // integration and has no discover source of its own.
+              blocks.push(
+                text(
+                  `This project loads no integration and has no discover source of its own, so discover lists everything instead of answering "${query}".`,
+                ),
+              );
+            } else {
+              blocks.push(
+                text(
+                  [
+                    'Usage:',
+                    `  ${run} discover <package>            Browse a package and its versions`,
+                    `  ${run} discover <package>/<item>     View one item`,
+                    `  ${run} discover <search>             Search every item and package`,
+                  ].join('\n'),
+                ),
+              );
+            }
             emit(...blocks);
             break;
           }
@@ -405,10 +403,15 @@ export function registerDiscover(program) {
             }
             if (d.install) {
               blocks.push(
-                section('Add it'),
-                code(d.install),
-                text(
-                  'Astryx loads an integration on the next command once it is a dependency.',
+                ...addBlocks(
+                  d.install,
+                  d.themes ?? [],
+                  addsMoreThanThemes(
+                    /** @type {Record<string, unknown>} */ (
+                      /** @type {unknown} */ (d)
+                    ),
+                  ),
+                  run,
                 ),
               );
             } else if (d.installedAs) {
@@ -446,13 +449,12 @@ export function registerDiscover(program) {
             emit(
               record(d, {omit: ['install']}),
               ...(d.install
-                ? [
-                    section('Add it'),
-                    code(d.install),
-                    text(
-                      'Astryx loads an integration on the next command once it is a dependency.',
-                    ),
-                  ]
+                ? addBlocks(
+                    d.install,
+                    d.kind === 'theme' ? [d.name] : [],
+                    d.kind !== 'theme',
+                    run,
+                  )
                 : []),
               text(`Its package: ${run} discover ${d.package}`),
             );
