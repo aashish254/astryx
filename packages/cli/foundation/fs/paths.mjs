@@ -3,7 +3,8 @@
 /**
  * @file Path resolution utilities for Astryx CLI
  *
- * Finds packages/core, project root, and CLI package root.
+ * Finds the project's @astryxdesign/core and the other packages it installed,
+ * the project root, and the CLI package root.
  */
 
 import * as fs from 'node:fs';
@@ -17,38 +18,91 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Root of the @astryxdesign/cli package */
 export const CLI_ROOT = path.resolve(__dirname, '..', '..');
 
+/** The package every Core lookup answers for. */
+const CORE_PACKAGE = '@astryxdesign/core';
+
 /**
- * Find packages/core directory by walking up from startDir.
- * Also checks node_modules/@astryxdesign/core for installed usage.
+ * `startDir` and every folder above it, nearest first, up to the filesystem
+ * root: the folders Node's resolver searches for `node_modules`. Lookups walk
+ * all of them because a package can sit any number of folders above the one a
+ * command runs in, most often at a workspace root that hoists it.
+ *
+ * @param {string} startDir
+ * @returns {Generator<string>}
  */
-export function findCoreDir(startDir = process.cwd()) {
-  let dir = startDir;
-
-  for (let i = 0; i < 5; i++) {
-    const candidate = path.join(dir, 'packages', 'core');
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-
-    const nodeModules = path.join(dir, 'node_modules', '@astryxdesign', 'core');
-    if (fs.existsSync(nodeModules)) {
-      return nodeModules;
-    }
-
+function* foldersUpFrom(startDir) {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    yield dir;
     const parent = path.dirname(dir);
-    if (parent === dir) break;
+    if (parent === dir) return;
     dir = parent;
   }
+}
 
-  return null;
+/**
+ * `dir/node_modules/<name>` when the package is installed there. Its
+ * package.json decides, so a stale empty folder is not an install.
+ *
+ * @param {string} dir
+ * @param {string} name
+ * @returns {string|null}
+ */
+function installedIn(dir, name) {
+  const candidate = path.join(dir, 'node_modules', ...name.split('/'));
+  return fs.existsSync(path.join(candidate, 'package.json')) ? candidate : null;
+}
+
+/**
+ * Whether `dir` is @astryxdesign/core's own source, by the name in its
+ * package.json. The folder name says nothing: many monorepos keep an unrelated
+ * package in `packages/core`.
+ *
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function isCoreSource(dir) {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'),
+    );
+    return pkg?.name === CORE_PACKAGE;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find the project's @astryxdesign/core.
+ *
+ * Checks `startDir` and every folder above it, nearest first. In each folder a
+ * `packages/core` whose package.json names @astryxdesign/core (the Astryx
+ * repository's own source) comes first, then an installed
+ * `node_modules/@astryxdesign/core`. When no folder has either, it asks Yarn
+ * Plug'n'Play, which keeps no node_modules.
+ *
+ * @param {string} [startDir]
+ * @returns {string|null} the Core package directory, or null when there is none
+ */
+export function findCoreDir(startDir = process.cwd()) {
+  for (const dir of foldersUpFrom(startDir)) {
+    const source = path.join(dir, 'packages', 'core');
+    if (isCoreSource(source)) return source;
+
+    const installed = installedIn(dir, CORE_PACKAGE);
+    if (installed) return installed;
+  }
+
+  return findPnpPackage(startDir, CORE_PACKAGE);
 }
 
 /**
  * Where Yarn's Plug'n'Play runtime says a package lives.
  *
- * A PnP project has no node_modules for the walk below to find. PnP answers
- * from the project's own dependency graph and ignores NODE_PATH, so asking it
- * keeps the lookup project-local. Outside a PnP process there is nothing to ask.
+ * A PnP project has no node_modules for the walks in this file to find. PnP
+ * answers from the project's own dependency graph and ignores NODE_PATH, so
+ * asking it keeps the lookup project-local. Outside a PnP process there is
+ * nothing to ask.
  *
  * @param {string} startDir
  * @param {string} name
@@ -57,13 +111,31 @@ export function findCoreDir(startDir = process.cwd()) {
 function findPnpPackage(startDir, name) {
   if (!process.versions.pnp) return null;
   try {
-    const api = createRequire(path.join(startDir, 'noop.js'))('pnpapi');
-    const dir = api.resolveToUnqualified(name, path.join(startDir, '/'));
+    const from = path.resolve(startDir);
+    const api = createRequire(path.join(from, 'noop.js'))('pnpapi');
+    const dir = api.resolveToUnqualified(name, path.join(from, '/'));
     return dir && fs.existsSync(path.join(dir, 'package.json')) ? dir : null;
   } catch {
     // The project does not declare it, or this is not a PnP process after all.
     return null;
   }
+}
+
+/**
+ * The nearest `node_modules/<name>` at or above `startDir`, found the way
+ * Node's resolver finds a package, and the folder whose node_modules holds it.
+ * It does not ask Plug'n'Play; {@link findInstalledPackage} does.
+ *
+ * @param {string} startDir
+ * @param {string} name bare package name; callers reject path segments first
+ * @returns {{packageDir: string, hostDir: string}|null}
+ */
+export function findNodeModulesPackage(startDir, name) {
+  for (const dir of foldersUpFrom(startDir)) {
+    const packageDir = installedIn(dir, name);
+    if (packageDir) return {packageDir, hostDir: dir};
+  }
+  return null;
 }
 
 /**
@@ -77,23 +149,39 @@ function findPnpPackage(startDir, name) {
  * Reading package.json off disk also sidesteps packages that don't export it,
  * so the version is always available to range-check.
  *
- * Walks the node_modules chain first, then asks PnP, which covers the Yarn
- * default layout where that chain does not exist.
+ * Walks the whole node_modules chain first, then asks PnP, which covers the
+ * Yarn default layout where that chain does not exist.
  *
  * @param {string} startDir
  * @param {string} name
  * @returns {string|null} the package directory, or null when not installed
  */
 export function findInstalledPackage(startDir, name) {
-  let dir = startDir;
-  for (let i = 0; i < 6; i++) {
-    const candidate = path.join(dir, 'node_modules', ...name.split('/'));
-    if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+  return findInstalledPackageOf(startDir, [name])?.packageDir ?? null;
+}
+
+/**
+ * The first of `names` the project at `startDir` installed, by the rule
+ * {@link findInstalledPackage} follows: the nearest folder whose node_modules
+ * holds any of them wins, an earlier name wins within one folder, and
+ * Plug'n'Play is asked last, in name order.
+ *
+ * @param {string} startDir
+ * @param {readonly string[]} names in order of preference
+ * @returns {{name: string, packageDir: string}|null}
+ */
+export function findInstalledPackageOf(startDir, names) {
+  for (const dir of foldersUpFrom(startDir)) {
+    for (const name of names) {
+      const packageDir = installedIn(dir, name);
+      if (packageDir) return {name, packageDir};
+    }
   }
-  return findPnpPackage(startDir, name);
+  for (const name of names) {
+    const packageDir = findPnpPackage(startDir, name);
+    if (packageDir) return {name, packageDir};
+  }
+  return null;
 }
 
 /**

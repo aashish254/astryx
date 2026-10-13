@@ -40,7 +40,7 @@ import {parseConfig} from '../../authoring/config/parse.mjs';
 import {
   loadIntegrations,
   loadLocalIntegration,
-  resolvePackageDir,
+  resolveInstalledIntegrationDir,
 } from '../integrations/integrations.mjs';
 import {loadAutolinkCandidates} from '../integrations/autolink.mjs';
 import {resolveProviders} from '../integrations/provider-resolution.mjs';
@@ -126,7 +126,7 @@ async function loadConfiguredIntegrations(specs, {cwd, fresh}) {
       /** @type {string|undefined} */
       let packageDir;
       try {
-        packageDir = resolvePackageDir(spec, cwd);
+        packageDir = resolveInstalledIntegrationDir(spec, cwd);
       } catch {
         // Not a bare package name: there is no install location to record.
       }
@@ -396,7 +396,8 @@ export class Project {
     // The project root: the config's directory when there is one (findConfigPath
     // resolves the config as a sibling of the nearest package.json, so the two
     // agree), otherwise that package.json's directory. Dependencies are declared
-    // there, and node_modules sits there.
+    // there, and installed packages resolve from there up the node_modules
+    // chain.
     const projectDir = configPath
       ? path.dirname(configPath)
       : (findPackageRoot(cwd) ?? cwd);

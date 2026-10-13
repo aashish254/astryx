@@ -35,6 +35,7 @@ import {
   renderAgentDocsBlock,
 } from '../../foundation/agent-docs/agent-docs.mjs';
 import {formatCliCommand} from '../../foundation/env/package-manager.mjs';
+import {findInstalledPackageOf} from '../../foundation/fs/paths.mjs';
 import {Project, providerLedgerOf} from '../../foundation/config/project.mjs';
 import {loadIntegrations} from '../../foundation/integrations/integrations.mjs';
 import {resolveProviders} from '../../foundation/integrations/provider-resolution.mjs';
@@ -74,26 +75,29 @@ const execFileAsync = promisify(execFile);
  */
 
 /**
- * Detect the installed target version from node_modules.
+ * Detect the installed target version: the Core the project at `cwd`
+ * installed, found from any folder inside it. The nearest folder whose
+ * node_modules holds Core wins, the current name before the legacy one, then
+ * Yarn Plug'n'Play; so a workspace member whose Core is hoisted to the root
+ * finds it.
  * @param {string} cwd
  * @returns {{version: string, packageName: string}|null}
  */
 export function detectInstalledTargetVersion(cwd) {
-  for (const packageName of ['@astryxdesign/core', '@xds/core']) {
-    const pkgPath = path.resolve(
-      cwd,
-      'node_modules',
-      ...packageName.split('/'),
-      'package.json',
+  const found = findInstalledPackageOf(cwd, [
+    '@astryxdesign/core',
+    '@xds/core',
+  ]);
+  if (!found) return null;
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(found.packageDir, 'package.json'), 'utf-8'),
     );
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-      if (pkg.version) return {version: pkg.version, packageName};
-    } catch {
-      // Missing/unreadable — try the next supported package name.
-    }
+    return pkg.version ? {version: pkg.version, packageName: found.name} : null;
+  } catch {
+    // Unreadable package.json: no version to target.
+    return null;
   }
-  return null;
 }
 
 /**
