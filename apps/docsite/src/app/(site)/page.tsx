@@ -228,7 +228,7 @@ function HeroContent({contentRef}: {contentRef: Ref<HTMLElement>}) {
           <Link
             type="body"
             color="inherit"
-            href="https://www.npmjs.com/package/astryxdesign"
+            href="https://www.npmjs.com/package/@astryxdesign/core"
             target="_blank"
             rel="noopener noreferrer"
             hasUnderline>

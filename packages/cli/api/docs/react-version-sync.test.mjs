@@ -18,15 +18,11 @@ import {docs as gettingStarted} from '../../assets/docs/getting-started.doc.mjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 
-// Every place that names the supported React version. The docsite hero
-// (apps/docsite/src/app/(site)/page.tsx) is deliberately not asserted —
-// landing-page copy is a design call — but it names the version today, so
-// sweep it whenever these assertions send you updating the rest.
+// Every place that names the supported React version.
 const SURFACES =
   'update every surface that names the supported React version: README.md ' +
-  '(repo root), packages/core/README.md, ' +
-  'packages/cli/assets/docs/getting-started.doc.mjs, and the docsite hero ' +
-  'in apps/docsite/src/app/(site)/page.tsx';
+  '(repo root), packages/core/README.md, and ' +
+  'packages/cli/assets/docs/getting-started.doc.mjs';
 
 describe('documented React version matches the core peer dependency', () => {
   const coreDir = findCoreDir();
