@@ -10,8 +10,8 @@
  * @typedef {object} InitRunData
  * @property {'default' | 'features'} mode `default` (no flags) or `features` (--features/--all).
  * @property {string[]} features Features that were run, in order.
- * @property {string[]} docsWritten Agent-doc files written (empty if agents weren't run or install failed).
- * @property {{kind: 'path-safety' | 'install-failed', message?: string} | null} docsError Soft agent-docs failure, if any. `path-safety` also implies a non-zero exit.
+ * @property {string[]} docsWritten Agent-doc files written, relative to the directory init ran in (empty if agents weren't run or install failed). Without --agent-docs-path they sit at the project root: the nearest folder at or above it with a package.json, within its repository and never the home folder.
+ * @property {{kind: 'path-safety' | 'install-failed', message?: string} | null} docsError Soft agent-docs failure, if any. `path-safety` also implies a non-zero exit. `install-failed` carries a message when init declined to write, as in the home folder.
  * @property {boolean} theme Whether the theme feature ran.
  * @property {'created' | 'skipped' | 'failed' | null} themeTemplate Outcome of writing the annotated theme template (`skipped` = a file was already there).
  * @property {string | null} themeTemplatePath Relative output path when `themeTemplate === 'created'`.

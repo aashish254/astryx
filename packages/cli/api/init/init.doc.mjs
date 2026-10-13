@@ -17,8 +17,11 @@ export const doc = {
     'Non-interactive project setup: install agent docs and point at the theme + build workflows.',
   description:
     'Sets a project up with NO prompts, so it behaves identically for humans, ' +
-    'agents, CI, and piped I/O. By default it installs the AGENTS.md/CLAUDE.md ' +
-    'agent-docs cheat sheet, including guidance from configured integrations, and ' +
+    'agents, CI, and piped I/O. By default it writes the agent-docs cheat sheet, ' +
+    'including guidance from configured integrations, so each agent reads it once ' +
+    '(AGENTS.md, a one-line import of it in GEMINI.md, and a copy in .claude/CLAUDE.md ' +
+    'when the project has a Claude Code file) at the project root, never the home ' +
+    'folder, and ' +
     "prints getting-started guidance; `features` / `all` print only the chosen features' " +
     'guidance instead (the theme feature also writes the annotated theme template). ' +
     'With `removeAgents` it removes the managed agent-docs block instead of installing.',
