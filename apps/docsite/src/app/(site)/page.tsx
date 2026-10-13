@@ -224,25 +224,25 @@ function HeroContent({contentRef}: {contentRef: Ref<HTMLElement>}) {
           </Grid>
         </DarkScope>
         <Text display="block" color={isDark ? 'inherit' : 'secondary'}>
-          Currently in Beta · Built on{' '}
+          Currently in Beta ·{' '}
           <Link
             type="body"
             color="inherit"
-            href="https://react.dev"
+            href="https://www.npmjs.com/package/astryxdesign"
             target="_blank"
             rel="noopener noreferrer"
             hasUnderline>
-            React 19+
+            Install from npm
           </Link>{' '}
-          and{' '}
+          ·{' '}
           <Link
             type="body"
             color="inherit"
-            href="https://stylexjs.com"
+            href="https://github.com/facebook/astryx"
             target="_blank"
             rel="noopener noreferrer"
             hasUnderline>
-            StyleX
+            Get started on GitHub
           </Link>
         </Text>
       </VStack>
