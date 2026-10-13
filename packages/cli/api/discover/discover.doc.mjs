@@ -95,7 +95,7 @@ export const doc = {
     {
       type: 'discover.detail',
       description:
-        "One package: what the shown version adds, whether the project has it, its versions and latest release when a source knows them, and the command that adds it when the project does not have it. An entry from the official list shows, lists and pins one version: the project's Core version (installed, or declared exactly) for a package released with Core, otherwise a release CLI's own; with none known it pins none. A version or item the official list does not show answers ERR_UNKNOWN_PACKAGE.",
+        "One package: what the shown version adds, whether the project has it, its versions and latest release when a source knows them, and the command that adds it when the project does not have it. An entry from the official list lists the newest release this CLI knows as latest and the project's Core version; its add command pins the project's Core version, else the Core range it declares (quoted), else the latest release. A version or item the official list does not show answers ERR_UNKNOWN_PACKAGE.",
     },
     {
       type: 'discover.detail.doc',

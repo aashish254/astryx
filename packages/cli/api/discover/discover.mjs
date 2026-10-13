@@ -23,6 +23,7 @@
  *   the discover leaves.
  */
 
+export {OFFICIAL_SOURCE_NAME} from './_adapter.mjs';
 import {
   addCommand,
   callSources,
@@ -269,16 +270,16 @@ export async function discover(query, options = {}) {
         !entry.versions.some(v => v.version === target.version)
       ) {
         throw new AstryxError(
-          `${target.name}@${target.version} is not a version discover can show: ${
+          `${target.name}@${target.version} is not a version discover knows here: ${
             entry.versions.length > 0
-              ? `it shows ${entry.versions.map(v => v.version).join(', ')}, the version that fits this project`
-              : 'it shows no version of it for this project'
+              ? `it knows ${entry.versions.map(v => v.version).join(', ')}`
+              : 'it knows no version of it for this project'
           }. Other versions are on the package registry.`,
           [...new Set([...entry.versions.map(v => v.version), local])]
             .filter(v => v != null)
             .map(v => ({
               name: `${target.name}@${v}`,
-              reason: 'version discover shows',
+              reason: 'version discover knows',
             })),
           ERROR_CODES.ERR_UNKNOWN_PACKAGE,
         );

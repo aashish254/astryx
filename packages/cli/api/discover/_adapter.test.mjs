@@ -78,6 +78,7 @@ function official(name, extra = {}) {
       {version: '0.7.1', publishedAt: null, prerelease: false, status: 'ok'},
     ],
     contributions: [{kind: 'theme', name: name.split('-').pop()}],
+    pin: '0.7.1',
     ...extra,
   };
 }
@@ -282,6 +283,10 @@ describe('callSources', () => {
       ['Own', 'astryx.config', 'fresh'],
       OFFICIAL_STATE,
     ]);
+    // The add command's pin stays with the list; a catalog entry never
+    // carries it.
+    for (const entry of result.packages)
+      expect(entry).not.toHaveProperty('pin');
     // Source order: discover puts official packages first only where it
     // shows them.
     expect(
@@ -415,41 +420,89 @@ describe('officialList', () => {
     }
   });
 
-  it('gives a package released with Core the project’s Core version, older or newer than the CLI', () => {
-    for (const core of ['0.6.8', '0.8.0', '0.7.2-canary.def5678']) {
+  it('lists the latest release and the project’s Core version, and pins the Core version', () => {
+    for (const [core, latest, versions] of [
+      [
+        '0.6.8',
+        '0.7.1',
+        [
+          ['0.7.1', false],
+          ['0.6.8', false],
+        ],
+      ],
+      [
+        '0.8.0',
+        '0.8.0',
+        [
+          ['0.8.0', false],
+          ['0.7.1', false],
+        ],
+      ],
+      ['0.7.1', '0.7.1', [['0.7.1', false]]],
+      [
+        '0.7.1-canary.def5678',
+        '0.7.1',
+        [
+          ['0.7.1', false],
+          ['0.7.1-canary.def5678', true],
+        ],
+      ],
+      [
+        '0.7.2-canary.def5678',
+        '0.7.1',
+        [
+          ['0.7.2-canary.def5678', true],
+          ['0.7.1', false],
+        ],
+      ],
+    ]) {
+      const dir = fs.mkdtempSync(path.join(cacheDir, 'core-'));
       const entry = find(
-        officialList({version: '0.7.1', project: withCore(cacheDir, core)})
-          .packages,
+        officialList({version: '0.7.1', project: withCore(dir, core)}).packages,
         NEUTRAL,
       );
-      expect(versionsOf(entry), core).toEqual({
-        latest: core.includes('-') ? null : core,
-        versions: [[core, core.includes('-')]],
-      });
+      expect(versionsOf(entry), core).toEqual({latest, versions});
+      expect(entry.pin, core).toBe(core);
     }
   });
 
-  it('pins the exact Core version a fresh clone declares, and nothing for a range', () => {
-    fs.writeFileSync(
-      path.join(cacheDir, 'package.json'),
-      JSON.stringify({dependencies: {'@astryxdesign/core': '0.6.8'}}),
-    );
+  it('pins the Core version or range a fresh clone declares, and nothing for another spec', () => {
     const p = project({cwd: path.join(cacheDir, 'src')});
-    expect(
-      versionsOf(
-        find(officialList({version: '0.7.1', project: p}).packages, NEUTRAL),
-      ),
-    ).toEqual({latest: '0.6.8', versions: [['0.6.8', false]]});
-
-    fs.writeFileSync(
-      path.join(cacheDir, 'package.json'),
-      JSON.stringify({devDependencies: {'@astryxdesign/core': '^0.6.8'}}),
-    );
-    expect(
-      versionsOf(
-        find(officialList({version: '0.7.1', project: p}).packages, NEUTRAL),
-      ),
-    ).toEqual({latest: null, versions: []});
+    for (const [spec, pin, versions] of [
+      [
+        '0.6.8',
+        '0.6.8',
+        [
+          ['0.7.1', false],
+          ['0.6.8', false],
+        ],
+      ],
+      [
+        '=0.6.8',
+        '0.6.8',
+        [
+          ['0.7.1', false],
+          ['0.6.8', false],
+        ],
+      ],
+      ['^0.6.8', '^0.6.8', [['0.7.1', false]]],
+      ['>=0.6.8 <0.8.0', '>=0.6.8 <0.8.0', [['0.7.1', false]]],
+      ['0.6.x || ^0.7.0', '0.6.x || ^0.7.0', [['0.7.1', false]]],
+      ['workspace:*', undefined, [['0.7.1', false]]],
+      ['file:../core', undefined, [['0.7.1', false]]],
+      ['latest', undefined, [['0.7.1', false]]],
+    ]) {
+      fs.writeFileSync(
+        path.join(cacheDir, 'package.json'),
+        JSON.stringify({devDependencies: {'@astryxdesign/core': spec}}),
+      );
+      const entry = find(
+        officialList({version: '0.7.1', project: p}).packages,
+        NEUTRAL,
+      );
+      expect(versionsOf(entry), spec).toEqual({latest: '0.7.1', versions});
+      expect(entry.pin, spec).toBe(pin);
+    }
   });
 
   it('on a canary CLI with no Core, pins only the canary-only packages', () => {
@@ -461,6 +514,7 @@ describe('officialList', () => {
       latest: null,
       versions: [],
     });
+    expect(find(canary, NEUTRAL).pin).toBeUndefined();
     const names = canaryOnlyNames();
     expect(names.length).toBeGreaterThan(0);
     for (const name of names) {
@@ -468,6 +522,7 @@ describe('officialList', () => {
         latest: null,
         versions: [['0.7.2-canary.abc1234', true]],
       });
+      expect(find(canary, name).pin, name).toBe('0.7.2-canary.abc1234');
     }
   });
 
@@ -484,6 +539,18 @@ describe('officialList', () => {
       expect(find(released, name), name).toBeUndefined();
     }
 
+    fs.writeFileSync(
+      path.join(cacheDir, 'package.json'),
+      JSON.stringify({dependencies: {'@astryxdesign/core': '^0.7.0'}}),
+    );
+    const declared = officialList({
+      version: '0.7.2-canary.abc1234',
+      project: project({cwd: cacheDir}),
+    }).packages;
+    for (const name of canaryOnlyNames()) {
+      expect(find(declared, name), name).toBeUndefined();
+    }
+
     const beside = officialList({
       version: '0.7.2-canary.abc1234',
       project: withCore(cacheDir, '0.7.2-canary.def5678'),
@@ -498,7 +565,9 @@ describe('officialList', () => {
 
   it('reads back as a valid discover catalog on a release and a canary CLI', () => {
     for (const version of ['0.7.1', '0.7.2-canary.abc1234']) {
-      const {packages} = officialList({version});
+      const packages = officialList({version}).packages.map(
+        ({pin: _pin, ...entry}) => entry,
+      );
       const parsed = parseDiscoverCatalog(
         catalog('Astryx', packages),
         'the official list',
@@ -516,22 +585,43 @@ describe('officialList', () => {
     expect(result.error).toContain('the official list could not be read');
   });
 
-  it('pins exactly the version each entry lists, or none', () => {
-    for (const [cli, core] of [
-      ['0.7.1', '0.6.8'],
-      ['0.7.1', '0.8.0'],
-      ['0.7.2-canary.abc1234', undefined],
-      ['0.7.2-canary.abc1234', '0.7.2-canary.def5678'],
+  it('pins what each entry names, quoting a range, and the pin is a version it lists', () => {
+    for (const [cli, core, declared] of [
+      ['0.7.1', '0.6.8', undefined],
+      ['0.7.1', '0.8.0', undefined],
+      ['0.7.1', undefined, '^0.6.8'],
+      ['0.7.1', undefined, '>=0.6.8 <0.8.0'],
+      ['0.7.2-canary.abc1234', undefined, undefined],
+      ['0.7.2-canary.abc1234', '0.7.2-canary.def5678', undefined],
     ]) {
       const dir = fs.mkdtempSync(path.join(cacheDir, 'pin-'));
+      if (declared) {
+        fs.writeFileSync(
+          path.join(dir, 'package.json'),
+          JSON.stringify({dependencies: {'@astryxdesign/core': declared}}),
+        );
+      }
       const p = core ? withCore(dir, core) : project({cwd: dir});
       const {packages} = officialList({version: cli, project: p});
       const add = addCommand(p, {official: packages});
       for (const entry of packages) {
-        const listed = entry.versions[0]?.version;
-        expect(add(entry.package).split(' ').pop(), `${cli} ${core}`).toBe(
-          listed ? `${entry.package}@${listed}` : entry.package,
-        );
+        const label = `${cli} ${core ?? declared} ${entry.package}`;
+        const command = add(entry.package);
+        if (entry.pin == null) {
+          expect(command.endsWith(` ${entry.package}`), label).toBe(true);
+        } else if (entry.versions.some(v => v.version === entry.pin)) {
+          expect(
+            command.endsWith(` ${entry.package}@${entry.pin}`),
+            label,
+          ).toBe(true);
+        } else {
+          // Only a declared range is pinned without being a listed version.
+          expect(entry.pin, label).toBe(declared);
+          expect(
+            command.endsWith(` "${entry.package}@${declared}"`),
+            label,
+          ).toBe(true);
+        }
       }
     }
   });
@@ -670,43 +760,35 @@ describe('withDeclaredOfficial', () => {
 });
 
 describe('addCommand with the official list', () => {
-  /** What the command adds, whichever package manager runs the tests. */
-  const target = (/** @type {string} */ command) => command.split(' ').pop();
   const list = [
-    official('@astryxdesign/theme-gothic', {
-      latest: '0.6.8',
-      versions: [
-        {version: '0.6.8', publishedAt: null, prerelease: false, status: 'ok'},
-      ],
-    }),
-    official('@astryxdesign/charts', {
-      latest: null,
-      versions: [
-        {
-          version: '0.7.2-canary.abc1234',
-          publishedAt: null,
-          prerelease: true,
-          status: 'ok',
-        },
-      ],
-    }),
+    official('@astryxdesign/theme-gothic', {pin: '0.6.8'}),
+    official('@astryxdesign/theme-matcha', {pin: '^0.6.8'}),
+    official('@astryxdesign/theme-stone', {pin: undefined}),
+    official('@astryxdesign/charts', {pin: '0.7.2-canary.abc1234'}),
   ];
+  const add = () => addCommand(project({cwd: cacheDir}), {official: list});
 
-  it('pins the version an official entry lists', () => {
-    const add = addCommand(project({cwd: cacheDir}), {official: list});
-    expect(target(add('@astryxdesign/theme-gothic'))).toBe(
-      '@astryxdesign/theme-gothic@0.6.8',
+  it('pins what an official entry names, quoting a range', () => {
+    const command = add();
+    expect(command('@astryxdesign/theme-gothic')).toMatch(
+      / @astryxdesign\/theme-gothic@0\.6\.8$/,
     );
-    expect(target(add('@astryxdesign/charts'))).toBe(
-      '@astryxdesign/charts@0.7.2-canary.abc1234',
+    expect(command('@astryxdesign/theme-matcha')).toMatch(
+      / "@astryxdesign\/theme-matcha@\^0\.6\.8"$/,
+    );
+    expect(command('@astryxdesign/theme-stone')).toMatch(
+      / @astryxdesign\/theme-stone$/,
+    );
+    expect(command('@astryxdesign/charts')).toMatch(
+      / @astryxdesign\/charts@0\.7\.2-canary\.abc1234$/,
     );
   });
 
   it('adds a version that was asked for, and leaves other packages alone', () => {
-    const add = addCommand(project({cwd: cacheDir}), {official: list});
-    expect(target(add('@acme/ui'))).toBe('@acme/ui');
-    expect(target(add('@astryxdesign/theme-gothic', '0.7.0'))).toBe(
-      '@astryxdesign/theme-gothic@0.7.0',
+    const command = add();
+    expect(command('@acme/ui')).toMatch(/ @acme\/ui$/);
+    expect(command('@astryxdesign/theme-matcha', '0.7.1')).toMatch(
+      / @astryxdesign\/theme-matcha@0\.7\.1$/,
     );
   });
 });
