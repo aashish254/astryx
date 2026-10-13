@@ -512,3 +512,31 @@ export function formatCliCommand(command, targetDir) {
   const stem = getCliInvocation(targetDir);
   return sub ? `${stem} ${sub}` : stem;
 }
+
+/**
+ * Quote one argument of a printed command so the shell it is pasted into
+ * passes it on unchanged. A value made only of letters, digits and `@ / . _ -`
+ * (and, on Windows, a drive path's `:` and `\`) stays bare.
+ *
+ * - POSIX shells (sh, bash, zsh, fish): single quotes, inside which `$`,
+ *   backticks, `!`, spaces and double quotes are literal. An embedded single
+ *   quote is written `'\''`.
+ * - Windows: double quotes, which cmd and PowerShell both read literally for a
+ *   value with spaces. A value with `$`, a backtick, `"`, `%` or `!`, which one
+ *   of them expands inside double quotes, gets PowerShell's literal single
+ *   quotes instead, with an embedded single quote doubled.
+ *
+ * @param {string} value
+ * @param {string} [platform] the `process.platform` the command is printed for
+ * @returns {string}
+ */
+export function quoteCommandArgument(value, platform = process.platform) {
+  const text = String(value);
+  if (platform === 'win32') {
+    if (/^[A-Za-z0-9@/._:\\-]+$/u.test(text)) return text;
+    if (!/[$`"%!]/u.test(text)) return `"${text}"`;
+    return `'${text.replace(/'/gu, "''")}'`;
+  }
+  if (/^[A-Za-z0-9@/._-]+$/u.test(text)) return text;
+  return `'${text.replace(/'/gu, `'\\''`)}'`;
+}

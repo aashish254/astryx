@@ -5,16 +5,21 @@
  * Core has none for the releases after its own version. Every result past the
  * up-to-date exit says so in `cliBehindCore`, with the same upgrade pinned to
  * the CLI release that matches the Core; a CLI that covers the range returns
- * what it always did.
+ * what it always did. The pinned command names the directory the run scanned
+ * as an absolute path, and the shell reads every argument back unchanged.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
+import {execFileSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {upgrade} from '../upgrade.mjs';
 import {CLI_ROOT} from '../../../foundation/fs/paths.mjs';
-import {getDlxPrefix} from '../../../foundation/env/package-manager.mjs';
+import {
+  getDlxPrefix,
+  quoteCommandArgument,
+} from '../../../foundation/env/package-manager.mjs';
 
 const SLOW = 30_000;
 
@@ -49,9 +54,46 @@ function write(rel, body) {
   fs.writeFileSync(file, body);
 }
 
-/** The pinned command for this project, as the CLI prints it. */
-function pinned(args) {
-  return `${getDlxPrefix(dir)} @astryxdesign/cli@${NEWER_CORE} upgrade ${args}`;
+/**
+ * The pinned command for this project, as the CLI prints it.
+ * @param {...string} args the arguments after `upgrade`
+ */
+function pinned(...args) {
+  return [
+    getDlxPrefix(dir),
+    `@astryxdesign/cli@${NEWER_CORE}`,
+    'upgrade',
+    ...args.map(arg => quoteCommandArgument(arg)),
+  ].join(' ');
+}
+
+/** A stand-in for each package runner: prints the arguments the shell passed. */
+const RUNNERS = ['npx', 'pnpm', 'yarn', 'bunx']
+  .map(
+    name =>
+      `${name}() { "$0" -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' -- "$@"; }`,
+  )
+  .join('; ');
+
+/**
+ * The arguments a POSIX shell passes when it runs `command`, from the pinned
+ * CLI package on.
+ * @param {string} command
+ * @param {string} cwd the folder the shell runs in
+ * @returns {string[]}
+ */
+function shellArguments(command, cwd) {
+  const argv = JSON.parse(
+    execFileSync(
+      '/bin/sh',
+      ['-c', `${RUNNERS}; ${command}`, process.execPath],
+      {
+        cwd,
+        encoding: 'utf8',
+      },
+    ),
+  );
+  return argv.slice(argv.indexOf(`@astryxdesign/cli@${NEWER_CORE}`));
 }
 
 beforeEach(() => {
@@ -75,7 +117,13 @@ describe('a CLI older than the installed Core', {timeout: SLOW}, () => {
     expect(res.data.status).toBe('no_codemods');
     expect(res.data.cliBehindCore).toEqual({
       cliVersion: CLI_VERSION,
-      command: pinned(`--from ${CLI_VERSION} --apply`),
+      command: pinned(
+        '--from',
+        CLI_VERSION,
+        '--path',
+        path.join(dir, 'src'),
+        '--apply',
+      ),
     });
   });
 
@@ -91,7 +139,13 @@ describe('a CLI older than the installed Core', {timeout: SLOW}, () => {
     );
     expect(res.data.cliBehindCore).toEqual({
       cliVersion: CLI_VERSION,
-      command: pinned('--from 0.6.8 --apply'),
+      command: pinned(
+        '--from',
+        '0.6.8',
+        '--path',
+        path.join(dir, 'src'),
+        '--apply',
+      ),
     });
   });
 
@@ -112,11 +166,92 @@ describe('a CLI older than the installed Core', {timeout: SLOW}, () => {
 
     expect(res.data.cliBehindCore?.command).toBe(
       pinned(
-        `--from ${CLI_VERSION} --path "my src" --codemod only-this ` +
-          '--skip-codemod first --skip-codemod second --force',
+        '--from',
+        CLI_VERSION,
+        '--path',
+        path.join(dir, 'my src'),
+        '--codemod',
+        'only-this',
+        '--skip-codemod',
+        'first',
+        '--skip-codemod',
+        'second',
+        '--force',
       ),
     );
   });
+
+  // A package runner can run the CLI somewhere other than where the command
+  // was typed: Yarn 1 runs `yarn astryx` at the project root. A relative path
+  // copied into the command then named another directory when the command ran
+  // from the folder it was typed in.
+  it('names the directory the run scanned as an absolute path', async () => {
+    installCore(NEWER_CORE);
+    write('app/index.tsx', TYPEAHEAD_SOURCE);
+
+    for (const [given, scanned] of [
+      [undefined, path.join(dir, 'src')],
+      ['.', dir],
+      ['app', path.join(dir, 'app')],
+      ['./app/', path.join(dir, 'app')],
+    ]) {
+      const res = await upgrade(
+        {from: CLI_VERSION, ...(given ? {path: given} : {})},
+        {cwd: dir},
+      );
+      const command = /** @type {string} */ (res.data.cliBehindCore?.command);
+
+      expect(command).toBe(pinned('--from', CLI_VERSION, '--path', scanned));
+      if (process.platform !== 'win32') {
+        const fromApp = shellArguments(command, path.join(dir, 'app'));
+        expect(fromApp[fromApp.indexOf('--path') + 1]).toBe(scanned);
+      }
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'quotes the command so a POSIX shell passes every argument unchanged',
+    async () => {
+      fs.rmSync(dir, {recursive: true, force: true});
+      dir = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'upg cost $5 `date` \'one\' "two" !x -'),
+      );
+      write(
+        'package.json',
+        JSON.stringify({name: 'consumer', version: '1.0.0'}),
+      );
+      write('src/index.tsx', TYPEAHEAD_SOURCE);
+      installCore(NEWER_CORE);
+
+      const res = await upgrade(
+        {
+          from: CLI_VERSION,
+          skipCodemod: ["it's", 'a$b c'],
+          apply: true,
+        },
+        {cwd: dir},
+      );
+
+      expect(
+        shellArguments(
+          /** @type {string} */ (res.data.cliBehindCore?.command),
+          dir,
+        ),
+      ).toEqual([
+        `@astryxdesign/cli@${NEWER_CORE}`,
+        'upgrade',
+        '--from',
+        CLI_VERSION,
+        '--path',
+        path.join(dir, 'src'),
+        '--skip-codemod',
+        "it's",
+        '--skip-codemod',
+        'a$b c',
+        '--apply',
+      ]);
+    },
+  );
 });
 
 describe('a CLI that covers the range', {timeout: SLOW}, () => {
