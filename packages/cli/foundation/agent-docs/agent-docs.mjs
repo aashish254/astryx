@@ -6,20 +6,21 @@
  * Generates a CLI cheat sheet from actual command metadata and writes it, as
  * one managed block, into the files AI coding tools read.
  *
- * Default (no --agent or --agent-docs-path): each agent reads the block once.
+ * Default (no --agent or --agent-docs-path): every agent reads the block, in a
+ * file the project commits.
  *
  * - AGENTS.md holds the block. Most agents read it; Claude Code reads it when
  *   the folder has no CLAUDE.md or .claude/CLAUDE.md.
+ * - The Claude Code file the project already has holds a copy: root CLAUDE.md,
+ *   else .claude/CLAUDE.md. Init creates no Claude file.
  * - Gemini CLI reads only GEMINI.md: it gets a managed import, `@./AGENTS.md`,
- *   created when missing.
- * - Claude Code, when the project has CLAUDE.md or .claude/CLAUDE.md: a copy of
- *   the block in .claude/CLAUDE.md, created when missing. Root CLAUDE.md keeps
- *   no block.
+ *   created when missing, unless GEMINI.md already imports AGENTS.md or the
+ *   project's Gemini settings read AGENTS.md.
  * - Existing Cursor (.cursorrules) and Hermes (.hermes.md, HERMES.md) files
  *   keep a full block.
  *
- * No mode writes into the home folder: agents read the files there in every
- * project.
+ * No mode writes into the home folder or the settings folders in it: agents
+ * read the files there in every project.
  *
  * --agent <tool>: target a specific tool preset (claude, cursor, codex, hermes, muse, all)
  * --agent-docs-path <path>: explicit file path(s)
@@ -214,21 +215,19 @@ function withoutManagedBlock(content) {
 
 /**
  * The managed one-line import of AGENTS.md that the default writes, keyed by
- * file. Gemini CLI reads only GEMINI.md and expands `@./AGENTS.md` there.
- *
- * Claude Code gets a copy of the block, not an import. It skips AGENTS.md in a
- * folder that has CLAUDE.md or .claude/CLAUDE.md, and it asks before following
- * an import of a file above the folder a session starts in; a headless session
- * never asks, so a session started in a subfolder would get nothing. The copy
- * goes in .claude/CLAUDE.md, never root CLAUDE.md: Copilot CLI reads AGENTS.md
- * and root CLAUDE.md together (and expands imports in CLAUDE.md), so a block
- * there reaches it twice. It does not read .claude/CLAUDE.md.
+ * file. Gemini CLI reads only GEMINI.md, and expands `@./AGENTS.md` there.
  *
  * @type {Readonly<Record<string, string>>}
  */
 const AGENTS_IMPORTS = Object.freeze({
   [GEMINI_MD]: '@./AGENTS.md',
 });
+
+/**
+ * Agent docs 0.7.0 already wrote. A path-safety refusal on one of them stays an
+ * error, as it was; a file only the current layout writes is skipped instead.
+ */
+const LEGACY_DOC_PATHS = AGENT_DOC_PATHS.filter(p => p !== GEMINI_MD);
 
 /**
  * The managed block holding the import of AGENTS.md for `rel`.
@@ -263,15 +262,116 @@ function isAgentsImportBlock(rel, content) {
 }
 
 /**
- * Thrown when agent docs would be written into the home folder. Agents read the
- * files there (for example `~/.claude/CLAUDE.md`) in every project, so a
- * project's version-pinned block never goes there. Removal stays allowed.
+ * The paths Gemini CLI imports from `content`, in order. Gemini reads `@path`
+ * where the `@` starts the text or follows whitespace, and the path runs to the
+ * next whitespace and starts with `.`, `/` or a letter. An `@` inside backticks
+ * (inline code or a fenced block) is not an import.
+ * @param {string} content
+ * @returns {string[]}
+ */
+function findGeminiImports(content) {
+  /** @type {Array<[number, number]>} */
+  const code = [];
+  for (const match of content.matchAll(/(`+)[\s\S]*?\1/g)) {
+    code.push([match.index, match.index + match[0].length]);
+  }
+  /** @type {string[]} */
+  const found = [];
+  for (const match of content.matchAll(/(?<=^|[ \t\r\n])@([^ \t\r\n]+)/g)) {
+    if (!/^[./A-Za-z]/.test(match[1])) continue;
+    if (code.some(([start, end]) => match.index >= start && match.index < end)) {
+      continue;
+    }
+    found.push(match[1]);
+  }
+  return found;
+}
+
+/**
+ * Whether GEMINI.md, outside Astryx's managed block, already has Gemini CLI
+ * import AGENTS.md, on a line of its own or inline in a sentence.
+ * @param {string} targetDir
+ * @returns {boolean}
+ */
+function geminiImportsAgentsMd(targetDir) {
+  let content;
+  try {
+    content = fs.readFileSync(path.join(targetDir, GEMINI_MD), 'utf-8');
+  } catch {
+    return false;
+  }
+  const agents = path.resolve(targetDir, AGENTS_MD);
+  return findGeminiImports(withoutManagedBlock(content)).some(
+    rel => path.resolve(targetDir, rel) === agents,
+  );
+}
+
+/**
+ * `text` without JavaScript-style comments outside strings, the way Gemini CLI
+ * reads its settings files.
+ * @param {string} text
+ * @returns {string}
+ */
+function stripJsonComments(text) {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      out += ch;
+      if (ch === '\\') {
+        out += text[i + 1] ?? '';
+        i++;
+      } else if (ch === '"') {
+        inString = false;
+      }
+    } else if (ch === '"') {
+      inString = true;
+      out += ch;
+    } else if (ch === '/' && text[i + 1] === '/') {
+      while (i + 1 < text.length && text[i + 1] !== '\n') i++;
+    } else if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end === -1 ? text.length : end + 1;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether the project's Gemini CLI settings (`.gemini/settings.json`) point
+ * `context.fileName` at AGENTS.md, so Gemini reads it without an import.
+ * @param {string} targetDir
+ * @returns {boolean}
+ */
+function geminiReadsAgentsMd(targetDir) {
+  let settings;
+  try {
+    settings = JSON.parse(
+      stripJsonComments(
+        fs.readFileSync(path.join(targetDir, '.gemini', 'settings.json'), 'utf-8'),
+      ),
+    );
+  } catch {
+    return false;
+  }
+  const names = settings?.context?.fileName;
+  return (Array.isArray(names) ? names : [names]).includes(AGENTS_MD);
+}
+
+/**
+ * Thrown when agent docs would be written into the home folder, or into a
+ * settings folder in it such as `~/.gemini`. Agents read the files there (for
+ * example `~/.claude/CLAUDE.md` or `~/.gemini/GEMINI.md`) in every project, so
+ * a project's version-pinned block never goes there. Removal stays allowed.
  */
 export class AgentDocsHomeError extends Error {
   /** @param {string} dir */
   constructor(dir) {
     super(
-      `Agent docs are not written into the home folder (${dir}): agents read the files there in every project. Run init inside a project folder.`,
+      `Agent docs are not written into the home folder or the settings folders in it (${dir}): agents read the files there in every project. Run init inside a project folder.`,
     );
     this.name = 'AgentDocsHomeError';
   }
@@ -291,53 +391,128 @@ function realDir(p) {
 }
 
 /**
+ * `dir` relative to the home folder, compared without symlinks (and without
+ * case on Windows). null when there is no home folder.
+ * @param {string} dir
+ * @returns {string | null}
+ */
+function relativeToHome(dir) {
+  let home;
+  try {
+    home = os.homedir();
+  } catch {
+    return null;
+  }
+  if (!home) return null;
+  /** @param {string} p */
+  const fold = p => (process.platform === 'win32' ? p.toLowerCase() : p);
+  return path.relative(fold(realDir(home)), fold(realDir(dir)));
+}
+
+/**
  * Whether `dir` is the home folder.
  * @param {string} dir
  * @returns {boolean}
  */
 function isHomeFolder(dir) {
-  let home;
-  try {
-    home = os.homedir();
-  } catch {
-    return false;
-  }
-  if (!home) return false;
-  const a = realDir(dir);
-  const b = realDir(home);
-  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+  return relativeToHome(dir) === '';
 }
 
 /**
- * Throw {@link AgentDocsHomeError} when `targetDir` is the home folder.
+ * Whether `dir` is the home folder or inside a settings folder in it, a folder
+ * of the home folder whose name starts with a dot (`~/.gemini`, `~/.claude`).
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function isHomeOrSettingsFolder(dir) {
+  const rel = relativeToHome(dir);
+  if (rel == null) return false;
+  if (rel === '') return true;
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+    return false;
+  }
+  return rel.split(path.sep)[0].startsWith('.');
+}
+
+/**
+ * Throw {@link AgentDocsHomeError} when `targetDir` is the home folder or
+ * inside a settings folder in it.
  * @param {string} targetDir
  */
 export function assertAgentDocsTarget(targetDir) {
-  if (isHomeFolder(targetDir)) throw new AgentDocsHomeError(realDir(targetDir));
+  if (isHomeOrSettingsFolder(targetDir)) throw new AgentDocsHomeError(realDir(targetDir));
 }
 
 /** Folders that mark a repository root; the project search stops there. */
 const REPOSITORY_MARKERS = ['.git', '.hg', '.sl'];
 
+/** Dependency fields where a project declares the Astryx packages it uses. */
+const DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+];
+
+/**
+ * The package.json in `dir`: its parsed content, `null` when it exists but
+ * does not parse, or `undefined` when there is none.
+ * @param {string} dir
+ * @returns {Record<string, unknown> | null | undefined}
+ */
+function readPackageJson(dir) {
+  const file = path.join(dir, 'package.json');
+  if (!fs.existsSync(file)) return undefined;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a parsed package.json declares an `@astryxdesign` package.
+ * @param {Record<string, unknown> | null} manifest
+ * @returns {boolean}
+ */
+function declaresAstryx(manifest) {
+  return DEPENDENCY_FIELDS.some(field => {
+    const deps = manifest?.[field];
+    return (
+      deps != null &&
+      typeof deps === 'object' &&
+      Object.keys(deps).some(name => name.startsWith('@astryxdesign/'))
+    );
+  });
+}
+
 /**
  * The folder a run started in `cwd` writes agent docs to: the nearest folder at
- * or above it with a package.json, the project root that config and
- * integrations load from. The search stops at a repository root and never
- * reaches the home folder, so a stray `~/package.json` cannot pull the docs
- * there. With no such folder, `cwd`.
+ * or above it whose package.json declares an `@astryxdesign` package, else the
+ * nearest folder with any package.json. The search stops at a repository root
+ * and never reaches the home folder, so a stray `~/package.json` cannot pull
+ * the docs there.
  * @param {string} cwd
- * @returns {string}
+ * @returns {string | null} null when no folder it searches has a package.json;
+ *   init then writes where it runs, as before.
  */
 export function resolveAgentDocsRoot(cwd) {
   let dir = path.resolve(cwd);
+  /** @type {string | null} */
+  let nearest = null;
   for (let i = 0; i < 50 && !isHomeFolder(dir); i++) {
-    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+    const manifest = readPackageJson(dir);
+    if (manifest !== undefined) {
+      if (declaresAstryx(manifest)) return dir;
+      nearest ??= dir;
+    }
     if (REPOSITORY_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) break;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  return path.resolve(cwd);
+  return nearest;
 }
 
 /**
@@ -458,8 +633,9 @@ export function inspectAgentDocs(targetDir, installedVersion, expectedBlock) {
  */
 export function resolveAgentPaths(targetDir, agent) {
   if (agent === 'all') {
-    // Inject into all existing files, create defaults for each tool
-    const existing = discoverAgentDocs(targetDir);
+    // Inject into all existing files, create defaults for each tool. GEMINI.md
+    // is left out: the default keeps a one-line import of AGENTS.md there.
+    const existing = discoverAgentDocs(targetDir).filter(p => p !== GEMINI_MD);
     if (existing.length > 0) {
       return {inject: existing, create: []};
     }
@@ -1004,7 +1180,11 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
       return false;
     }
   };
-  const targets = existing.filter(p => !wrappers.has(p) && !(onlyReplace && isImport(p)));
+  // The GEMINI.md import is left as it is, and a GEMINI.md without a block is
+  // not given one: this per-file layout predates it.
+  const targets = existing.filter(
+    p => !wrappers.has(p) && !isImport(p) && (p !== GEMINI_MD || marked(p)),
+  );
   // A refresh skips unmarked files and a wrapper is only written when it
   // carries a block, so only the files this run writes are checked.
   assertTargetsWithin(targetDir, [
@@ -1025,49 +1205,90 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
 }
 
 /**
- * The default layout: each agent reads the block once. AGENTS.md holds it,
- * GEMINI.md imports it (see {@link AGENTS_IMPORTS}), and .claude/CLAUDE.md
- * holds a copy when Claude Code would skip AGENTS.md. Every wrapper here
- * imports AGENTS.md, so it already reaches the block.
+ * Plan the default layout. AGENTS.md holds the block. The Claude Code file the
+ * project already has holds a copy, so the block sits in a file the project
+ * commits; init creates no Claude file. GEMINI.md imports AGENTS.md unless
+ * Gemini CLI already reads it. Every wrapper here imports AGENTS.md, so it
+ * already reaches the block.
  *
  * @param {string} targetDir
  * @param {string[]} existing
- * @param {Map<string, Set<string>>} imports From {@link readAgentDocImports}.
  * @param {Map<string, Set<string>>} wrappers
  * @param {Set<string>} aliases Files that are AGENTS.md under another name;
  *   they are never written.
- * @param {string} compressedIndex
- * @returns {string[]} files written, in {@link AGENT_DOC_PATHS} order
+ * @returns {Map<string, 'block' | 'import' | 'strip'>}
  */
-function writeDefaultAgentDocs(targetDir, existing, imports, wrappers, aliases, compressedIndex) {
+function planDefaultAgentDocs(targetDir, existing, wrappers, aliases) {
   const present = new Set(existing.filter(p => !aliases.has(p)));
   /** @type {Map<string, 'block' | 'import' | 'strip'>} */
   const plan = new Map([[AGENTS_MD, 'block']]);
-  // Claude Code skips AGENTS.md beside its own files. A Claude file that is
-  // AGENTS.md under another name, or that imports it, already brings the block
-  // in; otherwise .claude/CLAUDE.md gets a copy. Root CLAUDE.md keeps no block.
-  const claudeFiles = [CLAUDE_MD, CLAUDE_DIR_MD].filter(p => present.has(p));
-  const claudeCovered = [CLAUDE_MD, CLAUDE_DIR_MD].some(
-    p => aliases.has(p) || imports.get(p)?.has(AGENTS_MD),
-  );
-  for (const p of claudeFiles) plan.set(p, 'strip');
-  if (claudeFiles.length > 0 && !claudeCovered) plan.set(CLAUDE_DIR_MD, 'block');
-  // Gemini CLI reads only GEMINI.md.
-  if (!aliases.has(GEMINI_MD)) {
-    plan.set(GEMINI_MD, wrappers.has(GEMINI_MD) ? 'strip' : 'import');
+
+  // Claude Code reads CLAUDE.md and .claude/CLAUDE.md, and skips AGENTS.md
+  // when either exists. One standalone Claude file holds the copy: root
+  // CLAUDE.md, which projects commit even when they ignore .claude/, else
+  // .claude/CLAUDE.md. A root CLAUDE.md that is AGENTS.md under another name
+  // already holds the block.
+  const claudeCopy = aliases.has(CLAUDE_MD)
+    ? null
+    : ([CLAUDE_MD, CLAUDE_DIR_MD].find(p => present.has(p) && !wrappers.has(p)) ?? null);
+  for (const p of [CLAUDE_MD, CLAUDE_DIR_MD]) {
+    if (present.has(p)) plan.set(p, p === claudeCopy ? 'block' : 'strip');
   }
+
+  // Gemini CLI reads only GEMINI.md, unless the project's settings point it at
+  // AGENTS.md. An import GEMINI.md already has, even inline, is enough.
+  if (!aliases.has(GEMINI_MD)) {
+    if (geminiReadsAgentsMd(targetDir) || geminiImportsAgentsMd(targetDir)) {
+      if (present.has(GEMINI_MD)) plan.set(GEMINI_MD, 'strip');
+    } else {
+      plan.set(GEMINI_MD, 'import');
+    }
+  }
+
   // Every other file: a full block when standalone, none in a wrapper.
   for (const p of present) {
     if (!plan.has(p)) plan.set(p, wrappers.has(p) ? 'strip' : 'block');
   }
+  return plan;
+}
 
-  // A strip writes only a file that carries a block.
-  assertTargetsWithin(
-    targetDir,
-    [...plan]
-      .filter(([p, action]) => action !== 'strip' || hasManagedMarker(path.join(targetDir, p)))
-      .map(([p]) => p),
-  );
+/**
+ * Write the default layout (see {@link planDefaultAgentDocs}).
+ *
+ * Path safety follows 0.7.0: an agent doc it would have written that resolves
+ * outside `targetDir` refuses the whole run before any write. A file only this
+ * layout writes, such as GEMINI.md, is skipped instead, reported through
+ * `onSkipped`, and the rest is written.
+ *
+ * @param {string} targetDir
+ * @param {string[]} existing
+ * @param {Map<string, Set<string>>} wrappers
+ * @param {Set<string>} aliases
+ * @param {string} compressedIndex
+ * @param {((rel: string, reason: string) => void) | undefined} onSkipped
+ * @returns {string[]} files written, in {@link AGENT_DOC_PATHS} order
+ */
+function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compressedIndex, onSkipped) {
+  const plan = planDefaultAgentDocs(targetDir, existing, wrappers, aliases);
+  const foundLegacy = existing.filter(p => LEGACY_DOC_PATHS.includes(p));
+  /** @param {string} p */
+  const legacy = p =>
+    foundLegacy.includes(p) || (p === AGENTS_MD && foundLegacy.length === 0);
+
+  for (const [p, action] of [...plan]) {
+    // A strip writes only a file that carries a block.
+    if (action === 'strip' && !hasManagedMarker(path.join(targetDir, p))) {
+      plan.delete(p);
+      continue;
+    }
+    try {
+      assertWithin(p, targetDir, {label: 'agent docs path'});
+    } catch (err) {
+      if (!(err instanceof PathSafetyError) || legacy(p)) throw err;
+      plan.delete(p);
+      onSkipped?.(p, err.message);
+    }
+  }
 
   /** @type {string[]} */
   const written = [];
@@ -1091,13 +1312,12 @@ function writeDefaultAgentDocs(targetDir, existing, imports, wrappers, aliases, 
 }
 
 /**
- * Headings for the files the default creates with a full block; the same text
- * the presets write, so `--remove-agents` recognizes and deletes them.
+ * Heading of the AGENTS.md the default creates; the same text the presets
+ * write, so `--remove-agents` recognizes and deletes it.
  * @type {Readonly<Record<string, string>>}
  */
 const CREATED_HEADERS = Object.freeze({
   [AGENTS_MD]: '# AGENTS.md\n\nProject-specific guidance for AI coding agents.',
-  [CLAUDE_DIR_MD]: '# CLAUDE\n\nProject-specific guidance for AI coding agents.',
 });
 
 /**
@@ -1155,12 +1375,14 @@ function stripManagedBlock(filePath, compressedIndex) {
  * Programmatic entry point for installing agent docs.
  * Used by the init command, upgrade command, and agent-docs command.
  *
- * Default strategy (no agent/paths specified), so each agent reads one copy:
+ * Default strategy (no agent/paths specified), so every agent reads the block:
  * - Write the block to AGENTS.md (created when missing).
- * - Write a managed import of AGENTS.md to GEMINI.md (created when missing).
- * - When the project has CLAUDE.md or .claude/CLAUDE.md, write the block to
- *   .claude/CLAUDE.md too (created when missing), and remove a block an older
- *   run left in root CLAUDE.md.
+ * - Write the block to the project's Claude Code file: root CLAUDE.md when it
+ *   exists, else an existing .claude/CLAUDE.md. Remove a block from the other
+ *   one, so Claude Code reads one copy. Create no Claude file.
+ * - Write a managed import of AGENTS.md to GEMINI.md (created when missing),
+ *   unless GEMINI.md already imports AGENTS.md or the project's Gemini
+ *   settings read AGENTS.md.
  * - Keep a full block in every other existing standalone file.
  * - Leave `@path` import wrappers untouched; if an older run expanded a block
  *   into one, remove that duplicate block. When a wrapper imports a file
@@ -1181,11 +1403,14 @@ function stripManagedBlock(filePath, compressedIndex) {
  *   so an integration's topics reach the agent.
  * @param {string} [options.renderedBlock] - Fully rendered expected block. Init
  *   and upgrade pass one shared block to every target.
+ * @param {(rel: string, reason: string) => void} [options.onSkipped] - Called
+ *   for each file the default layout skips because it resolves outside
+ *   `targetDir` (a file 0.7.0 never wrote, such as GEMINI.md).
  * @returns {string[]} List of files written
  * @throws {import('../fs/path-safety.mjs').PathSafetyError} when a file it would
  *   write resolves outside `targetDir`; nothing is written.
- * @throws {AgentDocsHomeError} when `targetDir` is the home folder; nothing is
- *   written.
+ * @throws {AgentDocsHomeError} when `targetDir` is the home folder or a settings
+ *   folder in it; nothing is written.
  */
 export function installAgentDocs(
   targetDir,
@@ -1197,6 +1422,7 @@ export function installAgentDocs(
     onlyReplace = false,
     topics,
     renderedBlock,
+    onSkipped,
   } = {},
 ) {
   assertAgentDocsTarget(targetDir);
@@ -1243,8 +1469,17 @@ export function installAgentDocs(
   // Agent preset
   if (agent) {
     const {inject, create} = resolveAgentPaths(targetDir, agent);
-    assertTargetsWithin(targetDir, [...inject, ...create]);
-    for (const p of inject) {
+    // Claude Code reads CLAUDE.md and .claude/CLAUDE.md together: when the
+    // block goes in CLAUDE.md, .claude/CLAUDE.md gets none, and a block there
+    // is removed.
+    const claudeRoot = inject.includes(CLAUDE_MD);
+    const injectHere = claudeRoot ? inject.filter(p => p !== CLAUDE_DIR_MD) : inject;
+    const strip =
+      claudeRoot && hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD))
+        ? [CLAUDE_DIR_MD]
+        : [];
+    assertTargetsWithin(targetDir, [...injectHere, ...create, ...strip]);
+    for (const p of injectHere) {
       injectXdsBlock(path.join(targetDir, p), compressedIndex);
       written.push(p);
     }
@@ -1260,6 +1495,9 @@ export function installAgentDocs(
       });
       written.push(p);
     }
+    for (const p of strip) {
+      if (stripManagedBlock(path.join(targetDir, p), compressedIndex)) written.push(p);
+    }
     return written;
   }
 
@@ -1272,8 +1510,7 @@ export function installAgentDocs(
   // A wrapper that imports something other than AGENTS.md, or two agent docs
   // that are one file, mean the project chose its own layout: keep the
   // per-file layout then. AGENTS.md under another name is fine.
-  const imports = readAgentDocImports(targetDir, existing, [AGENTS_MD]);
-  const wrappers = findAgentDocWrappers(imports);
+  const wrappers = findAgentDocWrappers(readAgentDocImports(targetDir, existing, [AGENTS_MD]));
   const {agentsAliases, otherShared} = findSharedAgentDocs(targetDir, existing);
   if (otherShared || [...wrappers.values()].some(targets => !targets.has(AGENTS_MD))) {
     const ownWrappers = findAgentDocWrappers(readAgentDocImports(targetDir, existing));
@@ -1282,9 +1519,9 @@ export function installAgentDocs(
   return writeDefaultAgentDocs(
     targetDir,
     existing,
-    imports,
     wrappers,
     agentsAliases,
     compressedIndex,
+    onSkipped,
   );
 }

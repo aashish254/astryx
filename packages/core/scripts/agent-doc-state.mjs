@@ -87,9 +87,32 @@ export function discoverAgentDocs(targetDir) {
 }
 
 /**
+ * Whether `content` holds an Astryx block. A managed block that only imports
+ * another file (the one-line `@./AGENTS.md` that init writes to GEMINI.md) does
+ * not count: it holds nothing once that file has lost its block. A malformed
+ * block still counts, so a half-written file reads as set up.
+ *
+ * @param {string} content
+ * @returns {boolean}
+ */
+export function holdsAstryxBlock(content) {
+  for (const marker of INIT_MARKERS) {
+    let at = content.indexOf(marker);
+    while (at !== -1) {
+      const from = at + marker.length;
+      const end = content.indexOf('<!--', from);
+      const inner = (end === -1 ? content.slice(from) : content.slice(from, end)).trim();
+      if (!/^@\S+$/.test(inner)) return true;
+      at = content.indexOf(marker, from);
+    }
+  }
+  return false;
+}
+
+/**
  * Single source of truth for "is Astryx set up in this project?" — true when any
- * agent-doc file already carries the Astryx marker, i.e. `init` / `agent-docs`
- * has run. Reused by the init & upgrade commands, the per-command setup nudge
+ * agent-doc file already holds an Astryx block, i.e. `init` / `agent-docs` has
+ * run. Reused by the init & upgrade commands, the per-command setup nudge
  * (enforcement layer 3), and the cli postinstall nudge (layer 2). Core's
  * postinstall (separate package, layer 1) mirrors the same marker contract.
  *
@@ -100,7 +123,7 @@ export function isAstryxInitialized(targetDir = process.cwd()) {
   for (const rel of discoverAgentDocs(targetDir)) {
     try {
       const content = fs.readFileSync(path.join(targetDir, rel), 'utf-8');
-      if (INIT_MARKERS.some(m => content.includes(m))) {
+      if (holdsAstryxBlock(content)) {
         return true;
       }
     } catch {
