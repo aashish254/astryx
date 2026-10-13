@@ -44,7 +44,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: 'By default this creates `AGENTS.md` (the tool-agnostic standard most agents read). To target a specific tool\'s file instead:',
+          text: 'By default this writes the instructions to `AGENTS.md` (the tool-agnostic standard most agents read). Gemini CLI reads only `GEMINI.md`, so init adds a one-line import of `AGENTS.md` there. Claude Code skips `AGENTS.md` when the project has a `CLAUDE.md`, so init then also writes the instructions to `.claude/CLAUDE.md`, and keeps them out of a root `CLAUDE.md`. Each agent reads them once, and `upgrade` keeps the copies in sync. To target a specific tool\'s file instead:',
         },
         {
           type: 'code',

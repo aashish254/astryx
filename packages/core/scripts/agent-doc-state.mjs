@@ -39,6 +39,7 @@ import * as path from 'node:path';
 export const AGENTS_MD = 'AGENTS.md';
 export const CLAUDE_MD = 'CLAUDE.md';
 export const CLAUDE_DIR_MD = '.claude/CLAUDE.md'; // cross-platform literal
+export const GEMINI_MD = 'GEMINI.md';
 export const CURSOR_RULES = '.cursorrules';
 export const HERMES_DOT_MD = '.hermes.md';
 export const HERMES_MD = 'HERMES.md';
@@ -51,15 +52,18 @@ export const LEGACY_MARKER_END = '<!-- XDS:END -->';
 
 /**
  * The canonical set of EVERY location an --agent preset (or the default) can
- * write the Astryx block. SINGLE SOURCE OF TRUTH: discovery, removal, and the
- * `isAstryxInitialized` predicate all derive from this list, so "where init
- * writes" and "where we look" can never drift. (Explicit --agent-docs-path
- * targets are user-chosen and not enumerable here.)
+ * write a managed Astryx block — the full block, or the one-line import of
+ * AGENTS.md that the default writes to GEMINI.md. SINGLE
+ * SOURCE OF TRUTH: discovery, removal, and the `isAstryxInitialized` predicate
+ * all derive from this list, so "where init writes" and "where we look" can
+ * never drift. (Explicit --agent-docs-path targets are user-chosen and not
+ * enumerable here.)
  */
 export const AGENT_DOC_PATHS = [
   AGENTS_MD, // Codex / ChatGPT / Muse / generic
   CLAUDE_MD, // Claude Code (root)
   CLAUDE_DIR_MD, // Claude Code (.claude/CLAUDE.md)
+  GEMINI_MD, // Gemini CLI
   CURSOR_RULES, // Cursor
   HERMES_DOT_MD, // Hermes
   HERMES_MD, // Hermes
@@ -74,7 +78,7 @@ export const INIT_MARKERS = [MARKER_START, LEGACY_MARKER_START];
 /**
  * Find all existing agent doc files in a directory, across EVERY location any
  * preset can write (see {@link AGENT_DOC_PATHS}: AGENTS.md, CLAUDE.md,
- * .claude/CLAUDE.md, .cursorrules, .hermes.md, HERMES.md).
+ * .claude/CLAUDE.md, GEMINI.md, .cursorrules, .hermes.md, HERMES.md).
  * @param {string} targetDir
  * @returns {string[]} Relative paths of existing agent doc files
  */

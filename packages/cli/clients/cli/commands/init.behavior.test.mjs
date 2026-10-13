@@ -65,10 +65,12 @@ describe('astryx init — default (no flags)', () => {
 });
 
 describe('astryx init --features', () => {
-  it('--features agents writes AGENTS.md only', async () => {
+  it('--features agents writes AGENTS.md and the GEMINI.md import of it', async () => {
     const {status} = await runCli(['init', '--features', 'agents'], {cwd: tmpDir});
     expect(status).toBe(0);
     expect(exists('AGENTS.md')).toBe(true);
+    expect(read('GEMINI.md')).toBe(`${MARKER_START}\n@./AGENTS.md\n<!-- ASTRYX:END -->\n`);
+    expect(exists('theme.template.ts')).toBe(false);
   });
 
   it('--features theme writes the annotated theme template', async () => {
@@ -118,6 +120,93 @@ describe('astryx init --agent <preset>', () => {
     expect(status).toBe(0);
     expect(exists('AGENTS.md')).toBe(true);
     expect(exists('.claude/CLAUDE.md')).toBe(true);
+  });
+});
+
+describe('astryx init from a subfolder', () => {
+  /** @param {string} dir */
+  const astryxProject = dir =>
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({name: 'app', dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
+
+  it('writes the agent docs at the project root and reports them from where it ran', async () => {
+    astryxProject(tmpDir);
+    const sub = path.join(tmpDir, 'src', 'app');
+    fs.mkdirSync(sub, {recursive: true});
+
+    const json = await runCli(['init', '--json'], {cwd: sub});
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout).data.docsWritten).toEqual([
+      '../../AGENTS.md',
+      '../../GEMINI.md',
+    ]);
+    expect(read('AGENTS.md')).toContain(MARKER_START);
+    expect(fs.readdirSync(sub)).toEqual([]);
+  });
+
+  it('keeps --agent-docs-path relative to where it ran', async () => {
+    astryxProject(tmpDir);
+    const sub = path.join(tmpDir, 'docs');
+    fs.mkdirSync(sub);
+
+    const json = await runCli(['init', '--agent-docs-path', 'AI.md', '--json'], {cwd: sub});
+    expect(JSON.parse(json.stdout).data.docsWritten).toEqual(['AI.md']);
+    expect(fs.readFileSync(path.join(sub, 'AI.md'), 'utf8')).toContain(MARKER_START);
+    expect(exists('AGENTS.md')).toBe(false);
+  });
+});
+
+describe('astryx init in the home folder', () => {
+  const saved = {HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE};
+  const personal = '# My notes\n\nAlways use tabs.\n';
+
+  beforeEach(() => {
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+    fs.mkdirSync(path.join(tmpDir, '.claude'), {recursive: true});
+    fs.writeFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), personal);
+  });
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it('writes no agent docs, says why, and keeps the soft-failure exit code', async () => {
+    const json = await runCli(['init', '--json'], {cwd: tmpDir});
+    expect(json.status).toBe(0);
+    const env = JSON.parse(json.stdout);
+    expect(env.data.docsWritten).toEqual([]);
+    expect(env.data.docsError).toEqual({
+      kind: 'install-failed',
+      message: expect.stringMatching(/not written into the home folder/),
+    });
+
+    const text = await runCli(['init'], {cwd: tmpDir});
+    expect(text.status).toBe(0);
+    expect(text.stderr).toMatch(/not written into the home folder/);
+
+    expect(read('.claude/CLAUDE.md')).toBe(personal);
+    expect(fs.readdirSync(tmpDir)).toEqual(['.claude']);
+  });
+
+  it('does not let a package.json in the home folder pull the docs there', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
+    const scratch = path.join(tmpDir, 'scratch');
+    fs.mkdirSync(scratch);
+
+    const json = await runCli(['init', '--json'], {cwd: scratch});
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout).data.docsWritten).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.existsSync(path.join(scratch, 'AGENTS.md'))).toBe(true);
+    expect(exists('AGENTS.md')).toBe(false);
+    expect(read('.claude/CLAUDE.md')).toBe(personal);
   });
 });
 

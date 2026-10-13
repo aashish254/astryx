@@ -3,23 +3,30 @@
 /**
  * @file agent-docs — Install/update agent docs for AI coding tools
  *
- * Generates a CLI cheat sheet from actual command metadata and injects
- * it into agent doc files. Supports multiple tools with auto-detection:
+ * Generates a CLI cheat sheet from actual command metadata and writes it, as
+ * one managed block, into the files AI coding tools read.
  *
- * - Claude Code: CLAUDE.md (root) or .claude/CLAUDE.md
- * - Cursor: .cursorrules
- * - Codex/generic: AGENTS.md
- * - Muse: AGENTS.md
- * - Hermes Agent: .hermes.md or HERMES.md (existing), else AGENTS.md
+ * Default (no --agent or --agent-docs-path): each agent reads the block once.
  *
- * Auto-detect: discovers existing files and updates them in place.
- * Default (no existing files): creates AGENTS.md (the tool-agnostic standard).
+ * - AGENTS.md holds the block. Most agents read it; Claude Code reads it when
+ *   the folder has no CLAUDE.md or .claude/CLAUDE.md.
+ * - Gemini CLI reads only GEMINI.md: it gets a managed import, `@./AGENTS.md`,
+ *   created when missing.
+ * - Claude Code, when the project has CLAUDE.md or .claude/CLAUDE.md: a copy of
+ *   the block in .claude/CLAUDE.md, created when missing. Root CLAUDE.md keeps
+ *   no block.
+ * - Existing Cursor (.cursorrules) and Hermes (.hermes.md, HERMES.md) files
+ *   keep a full block.
+ *
+ * No mode writes into the home folder: agents read the files there in every
+ * project.
  *
  * --agent <tool>: target a specific tool preset (claude, cursor, codex, hermes, muse, all)
  * --agent-docs-path <path>: explicit file path(s)
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {findCoreDir, CLI_ROOT} from '../fs/paths.mjs';
 import {assertWithin, PathSafetyError} from '../fs/path-safety.mjs';
@@ -31,9 +38,11 @@ import {humanLog} from '../response/json.mjs';
 import {ERROR_CODES} from '../response/error-codes.mjs';
 import {
   AGENTS_MD,
+  AGENT_DOC_PATHS,
   CLAUDE_MD,
   CLAUDE_DIR_MD,
   CURSOR_RULES,
+  GEMINI_MD,
   HERMES_DOT_MD,
   HERMES_MD,
   MARKER_START,
@@ -78,27 +87,26 @@ function validateIntegrationLabel(value) {
 }
 
 /**
- * Find tool-specific files that import another detected agent doc.
- *
- * Claude's `@path` directive is a real include, so injecting the full managed
- * block beside it duplicates the same instructions. Only an import whose
- * normalized target is another known agent doc counts; prose mentions and
- * standalone files keep the normal initialization behavior. Import cycles have
- * no canonical owner, so their members also stay standalone.
+ * The `@path` imports of other agent docs in each agent doc. Only an import
+ * whose normalized target is another known agent doc counts; prose mentions do
+ * not. Lines inside the managed block are Astryx's own (the default writes an
+ * import of AGENTS.md there), so they never count as the project's import.
  *
  * @param {string} targetDir
  * @param {string[]} agentDocs
- * @returns {Set<string>}
+ * @param {string[]} [extraTargets] Import targets that count even though they
+ *   do not exist yet (the default always writes AGENTS.md).
+ * @returns {Map<string, Set<string>>} each importing doc and the docs it imports.
  */
-function discoverAgentDocWrappers(targetDir, agentDocs) {
-  const known = new Set(agentDocs.map(p => path.normalize(p)));
+function readAgentDocImports(targetDir, agentDocs, extraTargets = []) {
+  const known = new Set([...agentDocs, ...extraTargets].map(p => path.normalize(p)));
   /** @type {Map<string, Set<string>>} */
   const imports = new Map();
 
   for (const rel of agentDocs) {
     let content;
     try {
-      content = fs.readFileSync(path.join(targetDir, rel), 'utf-8');
+      content = withoutManagedBlock(fs.readFileSync(path.join(targetDir, rel), 'utf-8'));
     } catch {
       continue;
     }
@@ -114,7 +122,21 @@ function discoverAgentDocWrappers(targetDir, agentDocs) {
     }
     if (targets.size > 0) imports.set(rel, targets);
   }
+  return imports;
+}
 
+/**
+ * Find tool-specific files that import another detected agent doc.
+ *
+ * Claude's `@path` directive is a real include, so injecting the full managed
+ * block beside it duplicates the same instructions. Standalone files keep the
+ * normal initialization behavior. Import cycles have no canonical owner, so
+ * their members also stay standalone.
+ *
+ * @param {Map<string, Set<string>>} imports From {@link readAgentDocImports}.
+ * @returns {Map<string, Set<string>>} each wrapper and the agent docs it imports.
+ */
+function findAgentDocWrappers(imports) {
   /** @param {string} start */
   const isCyclic = start => {
     /**
@@ -133,7 +155,7 @@ function discoverAgentDocWrappers(targetDir, agentDocs) {
     return visit(start, new Set([start]));
   };
 
-  return new Set([...imports.keys()].filter(rel => !isCyclic(rel)));
+  return new Map([...imports].filter(([rel]) => !isCyclic(rel)));
 }
 
 /**
@@ -176,6 +198,149 @@ function findManagedBlock(content) {
 }
 
 /**
+ * `content` with its managed block cut out. A malformed block is left in
+ * place; the writers refuse it later.
+ * @param {string} content
+ * @returns {string}
+ */
+function withoutManagedBlock(content) {
+  try {
+    const block = findManagedBlock(content);
+    return block ? content.slice(0, block.start) + content.slice(block.end) : content;
+  } catch {
+    return content;
+  }
+}
+
+/**
+ * The managed one-line import of AGENTS.md that the default writes, keyed by
+ * file. Gemini CLI reads only GEMINI.md and expands `@./AGENTS.md` there.
+ *
+ * Claude Code gets a copy of the block, not an import. It skips AGENTS.md in a
+ * folder that has CLAUDE.md or .claude/CLAUDE.md, and it asks before following
+ * an import of a file above the folder a session starts in; a headless session
+ * never asks, so a session started in a subfolder would get nothing. The copy
+ * goes in .claude/CLAUDE.md, never root CLAUDE.md: Copilot CLI reads AGENTS.md
+ * and root CLAUDE.md together (and expands imports in CLAUDE.md), so a block
+ * there reaches it twice. It does not read .claude/CLAUDE.md.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+const AGENTS_IMPORTS = Object.freeze({
+  [GEMINI_MD]: '@./AGENTS.md',
+});
+
+/**
+ * The managed block holding the import of AGENTS.md for `rel`.
+ * @param {string} rel A key of {@link AGENTS_IMPORTS}.
+ * @returns {string}
+ */
+function renderAgentsImportBlock(rel) {
+  return `${MARKER_START}\n${AGENTS_IMPORTS[rel]}\n${MARKER_END}`;
+}
+
+/**
+ * Whether the managed block in `content` holds only an import of the root
+ * AGENTS.md, resolved from the folder of `rel`. Such a block names no version,
+ * so it stays current while it points at AGENTS.md.
+ * @param {string} rel Project-relative path of the file `content` came from.
+ * @param {string} content
+ * @returns {boolean}
+ */
+function isAgentsImportBlock(rel, content) {
+  let block;
+  try {
+    block = findManagedBlock(content);
+  } catch {
+    return false;
+  }
+  if (block == null) return false;
+  const text = content.slice(block.start, block.end);
+  const inner = text.slice(text.indexOf('-->') + 3, text.lastIndexOf('<!--')).trim();
+  const match = /^@(\S+)$/.exec(inner);
+  if (match == null || path.isAbsolute(match[1])) return false;
+  return path.normalize(path.join(path.dirname(rel), match[1])) === AGENTS_MD;
+}
+
+/**
+ * Thrown when agent docs would be written into the home folder. Agents read the
+ * files there (for example `~/.claude/CLAUDE.md`) in every project, so a
+ * project's version-pinned block never goes there. Removal stays allowed.
+ */
+export class AgentDocsHomeError extends Error {
+  /** @param {string} dir */
+  constructor(dir) {
+    super(
+      `Agent docs are not written into the home folder (${dir}): agents read the files there in every project. Run init inside a project folder.`,
+    );
+    this.name = 'AgentDocsHomeError';
+  }
+}
+
+/**
+ * `p` resolved, through symlinks when it exists.
+ * @param {string} p
+ * @returns {string}
+ */
+function realDir(p) {
+  try {
+    return fs.realpathSync(path.resolve(p));
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * Whether `dir` is the home folder.
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function isHomeFolder(dir) {
+  let home;
+  try {
+    home = os.homedir();
+  } catch {
+    return false;
+  }
+  if (!home) return false;
+  const a = realDir(dir);
+  const b = realDir(home);
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+/**
+ * Throw {@link AgentDocsHomeError} when `targetDir` is the home folder.
+ * @param {string} targetDir
+ */
+export function assertAgentDocsTarget(targetDir) {
+  if (isHomeFolder(targetDir)) throw new AgentDocsHomeError(realDir(targetDir));
+}
+
+/** Folders that mark a repository root; the project search stops there. */
+const REPOSITORY_MARKERS = ['.git', '.hg', '.sl'];
+
+/**
+ * The folder a run started in `cwd` writes agent docs to: the nearest folder at
+ * or above it with a package.json, the project root that config and
+ * integrations load from. The search stops at a repository root and never
+ * reaches the home folder, so a stray `~/package.json` cannot pull the docs
+ * there. With no such folder, `cwd`.
+ * @param {string} cwd
+ * @returns {string}
+ */
+export function resolveAgentDocsRoot(cwd) {
+  let dir = path.resolve(cwd);
+  for (let i = 0; i < 50 && !isHomeFolder(dir); i++) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+    if (REPOSITORY_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) break;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(cwd);
+}
+
+/**
  * Agent tool presets — maps tool names to their file search paths.
  * Order matters: first existing file wins, last entry is the default (created if none exist).
  */
@@ -213,6 +378,8 @@ export function parseBlockVersion(content) {
  * - `current` — every managed block already matches the installed version.
  * And the project is `missing` when no managed block exists anywhere (the repo
  * has agent-doc files without our markers, or none at all — i.e. never `init`ed).
+ * A managed import of AGENTS.md is not a block here: it names no version and
+ * stays current while AGENTS.md holds the block.
  *
  * @param {string} targetDir
  * @param {string} [installedVersion] Defaults to the installed core version.
@@ -242,6 +409,8 @@ export function inspectAgentDocs(targetDir, installedVersion, expectedBlock) {
     const hasNew = content.includes(MARKER_START);
     const hasLegacy = content.includes(LEGACY_MARKER_START);
     if (!hasNew && !hasLegacy) continue; // Not a block we manage.
+    // An import of AGENTS.md names no version and never needs a refresh.
+    if (isAgentsImportBlock(rel, content)) continue;
 
     const legacy = !hasNew && hasLegacy;
     const blockVersion = parseBlockVersion(content);
@@ -797,6 +966,10 @@ export function removeAgentDocs(targetDir) {
     // Delete if empty for files we created (AGENTS.md, .claude/CLAUDE.md)
     const deleteIfEmpty = p === AGENTS_MD || p === CLAUDE_DIR_MD;
     if (removeXdsBlock(filePath, {deleteIfEmpty})) {
+      // The default creates GEMINI.md holding only the import of AGENTS.md.
+      if (p === GEMINI_MD && fs.readFileSync(filePath, 'utf-8').trim() === '') {
+        fs.unlinkSync(filePath);
+      }
       removedFrom.push(p);
       if (!fs.existsSync(filePath)) {
         humanLog(`[ok] Removed empty ${p}`);
@@ -809,15 +982,192 @@ export function removeAgentDocs(targetDir) {
 }
 
 /**
+ * Write the block into each standalone agent doc and remove a managed block
+ * from each import wrapper. A refresh (`onlyReplace`) skips files without a
+ * block and leaves a managed import of AGENTS.md as it is.
+ *
+ * @param {string} targetDir
+ * @param {string[]} existing
+ * @param {Map<string, Set<string>>} wrappers
+ * @param {string} compressedIndex
+ * @param {boolean} onlyReplace
+ * @returns {string[]} files written
+ */
+function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyReplace) {
+  /** @param {string} p */
+  const marked = p => hasManagedMarker(path.join(targetDir, p));
+  /** @param {string} p */
+  const isImport = p => {
+    try {
+      return isAgentsImportBlock(p, fs.readFileSync(path.join(targetDir, p), 'utf-8'));
+    } catch {
+      return false;
+    }
+  };
+  const targets = existing.filter(p => !wrappers.has(p) && !(onlyReplace && isImport(p)));
+  // A refresh skips unmarked files and a wrapper is only written when it
+  // carries a block, so only the files this run writes are checked.
+  assertTargetsWithin(targetDir, [
+    ...targets.filter(p => !onlyReplace || marked(p)),
+    ...[...wrappers.keys()].filter(marked),
+  ]);
+
+  /** @type {string[]} */
+  const written = [];
+  for (const p of targets) {
+    const didWrite = injectXdsBlock(path.join(targetDir, p), compressedIndex, {onlyReplace});
+    if (didWrite) written.push(p);
+  }
+  for (const p of wrappers.keys()) {
+    if (stripManagedBlock(path.join(targetDir, p), compressedIndex)) written.push(p);
+  }
+  return written;
+}
+
+/**
+ * The default layout: each agent reads the block once. AGENTS.md holds it,
+ * GEMINI.md imports it (see {@link AGENTS_IMPORTS}), and .claude/CLAUDE.md
+ * holds a copy when Claude Code would skip AGENTS.md. Every wrapper here
+ * imports AGENTS.md, so it already reaches the block.
+ *
+ * @param {string} targetDir
+ * @param {string[]} existing
+ * @param {Map<string, Set<string>>} imports From {@link readAgentDocImports}.
+ * @param {Map<string, Set<string>>} wrappers
+ * @param {Set<string>} aliases Files that are AGENTS.md under another name;
+ *   they are never written.
+ * @param {string} compressedIndex
+ * @returns {string[]} files written, in {@link AGENT_DOC_PATHS} order
+ */
+function writeDefaultAgentDocs(targetDir, existing, imports, wrappers, aliases, compressedIndex) {
+  const present = new Set(existing.filter(p => !aliases.has(p)));
+  /** @type {Map<string, 'block' | 'import' | 'strip'>} */
+  const plan = new Map([[AGENTS_MD, 'block']]);
+  // Claude Code skips AGENTS.md beside its own files. A Claude file that is
+  // AGENTS.md under another name, or that imports it, already brings the block
+  // in; otherwise .claude/CLAUDE.md gets a copy. Root CLAUDE.md keeps no block.
+  const claudeFiles = [CLAUDE_MD, CLAUDE_DIR_MD].filter(p => present.has(p));
+  const claudeCovered = [CLAUDE_MD, CLAUDE_DIR_MD].some(
+    p => aliases.has(p) || imports.get(p)?.has(AGENTS_MD),
+  );
+  for (const p of claudeFiles) plan.set(p, 'strip');
+  if (claudeFiles.length > 0 && !claudeCovered) plan.set(CLAUDE_DIR_MD, 'block');
+  // Gemini CLI reads only GEMINI.md.
+  if (!aliases.has(GEMINI_MD)) {
+    plan.set(GEMINI_MD, wrappers.has(GEMINI_MD) ? 'strip' : 'import');
+  }
+  // Every other file: a full block when standalone, none in a wrapper.
+  for (const p of present) {
+    if (!plan.has(p)) plan.set(p, wrappers.has(p) ? 'strip' : 'block');
+  }
+
+  // A strip writes only a file that carries a block.
+  assertTargetsWithin(
+    targetDir,
+    [...plan]
+      .filter(([p, action]) => action !== 'strip' || hasManagedMarker(path.join(targetDir, p)))
+      .map(([p]) => p),
+  );
+
+  /** @type {string[]} */
+  const written = [];
+  for (const p of AGENT_DOC_PATHS) {
+    const action = plan.get(p);
+    if (action == null) continue;
+    const filePath = path.join(targetDir, p);
+    if (action === 'strip') {
+      if (stripManagedBlock(filePath, compressedIndex)) written.push(p);
+      continue;
+    }
+    fs.mkdirSync(path.dirname(filePath), {recursive: true});
+    injectXdsBlock(
+      filePath,
+      action === 'block' ? compressedIndex : renderAgentsImportBlock(p),
+      {createIfMissing: true, header: CREATED_HEADERS[p] ?? ''},
+    );
+    written.push(p);
+  }
+  return written;
+}
+
+/**
+ * Headings for the files the default creates with a full block; the same text
+ * the presets write, so `--remove-agents` recognizes and deletes them.
+ * @type {Readonly<Record<string, string>>}
+ */
+const CREATED_HEADERS = Object.freeze({
+  [AGENTS_MD]: '# AGENTS.md\n\nProject-specific guidance for AI coding agents.',
+  [CLAUDE_DIR_MD]: '# CLAUDE\n\nProject-specific guidance for AI coding agents.',
+});
+
+/**
+ * Agent docs that are one file under several names (symlinks), resolved inside
+ * or outside the project.
+ * @param {string} targetDir
+ * @param {string[]} existing
+ * @returns {{agentsAliases: Set<string>, otherShared: boolean}} the files that
+ *   are AGENTS.md under another name, and whether any other two docs share a
+ *   file.
+ */
+function findSharedAgentDocs(targetDir, existing) {
+  /** @type {Map<string, string[]>} */
+  const byFile = new Map();
+  for (const p of existing) {
+    let real;
+    try {
+      real = fs.realpathSync(path.join(targetDir, p));
+    } catch {
+      real = path.resolve(targetDir, p);
+    }
+    byFile.set(real, [...(byFile.get(real) ?? []), p]);
+  }
+  /** @type {Set<string>} */
+  const agentsAliases = new Set();
+  let otherShared = false;
+  for (const names of byFile.values()) {
+    if (names.length < 2) continue;
+    if (!names.includes(AGENTS_MD)) {
+      otherShared = true;
+      continue;
+    }
+    for (const name of names) if (name !== AGENTS_MD) agentsAliases.add(name);
+  }
+  return {agentsAliases, otherShared};
+}
+
+/**
+ * Remove the managed block from a file that should not carry one. A malformed
+ * block is refused (throws) rather than guessed at.
+ * @param {string} filePath
+ * @param {string} compressedIndex
+ * @returns {boolean} whether the file changed
+ */
+function stripManagedBlock(filePath, compressedIndex) {
+  if (removeXdsBlock(filePath)) return true;
+  if (hasManagedMarker(filePath)) {
+    // Preserve the existing fail-closed behavior for malformed blocks.
+    injectXdsBlock(filePath, compressedIndex, {onlyReplace: true});
+  }
+  return false;
+}
+
+/**
  * Programmatic entry point for installing agent docs.
  * Used by the init command, upgrade command, and agent-docs command.
  *
- * Strategy (when no agent/paths specified):
- * - Discover all existing agent doc files.
+ * Default strategy (no agent/paths specified), so each agent reads one copy:
+ * - Write the block to AGENTS.md (created when missing).
+ * - Write a managed import of AGENTS.md to GEMINI.md (created when missing).
+ * - When the project has CLAUDE.md or .claude/CLAUDE.md, write the block to
+ *   .claude/CLAUDE.md too (created when missing), and remove a block an older
+ *   run left in root CLAUDE.md.
+ * - Keep a full block in every other existing standalone file.
  * - Leave `@path` import wrappers untouched; if an older run expanded a block
- *   into one, remove that duplicate block.
- * - Initialize or refresh every standalone file.
- * - If nothing exists, create AGENTS.md as the tool-agnostic default.
+ *   into one, remove that duplicate block. When a wrapper imports a file
+ *   other than AGENTS.md, the project keeps its own layout: every standalone
+ *   file gets the block.
+ * A refresh (`onlyReplace`) rewrites existing blocks in place, leaves imports
+ * of AGENTS.md as they are, and creates nothing.
  *
  * @param {string} targetDir
  * @param {object} [options]
@@ -834,6 +1184,8 @@ export function removeAgentDocs(targetDir) {
  * @returns {string[]} List of files written
  * @throws {import('../fs/path-safety.mjs').PathSafetyError} when a file it would
  *   write resolves outside `targetDir`; nothing is written.
+ * @throws {AgentDocsHomeError} when `targetDir` is the home folder; nothing is
+ *   written.
  */
 export function installAgentDocs(
   targetDir,
@@ -847,6 +1199,7 @@ export function installAgentDocs(
     renderedBlock,
   } = {},
 ) {
+  assertAgentDocsTarget(targetDir);
   const coreDir = findCoreDir(targetDir);
   const version = getXdsVersion(coreDir);
   const invocation = getCliInvocation(targetDir);
@@ -910,54 +1263,28 @@ export function installAgentDocs(
     return written;
   }
 
-  // Auto-detect: initialize standalone files, but do not expand the managed
-  // block beside an `@path` import of another agent doc. Remove a block from a
-  // wrapper if an older run already duplicated it there.
+  // Auto-detect. A refresh rewrites each existing block where it is.
   const existing = discoverAgentDocs(targetDir);
-
-  if (existing.length > 0) {
-    const wrappers = discoverAgentDocWrappers(targetDir, existing);
-    const targets = existing.filter(p => !wrappers.has(p));
-    // A refresh skips unmarked files and a wrapper is only written when it
-    // carries a block, so only the files this run writes are checked.
-    /** @param {string} p */
-    const marked = p => hasManagedMarker(path.join(targetDir, p));
-    assertTargetsWithin(targetDir, [
-      ...targets.filter(p => !onlyReplace || marked(p)),
-      ...[...wrappers].filter(marked),
-    ]);
-
-    for (const p of targets) {
-      const didWrite = injectXdsBlock(path.join(targetDir, p), compressedIndex, {onlyReplace});
-      if (didWrite) written.push(p);
-    }
-    for (const p of wrappers) {
-      const filePath = path.join(targetDir, p);
-      if (removeXdsBlock(filePath)) {
-        written.push(p);
-      } else {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        if (content.includes(MARKER_START) || content.includes(LEGACY_MARKER_START)) {
-          // Preserve the existing fail-closed behavior for malformed blocks.
-          injectXdsBlock(filePath, compressedIndex, {onlyReplace: true});
-        }
-      }
-    }
-    return written;
+  if (onlyReplace) {
+    const wrappers = findAgentDocWrappers(readAgentDocImports(targetDir, existing));
+    return writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, true);
   }
-
-  // Nothing exists — create root AGENTS.md as the default (skip if onlyReplace).
-  // AGENTS.md is the tool-agnostic standard (Codex/Copilot, Cursor, Muse, and
-  // most agents read it), so it's the safe default. Claude-specific output is
-  // opt-in via `--agent claude` (→ .claude/CLAUDE.md); `--agent all` writes both.
-  if (onlyReplace) return written;
-
-  const defaultPath = AGENTS_MD;
-  assertTargetsWithin(targetDir, [defaultPath]);
-  injectXdsBlock(path.join(targetDir, defaultPath), compressedIndex, {
-    createIfMissing: true,
-    header: `# AGENTS.md\n\nProject-specific guidance for AI coding agents.`,
-  });
-  written.push(defaultPath);
-  return written;
+  // A wrapper that imports something other than AGENTS.md, or two agent docs
+  // that are one file, mean the project chose its own layout: keep the
+  // per-file layout then. AGENTS.md under another name is fine.
+  const imports = readAgentDocImports(targetDir, existing, [AGENTS_MD]);
+  const wrappers = findAgentDocWrappers(imports);
+  const {agentsAliases, otherShared} = findSharedAgentDocs(targetDir, existing);
+  if (otherShared || [...wrappers.values()].some(targets => !targets.has(AGENTS_MD))) {
+    const ownWrappers = findAgentDocWrappers(readAgentDocImports(targetDir, existing));
+    return writeEachAgentDoc(targetDir, existing, ownWrappers, compressedIndex, false);
+  }
+  return writeDefaultAgentDocs(
+    targetDir,
+    existing,
+    imports,
+    wrappers,
+    agentsAliases,
+    compressedIndex,
+  );
 }

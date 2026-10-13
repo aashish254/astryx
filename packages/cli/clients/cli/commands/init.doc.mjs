@@ -16,10 +16,14 @@ export const doc = {
   summary: 'Initialize the design system in your project',
   description:
     'Non-interactive project setup (no prompts, so it behaves the same for humans, ' +
-    'agents, and CI). By default it installs the AGENTS.md/CLAUDE.md agent-docs, ' +
-    'including guidance from configured integrations, and prints getting-started ' +
-    "steps. --features and --all print only the chosen features' guidance (no " +
-    'getting-started steps); the theme feature also writes an annotated theme template.',
+    'agents, and CI). By default it writes the agent-docs block, including guidance ' +
+    'from configured integrations, so each agent reads it once: to AGENTS.md, as a ' +
+    'one-line import of AGENTS.md in GEMINI.md, and, when the project has a CLAUDE.md ' +
+    'or .claude/CLAUDE.md, to .claude/CLAUDE.md (never root CLAUDE.md). It then prints ' +
+    'getting-started steps. Agent docs go to the project ' +
+    'root, the nearest folder at or above this one with a package.json, and never into ' +
+    "the home folder. --features and --all print only the chosen features' " +
+    'guidance (no getting-started steps); the theme feature also writes an annotated theme template.',
   fn: 'init',
   options: [
     {
@@ -39,8 +43,8 @@ export const doc = {
       flag: '--remove-agents',
       param: 'options.removeAgents',
       description:
-        'Remove the managed block from AGENTS.md, CLAUDE.md, .claude/CLAUDE.md, .cursorrules, .hermes.md and HERMES.md ' +
-        "(deleting AGENTS.md or .claude/CLAUDE.md when only init's heading is left) and do nothing else. " +
+        'Remove the managed block from AGENTS.md, CLAUDE.md, .claude/CLAUDE.md, GEMINI.md, .cursorrules, .hermes.md and HERMES.md ' +
+        "(deleting AGENTS.md or .claude/CLAUDE.md when only init's heading is left, and GEMINI.md when nothing is left) and do nothing else. " +
         '--features, --all, --agent and --agent-docs-path are refused; a file written with --agent-docs-path keeps its block',
     },
     {
@@ -70,7 +74,7 @@ export const doc = {
   exitCodes: [
     {
       code: 0,
-      when: 'success, including agent docs that could not be written for a reason other than a path escape (reported as docsError)',
+      when: 'success, including agent docs that could not be written for a reason other than a path escape, such as running in the home folder (reported as docsError)',
     },
     {
       code: 1,

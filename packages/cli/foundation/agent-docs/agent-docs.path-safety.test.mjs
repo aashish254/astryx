@@ -10,7 +10,9 @@
  *
  * Auto-detected and preset files were never checked at all, so a `CLAUDE.md`
  * or `.claude/` symlinked out of the project had the block written through
- * it. Every case now throws PathSafetyError before any file is touched.
+ * it. Every case now throws PathSafetyError before any file is touched. A
+ * linked file the run would not write (a root CLAUDE.md with no block, under
+ * the default layout) is left alone.
  *
  * `removeAgentDocs` (`init --remove-agents`) stripped or deleted a block
  * through the same kind of link and reported success. It now refuses with
@@ -100,13 +102,42 @@ describe('installAgentDocs never writes through a symlink out of the project', (
   it('refuses an auto-detected file that links outside', () => {
     const {project, outside} = layout();
     const shared = path.join(outside, 'CLAUDE.md');
-    fs.writeFileSync(shared, '# Shared\n');
+    // The default would remove this block from root CLAUDE.md.
+    fs.writeFileSync(shared, `# Shared\n\n${BLOCK}\n`);
     fs.symlinkSync(shared, path.join(project, 'CLAUDE.md'));
 
     expect(() => installAgentDocs(project, {renderedBlock: BLOCK})).toThrow(
       /outside the project root/,
     );
+    expect(fs.readFileSync(shared, 'utf-8')).toBe(`# Shared\n\n${BLOCK}\n`);
+    expect(fs.readdirSync(project)).toEqual(['CLAUDE.md']);
+  });
+
+  it('leaves an outside link it would not write untouched', () => {
+    const {project, outside} = layout();
+    const shared = path.join(outside, 'CLAUDE.md');
+    fs.writeFileSync(shared, '# Shared\n');
+    fs.symlinkSync(shared, path.join(project, 'CLAUDE.md'));
+
+    expect(installAgentDocs(project, {renderedBlock: BLOCK})).toEqual([
+      'AGENTS.md',
+      '.claude/CLAUDE.md',
+      'GEMINI.md',
+    ]);
     expect(fs.readFileSync(shared, 'utf-8')).toBe('# Shared\n');
+    expect(fs.readdirSync(outside)).toEqual(['CLAUDE.md']);
+  });
+
+  it('refuses the Claude copy reached through a symlinked directory', () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Claude\n');
+    fs.symlinkSync(outside, path.join(project, '.claude'));
+
+    expect(() => installAgentDocs(project, {renderedBlock: BLOCK})).toThrow(
+      PathSafetyError,
+    );
+    expect(fs.readdirSync(outside)).toEqual([]);
+    expect(fs.existsSync(path.join(project, 'AGENTS.md'))).toBe(false);
   });
 
   it('refuses a preset file reached through a symlinked directory', () => {
@@ -134,9 +165,9 @@ describe('installAgentDocs never writes through a symlink out of the project', (
   it('writes nothing when any file of the set escapes', () => {
     const {project, outside} = layout();
     fs.writeFileSync(path.join(project, 'AGENTS.md'), '# Agents\n');
-    const shared = path.join(outside, 'CLAUDE.md');
+    const shared = path.join(outside, 'GEMINI.md');
     fs.writeFileSync(shared, '# Shared\n');
-    fs.symlinkSync(shared, path.join(project, 'CLAUDE.md'));
+    fs.symlinkSync(shared, path.join(project, 'GEMINI.md'));
 
     expect(() => installAgentDocs(project, {renderedBlock: BLOCK})).toThrow(
       PathSafetyError,
@@ -197,9 +228,10 @@ describe('installAgentDocs never writes through a symlink out of the project', (
     fs.writeFileSync(path.join(project, 'AGENTS.md'), '# Agents\n');
     fs.symlinkSync('AGENTS.md', path.join(project, 'CLAUDE.md'));
 
+    // CLAUDE.md is AGENTS.md under another name, so it already has the block.
     expect(installAgentDocs(project, {renderedBlock: BLOCK})).toEqual([
       'AGENTS.md',
-      'CLAUDE.md',
+      'GEMINI.md',
     ]);
     const content = fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf-8');
     expect(content.split('<!-- ASTRYX:START -->')).toHaveLength(2);
@@ -213,9 +245,9 @@ describe('init --features agents with an agent doc linked outside the project', 
     fs.mkdirSync(project, {recursive: true});
     fs.mkdirSync(outside, {recursive: true});
     fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
-    const shared = path.join(outside, 'CLAUDE.md');
+    const shared = path.join(outside, 'GEMINI.md');
     fs.writeFileSync(shared, '# Shared\n');
-    fs.symlinkSync(shared, path.join(project, 'CLAUDE.md'));
+    fs.symlinkSync(shared, path.join(project, 'GEMINI.md'));
 
     const json = await runCli(['init', '--features', 'agents', '--json'], project);
     expect(json.status).toBe(1);

@@ -20,9 +20,53 @@ import {
   renderAgentDocsBlock,
   inspectAgentDocs,
   isAstryxInitialized,
+  AgentDocsHomeError,
+  resolveAgentDocsRoot,
 } from './agent-docs.mjs';
 
 let tmpDir;
+
+/** The managed import of AGENTS.md the default writes to GEMINI.md. */
+const GEMINI_IMPORT = '<!-- ASTRYX:START -->\n@./AGENTS.md\n<!-- ASTRYX:END -->\n';
+/** The heading of a .claude/CLAUDE.md the default creates. */
+const CLAUDE_HEADING = '# CLAUDE\n\nProject-specific guidance for AI coding agents.\n\n';
+
+/** Every file the default layout can write. */
+const LAYOUT_FILES = ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', 'GEMINI.md'];
+
+/**
+ * How many full managed blocks the files hold, by the header every block
+ * starts with. An import of AGENTS.md carries no header.
+ * @param {string} dir
+ * @param {string[]} files
+ */
+function countBlocks(dir, files) {
+  return files
+    .filter(f => fs.existsSync(path.join(dir, f)))
+    .map(f => fs.readFileSync(path.join(dir, f), 'utf-8').split(/Astryx v\d/).length - 1)
+    .reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Full blocks in the files each agent reads at the project root, as measured
+ * for the default layout: Codex reads AGENTS.md; Copilot CLI reads AGENTS.md,
+ * CLAUDE.md and GEMINI.md; Claude Code reads CLAUDE.md and .claude/CLAUDE.md,
+ * or AGENTS.md when neither exists. An import counts for nothing here, so a
+ * Claude import of AGENTS.md (which a subfolder session does not follow
+ * without approval) reads as 0. Gemini CLI reads GEMINI.md, checked on its own.
+ * @param {string} dir
+ */
+function blocksSeen(dir) {
+  const claudeFiles = ['CLAUDE.md', '.claude/CLAUDE.md'].filter(f =>
+    fs.existsSync(path.join(dir, f)),
+  );
+  return {
+    claude: countBlocks(dir, claudeFiles.length > 0 ? claudeFiles : ['AGENTS.md']),
+    codex: countBlocks(dir, ['AGENTS.md']),
+    copilot: countBlocks(dir, ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']),
+  };
+}
+const ONCE_EACH = {claude: 1, codex: 1, copilot: 1};
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-agent-docs-test-'));
@@ -297,19 +341,22 @@ describe('renderAgentDocsBlock', () => {
         'utf-8',
       );
       const firstClaude = fs.readFileSync(
-        path.join(projectDir, 'CLAUDE.md'),
+        path.join(projectDir, '.claude', 'CLAUDE.md'),
         'utf-8',
       );
       expect(firstAgents).toContain(renderedBlock);
-      expect(firstClaude).toContain(renderedBlock);
+      expect(firstClaude).toBe(`${CLAUDE_HEADING}${renderedBlock}\n`);
+      expect(fs.readFileSync(path.join(projectDir, 'CLAUDE.md'), 'utf-8')).toBe(
+        '# Claude\n',
+      );
 
       installAgentDocs(projectDir, {renderedBlock});
       expect(fs.readFileSync(path.join(projectDir, 'AGENTS.md'), 'utf-8')).toBe(
         firstAgents,
       );
-      expect(fs.readFileSync(path.join(projectDir, 'CLAUDE.md'), 'utf-8')).toBe(
-        firstClaude,
-      );
+      expect(
+        fs.readFileSync(path.join(projectDir, '.claude', 'CLAUDE.md'), 'utf-8'),
+      ).toBe(firstClaude);
     } finally {
       fs.rmSync(projectDir, {recursive: true, force: true});
     }
@@ -655,24 +702,27 @@ describe('installAgentDocs', () => {
     );
   }
 
-  it('creates AGENTS.md when no agent docs exist (tool-agnostic default)', () => {
+  it('creates AGENTS.md, plus the GEMINI.md import, when no agent docs exist', () => {
     setupCorePackage(tmpDir);
 
     const written = installAgentDocs(tmpDir);
 
-    expect(written).toEqual(['AGENTS.md']);
+    expect(written).toEqual(['AGENTS.md', 'GEMINI.md']);
     expect(fs.existsSync(path.join(tmpDir, 'AGENTS.md'))).toBe(true);
-    // Must NOT create the Claude-specific file by default.
+    // Claude Code reads AGENTS.md when the project has no CLAUDE.md, so no
+    // Claude file is created.
     expect(fs.existsSync(path.join(tmpDir, '.claude', 'CLAUDE.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'CLAUDE.md'))).toBe(false);
     const content = fs.readFileSync(path.join(tmpDir, 'AGENTS.md'), 'utf-8');
     expect(content).toContain('# AGENTS.md');
     expect(content).toContain('<!-- ASTRYX:START -->');
+    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe(GEMINI_IMPORT);
   });
 
   it('defaults to AGENTS.md but writes .claude/CLAUDE.md only when --agent claude is explicit', () => {
     // Default (no agent): tool-agnostic AGENTS.md, never the Claude file.
     setupCorePackage(tmpDir);
-    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md']);
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
     expect(fs.existsSync(path.join(tmpDir, '.claude', 'CLAUDE.md'))).toBe(false);
 
     // Explicit Claude: the Claude-specific file, in a fresh project.
@@ -686,32 +736,97 @@ describe('installAgentDocs', () => {
     }
   });
 
-  it('injects into CLAUDE.md at root when it exists', () => {
+  it('gives each agent one copy when the project has only CLAUDE.md', () => {
+    // Codex and Copilot read AGENTS.md, Gemini CLI reads GEMINI.md, and
+    // Claude Code reads CLAUDE.md and .claude/CLAUDE.md, so the block goes in
+    // AGENTS.md and .claude/CLAUDE.md and root CLAUDE.md keeps none.
     setupCorePackage(tmpDir);
     fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n\nProject rules.\n');
 
     const written = installAgentDocs(tmpDir);
 
-    expect(written).toEqual(['CLAUDE.md']);
-    expect(fs.existsSync(path.join(tmpDir, 'AGENTS.md'))).toBe(false);
-    const claudeContent = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
-    expect(claudeContent).toContain('<!-- ASTRYX:START -->');
-    expect(claudeContent).toContain('Project rules.');
+    expect(written).toEqual(['AGENTS.md', '.claude/CLAUDE.md', 'GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toBe(
+      '# Claude\n\nProject rules.\n',
+    );
+    expect(
+      fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8').startsWith(
+        `${CLAUDE_HEADING}<!-- ASTRYX:START -->`,
+      ),
+    ).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe(GEMINI_IMPORT);
+    expect(blocksSeen(tmpDir)).toEqual(ONCE_EACH);
   });
 
-  it('injects into all existing agent doc files', () => {
+  it('keeps the block out of root CLAUDE.md when AGENTS.md and CLAUDE.md both exist', () => {
+    // Copilot CLI reads AGENTS.md and root CLAUDE.md, and expands imports in
+    // CLAUDE.md, so root CLAUDE.md gets neither the block nor an import.
     setupCorePackage(tmpDir);
     fs.writeFileSync(path.join(tmpDir, 'AGENTS.md'), '# Agents\n\nAgent rules.\n');
     fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n\nClaude rules.\n');
 
     const written = installAgentDocs(tmpDir);
 
-    expect(written).toContain('AGENTS.md');
-    expect(written).toContain('CLAUDE.md');
+    expect(written).toEqual(['AGENTS.md', '.claude/CLAUDE.md', 'GEMINI.md']);
     const agentsContent = fs.readFileSync(path.join(tmpDir, 'AGENTS.md'), 'utf-8');
-    const claudeContent = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
+    expect(agentsContent).toContain('Agent rules.');
     expect(agentsContent).toContain('<!-- ASTRYX:START -->');
-    expect(claudeContent).toContain('<!-- ASTRYX:START -->');
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toBe(
+      '# Claude\n\nClaude rules.\n',
+    );
+    expect(blocksSeen(tmpDir)).toEqual(ONCE_EACH);
+  });
+
+  it('moves a block an older run wrote into CLAUDE.md to AGENTS.md and .claude/CLAUDE.md', () => {
+    setupCorePackage(tmpDir, '2.0.0');
+    fs.writeFileSync(
+      path.join(tmpDir, 'CLAUDE.md'),
+      '# Claude\n\nRules.\n\n<!-- ASTRYX:START -->\nAstryx v1.0.0 · old\n<!-- ASTRYX:END -->\n\nMore rules.\n',
+    );
+
+    const written = installAgentDocs(tmpDir);
+
+    expect(written).toEqual(['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', 'GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8').trimEnd()).toBe(
+      '# Claude\n\nRules.\n\nMore rules.',
+    );
+    expect(fs.readFileSync(path.join(tmpDir, 'AGENTS.md'), 'utf-8')).toContain(
+      'Astryx v2.0.0',
+    );
+    expect(blocksSeen(tmpDir)).toEqual(ONCE_EACH);
+  });
+
+  it('writes the same bytes when run again', () => {
+    setupCorePackage(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n');
+    installAgentDocs(tmpDir);
+    const first = LAYOUT_FILES.map(f => fs.readFileSync(path.join(tmpDir, f), 'utf-8'));
+
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', '.claude/CLAUDE.md', 'GEMINI.md']);
+    expect(LAYOUT_FILES.map(f => fs.readFileSync(path.join(tmpDir, f), 'utf-8'))).toEqual(
+      first,
+    );
+  });
+
+  it('leaves a file that is AGENTS.md under another name alone', () => {
+    setupCorePackage(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'AGENTS.md'), '# Agents\n');
+    fs.symlinkSync('AGENTS.md', path.join(tmpDir, 'CLAUDE.md'));
+
+    // Claude Code reads the block through CLAUDE.md, so no copy is added.
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.existsSync(path.join(tmpDir, '.claude', 'CLAUDE.md'))).toBe(false);
+    expect(countBlocks(tmpDir, ['AGENTS.md'])).toBe(1);
+  });
+
+  it('keeps an existing GEMINI.md and adds the import to it', () => {
+    setupCorePackage(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'GEMINI.md'), '# Gemini\n\nUse tabs.\n');
+
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe(
+      `# Gemini\n\nUse tabs.\n\n${GEMINI_IMPORT}`,
+    );
   });
 
   it('preserves import wrappers while initializing standalone files', () => {
@@ -725,7 +840,7 @@ describe('installAgentDocs', () => {
 
     const written = installAgentDocs(tmpDir);
 
-    expect(written).toEqual(['AGENTS.md', '.cursorrules']);
+    expect(written).toEqual(['AGENTS.md', 'GEMINI.md', '.cursorrules']);
     expect(fs.readFileSync(wrapperPath, 'utf-8')).toBe(wrapper);
     expect(fs.readFileSync(path.join(tmpDir, 'AGENTS.md'), 'utf-8')).toContain(
       '<!-- ASTRYX:START -->',
@@ -735,7 +850,7 @@ describe('installAgentDocs', () => {
     );
   });
 
-  it('keeps cyclic imports standalone when another file exists', () => {
+  it('treats cyclic imports as standalone files', () => {
     setupCorePackage(tmpDir);
     fs.writeFileSync(path.join(tmpDir, 'AGENTS.md'), '@CLAUDE.md\n');
     fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '@AGENTS.md\n');
@@ -743,12 +858,24 @@ describe('installAgentDocs', () => {
 
     const written = installAgentDocs(tmpDir);
 
-    expect(written).toEqual(['AGENTS.md', 'CLAUDE.md', '.cursorrules']);
-    for (const rel of written) {
-      expect(fs.readFileSync(path.join(tmpDir, rel), 'utf-8')).toContain(
-        '<!-- ASTRYX:START -->',
-      );
+    // CLAUDE.md imports AGENTS.md, so Claude Code already reaches the block.
+    expect(written).toEqual(['AGENTS.md', 'GEMINI.md', '.cursorrules']);
+    expect(fs.existsSync(path.join(tmpDir, '.claude', 'CLAUDE.md'))).toBe(false);
+    for (const rel of ['AGENTS.md', '.cursorrules']) {
+      expect(countBlocks(tmpDir, [rel])).toBe(1);
     }
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toBe('@AGENTS.md\n');
+  });
+
+  it('keeps the per-file layout when a wrapper imports a file other than AGENTS.md', () => {
+    setupCorePackage(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n');
+    fs.writeFileSync(path.join(tmpDir, 'AGENTS.md'), '@CLAUDE.md\n');
+
+    expect(installAgentDocs(tmpDir)).toEqual(['CLAUDE.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'AGENTS.md'), 'utf-8')).toBe('@CLAUDE.md\n');
+    expect(countBlocks(tmpDir, ['CLAUDE.md'])).toBe(1);
+    expect(fs.existsSync(path.join(tmpDir, 'GEMINI.md'))).toBe(false);
   });
 
   it('removes a managed block previously expanded into an import wrapper', () => {
@@ -782,17 +909,30 @@ describe('installAgentDocs', () => {
     expect(() => installAgentDocs(tmpDir)).toThrow(/malformed|no matching/i);
   });
 
-  it('updates existing .claude/CLAUDE.md', () => {
+  it('adds the block to an existing .claude/CLAUDE.md and to AGENTS.md', () => {
     setupCorePackage(tmpDir);
     fs.mkdirSync(path.join(tmpDir, '.claude'), {recursive: true});
     fs.writeFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), '# Project\n\nExisting content.\n');
 
     const written = installAgentDocs(tmpDir);
 
-    expect(written).toEqual(['.claude/CLAUDE.md']);
+    expect(written).toEqual(['AGENTS.md', '.claude/CLAUDE.md', 'GEMINI.md']);
     const content = fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8');
-    expect(content).toContain('Existing content.');
-    expect(content).toContain('<!-- ASTRYX:START -->');
+    expect(content.startsWith('# Project\n\nExisting content.\n\n<!-- ASTRYX:START -->')).toBe(
+      true,
+    );
+    expect(blocksSeen(tmpDir)).toEqual(ONCE_EACH);
+  });
+
+  it('adds no Claude copy when a Claude file imports AGENTS.md', () => {
+    setupCorePackage(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n\n@AGENTS.md\n');
+
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toBe(
+      '# Claude\n\n@AGENTS.md\n',
+    );
+    expect(fs.existsSync(path.join(tmpDir, '.claude', 'CLAUDE.md'))).toBe(false);
   });
 
   it('respects --agent claude preset: finds existing CLAUDE.md', () => {
@@ -877,6 +1017,39 @@ describe('installAgentDocs', () => {
     expect(content).toContain('Astryx v2.0.0');
     expect(content).not.toContain('PLACEHOLDER_STALE_CONTENT');
     expect(content).toContain('Other rules.');
+  });
+
+  it('onlyReplace: refreshes both copies of the block and leaves the GEMINI.md import alone', () => {
+    setupCorePackage(tmpDir, '1.0.0');
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n');
+    installAgentDocs(tmpDir);
+    setupCorePackage(tmpDir, '2.0.0');
+
+    expect(installAgentDocs(tmpDir, {onlyReplace: true})).toEqual([
+      'AGENTS.md',
+      '.claude/CLAUDE.md',
+    ]);
+    for (const rel of ['AGENTS.md', '.claude/CLAUDE.md']) {
+      const content = fs.readFileSync(path.join(tmpDir, rel), 'utf-8');
+      expect(content).toContain('Astryx v2.0.0');
+      expect(content).not.toContain('Astryx v1.0.0');
+    }
+    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe(GEMINI_IMPORT);
+    expect(blocksSeen(tmpDir)).toEqual(ONCE_EACH);
+  });
+
+  it('onlyReplace: refreshes a block beside an import of a missing AGENTS.md', () => {
+    setupCorePackage(tmpDir, '2.0.0');
+    fs.writeFileSync(
+      path.join(tmpDir, 'CLAUDE.md'),
+      '@AGENTS.md\n\n<!-- ASTRYX:START -->\nAstryx v1.0.0\n<!-- ASTRYX:END -->\n',
+    );
+
+    expect(installAgentDocs(tmpDir, {onlyReplace: true})).toEqual(['CLAUDE.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toContain(
+      'Astryx v2.0.0',
+    );
+    expect(fs.existsSync(path.join(tmpDir, 'AGENTS.md'))).toBe(false);
   });
 
   it('onlyReplace: does not create the default AGENTS.md when nothing exists', () => {
@@ -1084,6 +1257,27 @@ describe('inspectAgentDocs', () => {
     expect(res.staleFiles).toEqual(['CLAUDE.md']);
   });
 
+  it('checks both copies of the block and does not count the GEMINI.md import', () => {
+    const core = path.join(tmpDir, 'node_modules', '@astryxdesign', 'core');
+    fs.mkdirSync(core, {recursive: true});
+    fs.writeFileSync(path.join(core, 'package.json'), JSON.stringify({version: '3.0.0'}));
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n');
+    installAgentDocs(tmpDir);
+
+    const current = inspectAgentDocs(tmpDir, '3.0.0');
+    expect(current.status).toBe('current');
+    expect(current.files.map(f => f.path)).toEqual(['AGENTS.md', '.claude/CLAUDE.md']);
+    expect(inspectAgentDocs(tmpDir, '4.0.0').staleFiles).toEqual([
+      'AGENTS.md',
+      '.claude/CLAUDE.md',
+    ]);
+
+    // Without the blocks, the import alone reads as not set up.
+    fs.rmSync(path.join(tmpDir, 'AGENTS.md'));
+    fs.rmSync(path.join(tmpDir, '.claude'), {recursive: true});
+    expect(inspectAgentDocs(tmpDir, '3.0.0').status).toBe('missing');
+  });
+
   it('defaults the installed version to the core package when omitted', () => {
     const coreDir = path.join(tmpDir, 'node_modules', '@astryxdesign', 'core');
     fs.mkdirSync(coreDir, {recursive: true});
@@ -1177,5 +1371,145 @@ describe('isAstryxInitialized — resilient to malformed markers (postinstall ho
 
   it('returns false for a nonexistent directory', () => {
     expect(isAstryxInitialized(path.join(tmpDir, 'does-not-exist'))).toBe(false);
+  });
+});
+
+describe('removeAgentDocs after the default layout', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('deletes the files the default created and keeps the project files', () => {
+    const core = path.join(tmpDir, 'node_modules', '@astryxdesign', 'core');
+    fs.mkdirSync(core, {recursive: true});
+    fs.writeFileSync(path.join(core, 'package.json'), JSON.stringify({version: '1.0.0'}));
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n');
+    installAgentDocs(tmpDir);
+
+    expect(removeAgentDocs(tmpDir)).toEqual(['AGENTS.md', '.claude/CLAUDE.md', 'GEMINI.md']);
+    expect(fs.existsSync(path.join(tmpDir, 'AGENTS.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, '.claude', 'CLAUDE.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'GEMINI.md'))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toBe('# Claude\n');
+  });
+
+  it('keeps a GEMINI.md that has the project\'s own content', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'GEMINI.md'),
+      `# Gemini\n\nUse tabs.\n\n${GEMINI_IMPORT}`,
+    );
+
+    expect(removeAgentDocs(tmpDir)).toEqual(['GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe(
+      '# Gemini\n\nUse tabs.\n',
+    );
+  });
+});
+
+describe('agent docs never go into the home folder', () => {
+  const saved = {HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE};
+  const personal = '# My notes\n\nAlways use tabs.\n';
+
+  beforeEach(() => {
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+    fs.mkdirSync(path.join(tmpDir, '.claude'), {recursive: true});
+    fs.writeFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), personal);
+  });
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it.each([
+    ['the default', {}],
+    ['a preset', {agent: 'claude'}],
+    ['an explicit path', {paths: ['AGENTS.md']}],
+    ['a refresh', {onlyReplace: true}],
+  ])('refuses %s and writes nothing', (_label, options) => {
+    expect(() => installAgentDocs(tmpDir, options)).toThrow(AgentDocsHomeError);
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8')).toBe(
+      personal,
+    );
+    expect(fs.readdirSync(tmpDir).sort()).toEqual(['.claude']);
+  });
+
+  it('refuses through a symlink to the home folder', () => {
+    const link = `${tmpDir}-link`;
+    fs.symlinkSync(tmpDir, link);
+    try {
+      expect(() => installAgentDocs(link)).toThrow(AgentDocsHomeError);
+    } finally {
+      fs.rmSync(link);
+    }
+  });
+
+  it('still removes a block an older run wrote there', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    fs.writeFileSync(
+      path.join(tmpDir, '.claude', 'CLAUDE.md'),
+      `${personal}\n<!-- ASTRYX:START -->\nAstryx v1.0.0\n<!-- ASTRYX:END -->\n`,
+    );
+
+    expect(removeAgentDocs(tmpDir)).toEqual(['.claude/CLAUDE.md']);
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8')).toBe(
+      personal,
+    );
+  });
+
+  it('writes in a project folder inside the home folder', () => {
+    const project = path.join(tmpDir, 'app');
+    fs.mkdirSync(project);
+    expect(installAgentDocs(project)).toEqual(['AGENTS.md', 'GEMINI.md']);
+  });
+});
+
+describe('resolveAgentDocsRoot', () => {
+  /** @param {string} dir @param {object} pkg */
+  const writePkg = (dir, pkg) => {
+    fs.mkdirSync(dir, {recursive: true});
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg));
+  };
+  const astryx = {devDependencies: {'@astryxdesign/cli': '0.7.0'}};
+
+  it('finds the nearest folder with a package.json', () => {
+    writePkg(tmpDir, astryx);
+    const sub = path.join(tmpDir, 'src', 'app');
+    fs.mkdirSync(sub, {recursive: true});
+    expect(resolveAgentDocsRoot(sub)).toBe(tmpDir);
+    expect(resolveAgentDocsRoot(tmpDir)).toBe(tmpDir);
+
+    const pkg = path.join(tmpDir, 'packages', 'web');
+    writePkg(pkg, {name: 'web'});
+    fs.mkdirSync(path.join(pkg, 'src'));
+    expect(resolveAgentDocsRoot(path.join(pkg, 'src'))).toBe(pkg);
+  });
+
+  it('stops at a repository root and falls back to the folder it started in', () => {
+    writePkg(tmpDir, astryx);
+    const repo = path.join(tmpDir, 'repo');
+    fs.mkdirSync(path.join(repo, '.git'), {recursive: true});
+    const sub = path.join(repo, 'docs');
+    fs.mkdirSync(sub);
+    expect(resolveAgentDocsRoot(sub)).toBe(sub);
+  });
+
+  it('never returns the home folder', () => {
+    const saved = {HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE};
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+    try {
+      writePkg(tmpDir, astryx);
+      const scratch = path.join(tmpDir, 'scratch');
+      fs.mkdirSync(scratch);
+      expect(resolveAgentDocsRoot(scratch)).toBe(scratch);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });
