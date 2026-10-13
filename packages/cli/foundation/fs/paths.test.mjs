@@ -4,7 +4,7 @@ import {describe, it, expect, beforeEach, afterEach} from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import {findCoreDir, findProjectRoot, listComponents, discoverExternalPackages, existsCaseExact, findInstalledPackage} from './paths.mjs';
+import {findCoreDir, findProjectRoot, listComponents, discoverExternalPackages, existsCaseExact, findInstalledPackage, findInstalledPackageOf, findNodeModulesPackage} from './paths.mjs';
 
 let tmpDir;
 
@@ -17,13 +17,63 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete process.versions.pnp;
   fs.rmSync(tmpDir, {recursive: true, force: true});
 });
 
+/**
+ * Write a package.json naming `name` into `dir`, creating the folder.
+ * @param {string} dir @param {string} name @param {string} [version]
+ */
+function writePackage(dir, name, version = '0.7.0') {
+  fs.mkdirSync(dir, {recursive: true});
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name, version}));
+  return dir;
+}
+
+/** @param {string} root @param {string} name @param {string} version */
+function install(root, name, version) {
+  return writePackage(path.join(root, 'node_modules', ...name.split('/')), name, version);
+}
+
+/**
+ * Stand in for the runtime a Yarn Plug'n'Play process exposes:
+ * `process.versions.pnp` plus a requirable `pnpapi`. The packages themselves
+ * live outside any node_modules, the way Yarn stores them. The top-level
+ * afterEach removes `process.versions.pnp` again.
+ * @param {Record<string, string>} resolved name -> package directory
+ * @returns {string} a project folder inside the PnP runtime
+ */
+function withPnp(resolved) {
+  const runtime = path.join(tmpDir, 'runtime');
+  const api = path.join(runtime, 'node_modules', 'pnpapi');
+  fs.mkdirSync(api, {recursive: true});
+  fs.writeFileSync(
+    path.join(api, 'package.json'),
+    JSON.stringify({name: 'pnpapi', version: '1.0.0', main: 'index.js'}),
+  );
+  fs.writeFileSync(
+    path.join(api, 'index.js'),
+    `const resolved = ${JSON.stringify(resolved)};\n` +
+      'module.exports = {\n' +
+      '  resolveToUnqualified(name) {\n' +
+      '    if (!(name in resolved)) {\n' +
+      "      const e = new Error(name); e.code = 'MODULE_NOT_FOUND'; throw e;\n" +
+      '    }\n' +
+      '    return resolved[name];\n' +
+      '  },\n' +
+      '};\n',
+  );
+  Object.defineProperty(process.versions, 'pnp', {
+    value: '3',
+    configurable: true,
+  });
+  return runtime;
+}
+
 describe('findCoreDir', () => {
   it('finds packages/core walking up directories', () => {
-    const coreDir = path.join(tmpDir, 'packages', 'core');
-    fs.mkdirSync(coreDir, {recursive: true});
+    const coreDir = writePackage(path.join(tmpDir, 'packages', 'core'), '@astryxdesign/core');
 
     const nested = path.join(tmpDir, 'sub', 'deep');
     fs.mkdirSync(nested, {recursive: true});
@@ -32,8 +82,7 @@ describe('findCoreDir', () => {
   });
 
   it('finds node_modules/@astryxdesign/core fallback', () => {
-    const nmCore = path.join(tmpDir, 'node_modules', '@astryxdesign', 'core');
-    fs.mkdirSync(nmCore, {recursive: true});
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
 
     expect(findCoreDir(tmpDir)).toBe(nmCore);
   });
@@ -41,26 +90,57 @@ describe('findCoreDir', () => {
   it('returns null when nothing found', () => {
     expect(findCoreDir(tmpDir)).toBeNull();
   });
+
+  // A route folder such as src/app/(shop)/orders/[id]/edit sits six folders
+  // below the project root, where Core is installed.
+  it('finds Core from any depth below the folder that installs it', () => {
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const route = path.join(tmpDir, 'src', 'app', '(shop)', 'orders', '[id]', 'edit');
+    fs.mkdirSync(route, {recursive: true});
+
+    expect(findCoreDir(route)).toBe(nmCore);
+  });
+
+  it('skips a packages/core folder that holds another package', () => {
+    writePackage(path.join(tmpDir, 'packages', 'core'), '@acme/core', '1.0.0');
+    const app = path.join(tmpDir, 'apps', 'web');
+    fs.mkdirSync(app, {recursive: true});
+
+    expect(findCoreDir(app)).toBeNull();
+
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    expect(findCoreDir(app)).toBe(nmCore);
+  });
+
+  it('skips a node_modules/@astryxdesign/core folder with no package.json', () => {
+    fs.mkdirSync(path.join(tmpDir, 'node_modules', '@astryxdesign', 'core'), {recursive: true});
+
+    expect(findCoreDir(tmpDir)).toBeNull();
+  });
+
+  it("asks Yarn Plug'n'Play when no folder holds Core", () => {
+    const store = writePackage(path.join(tmpDir, 'store', '@astryxdesign-core'), '@astryxdesign/core');
+    const project = withPnp({'@astryxdesign/core': store});
+
+    expect(findCoreDir(project)).toBe(store);
+  });
 });
 
 describe('findInstalledPackage', () => {
-  /** @param {string} root @param {string} name @param {string} version */
-  function install(root, name, version) {
-    const dir = path.join(root, 'node_modules', ...name.split('/'));
-    fs.mkdirSync(dir, {recursive: true});
-    fs.writeFileSync(
-      path.join(dir, 'package.json'),
-      JSON.stringify({name, version}),
-    );
-    return dir;
-  }
-
   it('finds a package in the node_modules chain above startDir', () => {
     const installed = install(tmpDir, '@astryxdesign/core', '0.6.0');
     const nested = path.join(tmpDir, 'src', 'deep');
     fs.mkdirSync(nested, {recursive: true});
 
     expect(findInstalledPackage(nested, '@astryxdesign/core')).toBe(installed);
+  });
+
+  it('finds a package any number of folders above startDir', () => {
+    const installed = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const deep = path.join(tmpDir, 'apps', 'web', 'src', 'app', '(shop)', 'orders', '[id]');
+    fs.mkdirSync(deep, {recursive: true});
+
+    expect(findInstalledPackage(deep, '@astryxdesign/core')).toBe(installed);
   });
 
   it('reports a package the project never installed as missing', () => {
@@ -87,43 +167,6 @@ describe('findInstalledPackage', () => {
   });
 
   describe('under Yarn Plug\'n\'Play, which has no node_modules', () => {
-    /**
-     * Stand in for the runtime a PnP process exposes: `process.versions.pnp`
-     * plus a requirable `pnpapi`. The package itself lives outside any
-     * node_modules, the way Yarn stores it.
-     * @param {Record<string, string>} resolved name -> package directory
-     */
-    function withPnp(resolved) {
-      const runtime = path.join(tmpDir, 'runtime');
-      const api = path.join(runtime, 'node_modules', 'pnpapi');
-      fs.mkdirSync(api, {recursive: true});
-      fs.writeFileSync(
-        path.join(api, 'package.json'),
-        JSON.stringify({name: 'pnpapi', version: '1.0.0', main: 'index.js'}),
-      );
-      fs.writeFileSync(
-        path.join(api, 'index.js'),
-        `const resolved = ${JSON.stringify(resolved)};\n` +
-          'module.exports = {\n' +
-          '  resolveToUnqualified(name) {\n' +
-          '    if (!(name in resolved)) {\n' +
-          "      const e = new Error(name); e.code = 'MODULE_NOT_FOUND'; throw e;\n" +
-          '    }\n' +
-          '    return resolved[name];\n' +
-          '  },\n' +
-          '};\n',
-      );
-      Object.defineProperty(process.versions, 'pnp', {
-        value: '3',
-        configurable: true,
-      });
-      return runtime;
-    }
-
-    afterEach(() => {
-      delete process.versions.pnp;
-    });
-
     it('falls back to the PnP runtime when there is no chain to walk', () => {
       const store = path.join(tmpDir, 'store', '@astryxdesign-core');
       fs.mkdirSync(store, {recursive: true});
@@ -141,6 +184,46 @@ describe('findInstalledPackage', () => {
 
       expect(findInstalledPackage(project, '@astryxdesign/core')).toBeNull();
     });
+  });
+});
+
+describe('findInstalledPackageOf', () => {
+  const NAMES = ['@astryxdesign/core', '@xds/core'];
+
+  it('takes the earlier name when one folder installs both', () => {
+    const current = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    install(tmpDir, '@xds/core', '0.3.0');
+
+    expect(findInstalledPackageOf(tmpDir, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: current});
+  });
+
+  it('takes the nearest folder over an earlier name further up', () => {
+    install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const app = path.join(tmpDir, 'apps', 'legacy');
+    const legacy = install(app, '@xds/core', '0.3.0');
+
+    expect(findInstalledPackageOf(app, NAMES)).toEqual({name: '@xds/core', packageDir: legacy});
+  });
+
+  it('returns null when none is installed', () => {
+    expect(findInstalledPackageOf(tmpDir, NAMES)).toBeNull();
+  });
+});
+
+describe('findNodeModulesPackage', () => {
+  it('finds a package hoisted to a workspace root and names the folder that holds it', () => {
+    const hoisted = install(tmpDir, '@acme/widgets', '1.0.0');
+    const member = path.join(tmpDir, 'apps', 'web');
+    fs.mkdirSync(member, {recursive: true});
+
+    expect(findNodeModulesPackage(member, '@acme/widgets')).toEqual({packageDir: hoisted, hostDir: tmpDir});
+  });
+
+  it('does not ask Plug\'n\'Play', () => {
+    const store = writePackage(path.join(tmpDir, 'store', 'acme-widgets'), '@acme/widgets');
+    const project = withPnp({'@acme/widgets': store});
+
+    expect(findNodeModulesPackage(project, '@acme/widgets')).toBeNull();
   });
 });
 

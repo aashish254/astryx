@@ -3,8 +3,9 @@
 /**
  * @file Colocated tests for the upgrade.run leaf — the --path scan dir must be
  * confined to cwd (upgrade rewrites source in place with --apply, so an escaping
- * or out-of-tree path must be rejected), and the receipt must say whether that
- * dir existed at all.
+ * or out-of-tree path must be rejected), the receipt must say whether that
+ * dir existed at all, and the installed Core is found from any folder in the
+ * project.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
@@ -92,6 +93,42 @@ describe('upgrade.run — sourcePathFound', () => {
     const res = await upgrade({from: '0.0.1', path: 'app'}, {cwd: dir});
 
     expect(res.type).toBe('upgrade.run');
+    expect(res.data.sourcePathFound).toBe(true);
+  }, SLOW);
+});
+
+describe('upgrade.run — the installed Core is found from any folder in the project', () => {
+  let dir;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-core-'));
+    seedProject(dir);
+  });
+  afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
+
+  it('targets the project Core when run from a subfolder', async () => {
+    const res = await upgrade({from: '0.0.1', path: '.'}, {cwd: path.join(dir, 'src')});
+
+    expect(res.type).toBe('upgrade.run');
+    expect(res.data.to).toBe('0.1.8');
+  }, SLOW);
+
+  it('targets the Core a workspace hoisted to its root when run in a member', async () => {
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({name: 'root', private: true, workspaces: ['apps/*']}),
+    );
+    const member = path.join(dir, 'apps', 'web');
+    fs.mkdirSync(path.join(member, 'src'), {recursive: true});
+    fs.writeFileSync(
+      path.join(member, 'package.json'),
+      JSON.stringify({name: 'web', dependencies: {'@astryxdesign/core': '0.1.8'}}),
+    );
+    fs.writeFileSync(path.join(member, 'src', 'index.ts'), 'const x = 1;\n');
+
+    const res = await upgrade({from: '0.0.1'}, {cwd: member});
+
+    expect(res.type).toBe('upgrade.run');
+    expect(res.data.to).toBe('0.1.8');
     expect(res.data.sourcePathFound).toBe(true);
   }, SLOW);
 });
