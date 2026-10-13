@@ -114,10 +114,11 @@ function loadFileProtection(cwd) {
  * on failure. Progress is emitted through the shared `logger` (silent by default).
  *
  * @param {import('../_adapter.mjs').UpgradeOptions} [options]
- * @param {{cwd?: string}} [ctx]
+ * @param {{cwd?: string, origin?: string}} [ctx] `origin` is the folder the
+ *   command ran in, when `cwd` is the project root above it
  * @returns {Promise<import('../upgrade.type.mjs').UpgradeStatusResponse | import('../upgrade.type.mjs').UpgradeRunResponse>}
  */
-export async function run(options = {}, {cwd = process.cwd()} = {}) {
+export async function run(options = {}, {cwd = process.cwd(), origin} = {}) {
   // Resolve the source dir against the API's cwd (not process.cwd()) so a
   // programmatic caller in another directory scans the right tree. Confine it to
   // cwd: --apply rewrites files in place, so a `..`-escaping or out-of-tree
@@ -180,6 +181,9 @@ export async function run(options = {}, {cwd = process.cwd()} = {}) {
     return null;
   };
 
+  if (origin != null) {
+    logger.log(`Project root: ${path.relative(origin, cwd) || '.'}`);
+  }
   logger.log(`From version: ${currentVersion}`);
   logger.log(`Installed target: ${targetVersion} (${installed.packageName})`);
 
@@ -188,6 +192,7 @@ export async function run(options = {}, {cwd = process.cwd()} = {}) {
     const registryResult = await reconcileCompositions();
     const agentDocsPlan = await prepareAgentDocsRefresh({
       cwd,
+      origin,
       installedVersion: targetVersion,
       apply,
     });
@@ -391,6 +396,7 @@ export async function run(options = {}, {cwd = process.cwd()} = {}) {
     // No codemods in range — safe to render agent docs from current state.
     const agentDocsPlan = await prepareAgentDocsRefresh({
       cwd,
+      origin,
       installedVersion: targetVersion,
       apply,
     });
@@ -666,6 +672,7 @@ export async function run(options = {}, {cwd = process.cwd()} = {}) {
   if (protectedFiles.length === 0) {
     const agentDocsPlan = await prepareAgentDocsRefresh({
       cwd,
+      origin,
       installedVersion: targetVersion,
       apply,
       fresh: true,

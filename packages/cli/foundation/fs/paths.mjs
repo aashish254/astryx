@@ -3,14 +3,16 @@
 /**
  * @file Path resolution utilities for Astryx CLI
  *
- * Finds the project's @astryxdesign/core and the other packages it installed,
- * the project root, and the CLI package root.
+ * Finds the project root and its workspace root, the project's
+ * @astryxdesign/core and the other packages it installed, and the CLI package
+ * root.
  */
 
 import * as fs from 'node:fs';
 import {createRequire} from 'node:module';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {satisfiesRange} from '../env/semver.mjs';
 import {listDir, pathExists} from './listing-cache.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,10 +24,17 @@ export const CLI_ROOT = path.resolve(__dirname, '..', '..');
 const CORE_PACKAGE = '@astryxdesign/core';
 
 /**
+ * How many folders, counting the start, each lookup of the project's packages
+ * always searches: the reach each one had before it learned the workspace
+ * root, so nothing it found before goes missing. Past this reach a lookup
+ * stops at the workspace root.
+ */
+const CORE_REACH = 5;
+const INSTALLED_REACH = 6;
+
+/**
  * `startDir` and every folder above it, nearest first, up to the filesystem
- * root: the folders Node's resolver searches for `node_modules`. Lookups walk
- * all of them because a package can sit any number of folders above the one a
- * command runs in, most often at a workspace root that hoists it.
+ * root: the folders Node's resolver searches for `node_modules`.
  *
  * @param {string} startDir
  * @returns {Generator<string>}
@@ -54,6 +63,23 @@ function installedIn(dir, name) {
 }
 
 /**
+ * The package.json in `dir`, or null when it is missing or not a JSON object.
+ *
+ * @param {string} dir
+ * @returns {Record<string, any>|null}
+ */
+function readPackageJson(dir) {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'),
+    );
+    return pkg && typeof pkg === 'object' ? pkg : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether `dir` is @astryxdesign/core's own source, by the name in its
  * package.json. The folder name says nothing: many monorepos keep an unrelated
  * package in `packages/core`.
@@ -62,35 +88,137 @@ function installedIn(dir, name) {
  * @returns {boolean}
  */
 function isCoreSource(dir) {
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'),
-    );
-    return pkg?.name === CORE_PACKAGE;
-  } catch {
-    return false;
+  return readPackageJson(dir)?.name === CORE_PACKAGE;
+}
+
+/**
+ * The project root: the directory of the nearest package.json at or above
+ * `startDir`, or null when there is none.
+ *
+ * @param {string} startDir
+ * @returns {string|null}
+ */
+export function findPackageRoot(startDir) {
+  for (const dir of foldersUpFrom(startDir)) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
   }
+  return null;
+}
+
+/**
+ * The workspace root (`spec:AST-048` FR15): the nearest directory at or above
+ * `startDir` that declares a workspace, by a `pnpm-workspace.yaml` or a
+ * package.json `workspaces` field; outside a workspace, the directory of the
+ * nearest package.json; with no package.json, `startDir` itself.
+ *
+ * @param {string} startDir
+ * @returns {string}
+ */
+export function findWorkspaceRoot(startDir) {
+  /** @type {string|null} */
+  let nearestPackage = null;
+  for (const dir of foldersUpFrom(startDir)) {
+    if (
+      fs.existsSync(path.join(dir, 'pnpm-workspace.yaml')) ||
+      readPackageJson(dir)?.workspaces != null
+    ) {
+      return dir;
+    }
+    if (
+      nearestPackage == null &&
+      fs.existsSync(path.join(dir, 'package.json'))
+    ) {
+      nearestPackage = dir;
+    }
+  }
+  return nearestPackage ?? path.resolve(startDir);
+}
+
+/**
+ * The folders that hold the project's own packages, nearest first: `startDir`
+ * and each folder above it up to its workspace root, where a workspace keeps
+ * the packages its members share, and never fewer than `reach` folders. Each
+ * folder says whether it lies above the project root, where a package belongs
+ * to the workspace rather than to the project itself.
+ *
+ * @param {string} startDir
+ * @param {number} reach
+ * @returns {Generator<{dir: string, aboveProject: boolean}>}
+ */
+function* projectFolders(startDir, reach) {
+  const projectRoot = findPackageRoot(startDir);
+  const workspaceRoot = findWorkspaceRoot(startDir);
+  let searched = 0;
+  let aboveProject = false;
+  let pastWorkspace = false;
+  for (const dir of foldersUpFrom(startDir)) {
+    if (pastWorkspace && searched >= reach) return;
+    yield {dir, aboveProject};
+    searched++;
+    if (dir === projectRoot) aboveProject = true;
+    if (dir === workspaceRoot) pastWorkspace = true;
+  }
+}
+
+/** package.json fields in which a project declares the version it needs. */
+const DECLARING_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+];
+
+/**
+ * Whether a package found above the project root is the one the project
+ * declares: its version satisfies every range the nearest package.json
+ * declares for `name`. A project that declares no range for it accepts it, and
+ * so does a declaration that is not a version range, such as `workspace:*`.
+ * A project that declares a version its workspace does not hold has not
+ * installed that version, so the workspace's copy is not its package.
+ *
+ * @param {string} startDir
+ * @param {string} name
+ * @param {string} packageDir
+ * @returns {boolean}
+ */
+function isDeclaredVersion(startDir, name, packageDir) {
+  const projectRoot = findPackageRoot(startDir);
+  const declared = projectRoot ? readPackageJson(projectRoot) : null;
+  const version = readPackageJson(packageDir)?.version;
+  if (declared == null || typeof version !== 'string') return true;
+  return DECLARING_FIELDS.every(field => {
+    const ranges = declared[field];
+    const range =
+      ranges && typeof ranges === 'object' ? ranges[name] : undefined;
+    return typeof range !== 'string' || satisfiesRange(version, range);
+  });
 }
 
 /**
  * Find the project's @astryxdesign/core.
  *
- * Checks `startDir` and every folder above it, nearest first. In each folder a
- * `packages/core` whose package.json names @astryxdesign/core (the Astryx
- * repository's own source) comes first, then an installed
- * `node_modules/@astryxdesign/core`. When no folder has either, it asks Yarn
- * Plug'n'Play, which keeps no node_modules.
+ * Searches the folders that hold the project's packages, nearest first:
+ * `startDir` up to its workspace root, and never fewer than five folders. In
+ * each folder a `packages/core` whose package.json names @astryxdesign/core
+ * (the Astryx repository's own source) comes first, then an installed
+ * `node_modules/@astryxdesign/core`. A Core found above the project root
+ * counts only when the project declares that version. When no folder holds
+ * one, it asks Yarn Plug'n'Play, which keeps no node_modules.
  *
  * @param {string} [startDir]
  * @returns {string|null} the Core package directory, or null when there is none
  */
 export function findCoreDir(startDir = process.cwd()) {
-  for (const dir of foldersUpFrom(startDir)) {
+  for (const {dir, aboveProject} of projectFolders(startDir, CORE_REACH)) {
     const source = path.join(dir, 'packages', 'core');
-    if (isCoreSource(source)) return source;
-
-    const installed = installedIn(dir, CORE_PACKAGE);
-    if (installed) return installed;
+    const found = isCoreSource(source)
+      ? source
+      : installedIn(dir, CORE_PACKAGE);
+    if (found == null) continue;
+    if (aboveProject && !isDeclaredVersion(startDir, CORE_PACKAGE, found)) {
+      break;
+    }
+    return found;
   }
 
   return findPnpPackage(startDir, CORE_PACKAGE);
@@ -124,7 +252,8 @@ function findPnpPackage(startDir, name) {
 /**
  * The nearest `node_modules/<name>` at or above `startDir`, found the way
  * Node's resolver finds a package, and the folder whose node_modules holds it.
- * It does not ask Plug'n'Play; {@link findInstalledPackage} does.
+ * It searches every folder up to the filesystem root and does not ask
+ * Plug'n'Play.
  *
  * @param {string} startDir
  * @param {string} name bare package name; callers reject path segments first
@@ -149,32 +278,42 @@ export function findNodeModulesPackage(startDir, name) {
  * Reading package.json off disk also sidesteps packages that don't export it,
  * so the version is always available to range-check.
  *
- * Walks the whole node_modules chain first, then asks PnP, which covers the
- * Yarn default layout where that chain does not exist.
+ * Searches the node_modules of `startDir` and the folders above it up to its
+ * workspace root, and never fewer than six folders, then asks PnP, which
+ * covers the Yarn default layout where that chain does not exist.
  *
  * @param {string} startDir
  * @param {string} name
  * @returns {string|null} the package directory, or null when not installed
  */
 export function findInstalledPackage(startDir, name) {
-  return findInstalledPackageOf(startDir, [name])?.packageDir ?? null;
+  for (const {dir} of projectFolders(startDir, INSTALLED_REACH)) {
+    const packageDir = installedIn(dir, name);
+    if (packageDir) return packageDir;
+  }
+  return findPnpPackage(startDir, name);
 }
 
 /**
- * The first of `names` the project at `startDir` installed, by the rule
- * {@link findInstalledPackage} follows: the nearest folder whose node_modules
- * holds any of them wins, an earlier name wins within one folder, and
- * Plug'n'Play is asked last, in name order.
+ * The first of `names` the project at `startDir` installed. It searches the
+ * node_modules of `startDir` and each folder above it up to its workspace
+ * root, nearest first; an earlier name wins within one folder. A package found
+ * above the project root counts only when the project declares that version,
+ * and otherwise the search stops. Then it asks Plug'n'Play, in name order.
  *
  * @param {string} startDir
  * @param {readonly string[]} names in order of preference
  * @returns {{name: string, packageDir: string}|null}
  */
-export function findInstalledPackageOf(startDir, names) {
-  for (const dir of foldersUpFrom(startDir)) {
+export function findProjectPackageOf(startDir, names) {
+  search: for (const {dir, aboveProject} of projectFolders(startDir, 1)) {
     for (const name of names) {
       const packageDir = installedIn(dir, name);
-      if (packageDir) return {name, packageDir};
+      if (packageDir == null) continue;
+      if (aboveProject && !isDeclaredVersion(startDir, name, packageDir)) {
+        break search;
+      }
+      return {name, packageDir};
     }
   }
   for (const name of names) {

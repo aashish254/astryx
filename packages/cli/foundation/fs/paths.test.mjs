@@ -4,7 +4,7 @@ import {describe, it, expect, beforeEach, afterEach} from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import {findCoreDir, findProjectRoot, listComponents, discoverExternalPackages, existsCaseExact, findInstalledPackage, findInstalledPackageOf, findNodeModulesPackage} from './paths.mjs';
+import {findCoreDir, findProjectRoot, listComponents, discoverExternalPackages, existsCaseExact, findInstalledPackage, findNodeModulesPackage, findPackageRoot, findProjectPackageOf, findWorkspaceRoot} from './paths.mjs';
 
 let tmpDir;
 
@@ -28,6 +28,16 @@ afterEach(() => {
 function writePackage(dir, name, version = '0.7.0') {
   fs.mkdirSync(dir, {recursive: true});
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name, version}));
+  return dir;
+}
+
+/**
+ * Write a project package.json into `dir`, creating the folder.
+ * @param {string} dir @param {Record<string, unknown>} [fields]
+ */
+function writeProject(dir, fields = {}) {
+  fs.mkdirSync(dir, {recursive: true});
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: path.basename(dir), ...fields}));
   return dir;
 }
 
@@ -93,12 +103,66 @@ describe('findCoreDir', () => {
 
   // A route folder such as src/app/(shop)/orders/[id]/edit sits six folders
   // below the project root, where Core is installed.
-  it('finds Core from any depth below the folder that installs it', () => {
+  it('finds Core from any depth inside the project that installs it', () => {
+    writeProject(tmpDir, {dependencies: {'@astryxdesign/core': '^0.7.0'}});
     const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
     const route = path.join(tmpDir, 'src', 'app', '(shop)', 'orders', '[id]', 'edit');
     fs.mkdirSync(route, {recursive: true});
 
     expect(findCoreDir(route)).toBe(nmCore);
+  });
+
+  it('searches a workspace up to its root from any depth in a member', () => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '^0.7.0'}});
+    const route = path.join(member, 'src', 'app', '(shop)', 'orders', '[id]');
+    fs.mkdirSync(route, {recursive: true});
+
+    expect(findCoreDir(route)).toBe(nmCore);
+  });
+
+  it('does not search past the root of a project outside any workspace', () => {
+    install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const project = writeProject(path.join(tmpDir, 'a', 'b', 'c', 'd', 'e', 'app'));
+
+    expect(findCoreDir(project)).toBeNull();
+  });
+
+  // Released CLIs searched the folder and the four above it, whatever package.json
+  // files lay between. A package.json that only sets the module type is common.
+  it('still searches the folder and the four above it', () => {
+    writeProject(tmpDir, {dependencies: {'@astryxdesign/core': '^0.7.0'}});
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const src = path.join(tmpDir, 'src');
+    fs.mkdirSync(src, {recursive: true});
+    fs.writeFileSync(path.join(src, 'package.json'), JSON.stringify({type: 'module'}));
+
+    expect(findCoreDir(src)).toBe(nmCore);
+  });
+
+  it('does not take a Core from above a project that declares another version', () => {
+    writeProject(tmpDir, {dependencies: {'@astryxdesign/core': '0.8.0'}});
+    install(tmpDir, '@astryxdesign/core', '0.8.0');
+    const nested = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '0.9.0'}});
+
+    expect(findCoreDir(nested)).toBeNull();
+  });
+
+  it('does not take a workspace Core that a member declares another version of', () => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+    install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {devDependencies: {'@astryxdesign/core': '0.6.8'}});
+
+    expect(findCoreDir(member)).toBeNull();
+  });
+
+  it('takes a workspace Core that a member declares with a workspace protocol', () => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': 'workspace:*'}});
+
+    expect(findCoreDir(member)).toBe(nmCore);
   });
 
   it('skips a packages/core folder that holds another package', () => {
@@ -135,12 +199,20 @@ describe('findInstalledPackage', () => {
     expect(findInstalledPackage(nested, '@astryxdesign/core')).toBe(installed);
   });
 
-  it('finds a package any number of folders above startDir', () => {
+  it('finds a package from any depth inside the project', () => {
+    writeProject(tmpDir);
     const installed = install(tmpDir, '@astryxdesign/core', '0.7.0');
     const deep = path.join(tmpDir, 'apps', 'web', 'src', 'app', '(shop)', 'orders', '[id]');
     fs.mkdirSync(deep, {recursive: true});
 
     expect(findInstalledPackage(deep, '@astryxdesign/core')).toBe(installed);
+  });
+
+  it('does not search past six folders outside the project', () => {
+    install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const project = writeProject(path.join(tmpDir, 'a', 'b', 'c', 'd', 'e', 'f', 'app'));
+
+    expect(findInstalledPackage(project, '@astryxdesign/core')).toBeNull();
   });
 
   it('reports a package the project never installed as missing', () => {
@@ -187,26 +259,104 @@ describe('findInstalledPackage', () => {
   });
 });
 
-describe('findInstalledPackageOf', () => {
+describe('findProjectPackageOf', () => {
   const NAMES = ['@astryxdesign/core', '@xds/core'];
 
   it('takes the earlier name when one folder installs both', () => {
+    writeProject(tmpDir);
     const current = install(tmpDir, '@astryxdesign/core', '0.7.0');
     install(tmpDir, '@xds/core', '0.3.0');
 
-    expect(findInstalledPackageOf(tmpDir, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: current});
+    expect(findProjectPackageOf(tmpDir, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: current});
   });
 
   it('takes the nearest folder over an earlier name further up', () => {
+    writeProject(tmpDir);
     install(tmpDir, '@astryxdesign/core', '0.7.0');
     const app = path.join(tmpDir, 'apps', 'legacy');
     const legacy = install(app, '@xds/core', '0.3.0');
 
-    expect(findInstalledPackageOf(app, NAMES)).toEqual({name: '@xds/core', packageDir: legacy});
+    expect(findProjectPackageOf(app, NAMES)).toEqual({name: '@xds/core', packageDir: legacy});
   });
 
   it('returns null when none is installed', () => {
-    expect(findInstalledPackageOf(tmpDir, NAMES)).toBeNull();
+    expect(findProjectPackageOf(tmpDir, NAMES)).toBeNull();
+  });
+
+  it('finds the package from a subfolder of the project', () => {
+    writeProject(tmpDir);
+    const current = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const deep = path.join(tmpDir, 'src', 'l1', 'l2');
+    fs.mkdirSync(deep, {recursive: true});
+
+    expect(findProjectPackageOf(deep, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: current});
+  });
+
+  it('finds a package the workspace hoists to its root', () => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+    const hoisted = install(tmpDir, '@astryxdesign/core', '0.7.0');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '^0.7.0'}});
+
+    expect(findProjectPackageOf(member, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: hoisted});
+  });
+
+  // A Core in a parent folder, such as a home folder, is not this project's.
+  it('does not take a package from a folder above a project outside any workspace', () => {
+    writeProject(tmpDir);
+    install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const plain = writeProject(path.join(tmpDir, 'plain'));
+
+    expect(findProjectPackageOf(plain, NAMES)).toBeNull();
+  });
+
+  it('does not take a hoisted package that the project declares another version of', () => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+    install(tmpDir, '@astryxdesign/core', '0.7.1');
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': '0.6.8'}});
+
+    expect(findProjectPackageOf(member, NAMES)).toBeNull();
+  });
+});
+
+describe('findPackageRoot', () => {
+  it('finds the nearest package.json at or above the folder', () => {
+    writeProject(tmpDir);
+    const app = writeProject(path.join(tmpDir, 'apps', 'web'));
+    const deep = path.join(app, 'src', 'app');
+    fs.mkdirSync(deep, {recursive: true});
+
+    expect(findPackageRoot(deep)).toBe(app);
+    expect(findPackageRoot(tmpDir)).toBe(tmpDir);
+  });
+
+  it('returns null with no package.json', () => {
+    expect(findPackageRoot(tmpDir)).toBeNull();
+  });
+});
+
+describe('findWorkspaceRoot', () => {
+  it('finds the nearest folder that declares workspaces in package.json', () => {
+    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'));
+
+    expect(findWorkspaceRoot(path.join(member, 'src'))).toBe(tmpDir);
+  });
+
+  it('finds the nearest folder with pnpm-workspace.yaml', () => {
+    writeProject(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n");
+    const member = writeProject(path.join(tmpDir, 'apps', 'web'));
+
+    expect(findWorkspaceRoot(member)).toBe(tmpDir);
+  });
+
+  it('is the nearest package.json outside a workspace, and the folder itself with none', () => {
+    const app = writeProject(path.join(tmpDir, 'app'));
+    const src = path.join(app, 'src');
+    fs.mkdirSync(src, {recursive: true});
+
+    expect(findWorkspaceRoot(src)).toBe(app);
+    expect(findWorkspaceRoot(tmpDir)).toBe(tmpDir);
   });
 });
 

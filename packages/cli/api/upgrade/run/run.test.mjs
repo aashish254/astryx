@@ -4,8 +4,8 @@
  * @file Colocated tests for the upgrade.run leaf — the --path scan dir must be
  * confined to cwd (upgrade rewrites source in place with --apply, so an escaping
  * or out-of-tree path must be rejected), the receipt must say whether that
- * dir existed at all, and the installed Core is found from any folder in the
- * project.
+ * dir existed at all, a run from any folder in a project upgrades that
+ * project, and the target Core is the project's own.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
@@ -13,6 +13,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {upgrade} from '../upgrade.mjs';
+import {generateCompressedIndex} from '../../../foundation/agent-docs/agent-docs.mjs';
 
 const SLOW = 30_000;
 
@@ -130,5 +131,131 @@ describe('upgrade.run — the installed Core is found from any folder in the pro
     expect(res.type).toBe('upgrade.run');
     expect(res.data.to).toBe('0.1.8');
     expect(res.data.sourcePathFound).toBe(true);
+  }, SLOW);
+});
+
+/** Core 0.7.0 renamed this prop; its codemod renames it on Typeahead. */
+const OLD_PROP_SOURCE =
+  "import {Typeahead} from '@astryxdesign/core';\n" +
+  'export const App = () => <Typeahead label="Fruit" emptySearchResultsText="None" />;\n';
+
+/**
+ * A project with Core 0.7.0 installed and src/App.tsx using a prop that 0.7.0
+ * renamed.
+ * @param {string} dir
+ */
+function seedOldPropProject(dir) {
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({name: 'app', dependencies: {'@astryxdesign/core': '0.7.0'}}),
+  );
+  const core = path.join(dir, 'node_modules', '@astryxdesign', 'core');
+  fs.mkdirSync(core, {recursive: true});
+  fs.writeFileSync(path.join(core, 'package.json'), JSON.stringify({name: '@astryxdesign/core', version: '0.7.0'}));
+  fs.mkdirSync(path.join(dir, 'src', 'l1', 'l2'), {recursive: true});
+  fs.writeFileSync(path.join(dir, 'src', 'App.tsx'), OLD_PROP_SOURCE);
+}
+
+describe('upgrade.run — a run from a subfolder upgrades the project', () => {
+  let dir;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-scope-'));
+    seedOldPropProject(dir);
+  });
+  afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
+
+  const appSource = () => fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8');
+
+  it.each([['src'], ['src/l1/l2']])(
+    'scans the project src by default when run from %s',
+    async folder => {
+      const res = await upgrade({from: '0.6.8', apply: true}, {cwd: path.join(dir, folder)});
+
+      expect(res.type).toBe('upgrade.run');
+      expect(res.data.sourcePathFound).toBe(true);
+      expect(res.data.filesChanged).toBe(1);
+      expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
+      expect(appSource()).toContain('emptySearchText="None"');
+    },
+    SLOW,
+  );
+
+  it('reads a path you name relative to the folder you ran in', async () => {
+    const res = await upgrade({from: '0.6.8', path: '../..', apply: true}, {cwd: path.join(dir, 'src', 'l1', 'l2')});
+
+    expect(res.type).toBe('upgrade.run');
+    expect(res.data.filesChanged).toBe(1);
+    expect(appSource()).toContain('emptySearchText="None"');
+  }, SLOW);
+
+  it('still rejects a path outside the project', async () => {
+    await expect(
+      upgrade({from: '0.6.8', path: '../../..'}, {cwd: path.join(dir, 'src', 'l1')}),
+    ).rejects.toMatchObject({code: 'ERR_PATH_TRAVERSAL'});
+    expect(appSource()).toBe(OLD_PROP_SOURCE);
+  }, SLOW);
+
+  it("refreshes the agent docs at the project root, not the folder it ran in", async () => {
+    fs.writeFileSync(
+      path.join(dir, 'AGENTS.md'),
+      `# Agents\n\n${generateCompressedIndex('0.6.8')}\n`,
+    );
+
+    const res = await upgrade({from: '0.6.8', apply: true}, {cwd: path.join(dir, 'src', 'l1')});
+
+    expect(res.type).toBe('upgrade.run');
+    expect(res.data.agentDocs.action).toBe('refreshed');
+    expect(res.data.agentDocs.files).toEqual(['AGENTS.md']);
+    expect(fs.existsSync(path.join(dir, 'src', 'l1', 'AGENTS.md'))).toBe(false);
+  }, SLOW);
+});
+
+describe("upgrade.run — the target Core is the project's own", () => {
+  let dir;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-own-core-'));
+    seedOldPropProject(dir);
+  });
+  afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
+
+  /**
+   * A project nested in `dir`, with src/App.tsx using the renamed prop.
+   * @param {Record<string, string>} dependencies
+   */
+  function nestedProject(dependencies) {
+    const nested = path.join(dir, 'apps', 'web');
+    fs.mkdirSync(path.join(nested, 'src'), {recursive: true});
+    fs.writeFileSync(path.join(nested, 'package.json'), JSON.stringify({name: 'web', dependencies}));
+    fs.writeFileSync(path.join(nested, 'src', 'App.tsx'), OLD_PROP_SOURCE);
+    return nested;
+  }
+
+  it.each([
+    ['declares no Astryx package', {}],
+    ['declares a Core it has not installed', {'@astryxdesign/core': '0.6.8'}],
+  ])(
+    'does not upgrade a project that %s to the Core of a folder above it, such as a home folder',
+    async (_label, dependencies) => {
+      const nested = nestedProject(dependencies);
+
+      await expect(
+        upgrade({from: '0.6.8', apply: true}, {cwd: nested}),
+      ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'});
+      expect(fs.readFileSync(path.join(nested, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+    },
+    SLOW,
+  );
+
+  it('does not upgrade a workspace member to a hoisted Core it declares another version of', async () => {
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({name: 'root', private: true, workspaces: ['apps/*']}),
+    );
+    const member = nestedProject({'@astryxdesign/core': '0.9.0'});
+
+    await expect(
+      upgrade({from: '0.6.8', apply: true}, {cwd: member}),
+    ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'});
+    expect(fs.readFileSync(path.join(member, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
   }, SLOW);
 });
