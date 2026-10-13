@@ -5,7 +5,8 @@
  * confined to cwd (upgrade rewrites source in place with --apply, so an escaping
  * or out-of-tree path must be rejected), the receipt must say whether that
  * dir existed at all, a run from any folder in a project upgrades that
- * project, and the target Core is the project's own.
+ * project (the nearest folder whose package.json declares Astryx, never the
+ * home folder from inside it), and the target Core is the project's own.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
@@ -16,6 +17,23 @@ import {upgrade} from '../upgrade.mjs';
 import {generateCompressedIndex} from '../../../foundation/agent-docs/agent-docs.mjs';
 
 const SLOW = 30_000;
+
+/**
+ * Run `fn` with `home` as the home folder.
+ * @template T
+ * @param {string} home @param {() => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+async function withHome(home, fn) {
+  const previous = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.HOME;
+    else process.env.HOME = previous;
+  }
+}
 
 function seedProject(dir) {
   fs.writeFileSync(
@@ -234,28 +252,172 @@ describe("upgrade.run — the target Core is the project's own", () => {
     ['declares no Astryx package', {}],
     ['declares a Core it has not installed', {'@astryxdesign/core': '0.6.8'}],
   ])(
-    'does not upgrade a project that %s to the Core of a folder above it, such as a home folder',
+    'does not upgrade a project that %s to the Core of the home folder above it',
     async (_label, dependencies) => {
       const nested = nestedProject(dependencies);
 
-      await expect(
-        upgrade({from: '0.6.8', apply: true}, {cwd: nested}),
-      ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'});
+      await withHome(dir, () =>
+        expect(
+          upgrade({from: '0.6.8', apply: true}, {cwd: nested}),
+        ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'}),
+      );
       expect(fs.readFileSync(path.join(nested, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+      expect(fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
     },
     SLOW,
   );
 
-  it('does not upgrade a workspace member to a hoisted Core it declares another version of', async () => {
-    fs.writeFileSync(
-      path.join(dir, 'package.json'),
-      JSON.stringify({name: 'root', private: true, workspaces: ['apps/*']}),
-    );
-    const member = nestedProject({'@astryxdesign/core': '0.9.0'});
+  it('does not upgrade a nested project that declares a Core it has not installed to the Core above it', async () => {
+    const nested = nestedProject({'@astryxdesign/core': '0.6.8'});
 
     await expect(
-      upgrade({from: '0.6.8', apply: true}, {cwd: member}),
+      upgrade({from: '0.6.8', apply: true}, {cwd: nested}),
     ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'});
-    expect(fs.readFileSync(path.join(member, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+    expect(fs.readFileSync(path.join(nested, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+  }, SLOW);
+
+  it.each([
+    ['an override at the workspace root forces', {overrides: {'@astryxdesign/core': '0.7.0'}}, {'@astryxdesign/core': '~0.6.8'}],
+    ['a resolution at the workspace root forces', {resolutions: {'@astryxdesign/core': '0.7.0'}}, {'@astryxdesign/core': '0.6.8'}],
+    ['only a stale peer range names', {}, null],
+    ['the member declares another version of, not yet installed', {}, {'@astryxdesign/core': '0.9.0'}],
+  ])(
+    'upgrades a workspace member to a hoisted Core that %s',
+    async (_label, rootFields, dependencies) => {
+      fs.writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({name: 'root', private: true, workspaces: ['apps/*'], ...rootFields}),
+      );
+      const member = dependencies
+        ? nestedProject(dependencies)
+        : nestedProject({});
+      if (!dependencies) {
+        fs.writeFileSync(
+          path.join(member, 'package.json'),
+          JSON.stringify({name: 'web', peerDependencies: {'@astryxdesign/core': '^0.6.8'}}),
+        );
+      }
+
+      const res = await upgrade({from: '0.6.8', apply: true}, {cwd: member});
+
+      expect(res.type).toBe('upgrade.run');
+      expect(res.data.to).toBe('0.7.0');
+      expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
+      expect(fs.readFileSync(path.join(member, 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
+    },
+    SLOW,
+  );
+
+  it('does not upgrade a project its workspace does not list to the hoisted Core', async () => {
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({name: 'root', private: true, workspaces: ['packages/*']}),
+    );
+    const project = nestedProject({'@astryxdesign/core': '0.9.0'});
+
+    await expect(
+      upgrade({from: '0.6.8', apply: true}, {cwd: project}),
+    ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'});
+    expect(fs.readFileSync(path.join(project, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+  }, SLOW);
+
+  it('upgrades a member that declares no Astryx package, in its own src', async () => {
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({name: 'root', private: true, workspaces: ['apps/*'], dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
+    const member = nestedProject({});
+
+    const res = await upgrade({from: '0.6.8', apply: true}, {cwd: path.join(member, 'src')});
+
+    expect(res.type).toBe('upgrade.run');
+    expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
+    expect(fs.readFileSync(path.join(member, 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
+    expect(fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+  }, SLOW);
+});
+
+describe('upgrade.run — a path you name is read from the folder you ran in, in any spelling', () => {
+  let dir;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-spelling-'));
+    seedOldPropProject(dir);
+    // A folder with source of its own and no package.json, inside the project.
+    fs.mkdirSync(path.join(dir, 'frontend', 'src'), {recursive: true});
+    fs.writeFileSync(path.join(dir, 'frontend', 'src', 'App.tsx'), OLD_PROP_SOURCE);
+  });
+  afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
+
+  it.each([['./src'], ['src'], ['src/'], ['./src/']])(
+    'reads --path %s from the folder you ran in',
+    async spelling => {
+      const res = await upgrade(
+        {from: '0.6.8', path: spelling, apply: true},
+        {cwd: path.join(dir, 'frontend')},
+      );
+
+      expect(res.type).toBe('upgrade.run');
+      expect(res.data.modifiedFiles).toEqual(['frontend/src/App.tsx']);
+      expect(fs.readFileSync(path.join(dir, 'frontend', 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
+      expect(fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+    },
+    SLOW,
+  );
+});
+
+describe('upgrade.run — the project is the nearest folder that declares Astryx', () => {
+  let home;
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-home-'));
+  });
+  afterEach(() => fs.rmSync(home, {recursive: true, force: true}));
+
+  // Astryx installed in a home folder whose src holds loose files and another
+  // project, run from a folder with no package.json.
+  it('does not upgrade the home folder from a folder inside it', async () => {
+    seedOldPropProject(home);
+    fs.mkdirSync(path.join(home, 'src', 'repoA', 'src'), {recursive: true});
+    fs.writeFileSync(
+      path.join(home, 'src', 'repoA', 'package.json'),
+      JSON.stringify({name: 'repoA', dependencies: {'@astryxdesign/core': '0.6.8'}}),
+    );
+    fs.writeFileSync(path.join(home, 'src', 'repoA', 'src', 'a.tsx'), OLD_PROP_SOURCE);
+    const desktop = path.join(home, 'Desktop');
+    fs.mkdirSync(desktop, {recursive: true});
+
+    await withHome(home, () =>
+      expect(
+        upgrade({from: '0.6.8', apply: true}, {cwd: desktop}),
+      ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'}),
+    );
+    expect(fs.readFileSync(path.join(home, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+    expect(fs.readFileSync(path.join(home, 'src', 'repoA', 'src', 'a.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+  }, SLOW);
+
+  it('treats a folder whose package.json declares no Astryx package as part of the project above it', async () => {
+    seedOldPropProject(home);
+    const tool = path.join(home, 'tools', 'codegen');
+    fs.mkdirSync(tool, {recursive: true});
+    fs.writeFileSync(path.join(tool, 'package.json'), JSON.stringify({name: 'codegen', type: 'module'}));
+
+    const res = await upgrade({from: '0.6.8', apply: true}, {cwd: tool});
+
+    expect(res.type).toBe('upgrade.run');
+    expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
+  }, SLOW);
+
+  it('does not leave a repository for the project around it', async () => {
+    seedOldPropProject(home);
+    const repo = path.join(home, 'vendor', 'repo');
+    fs.mkdirSync(path.join(repo, '.git'), {recursive: true});
+    fs.mkdirSync(path.join(repo, 'src'), {recursive: true});
+    fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({name: 'repo'}));
+    fs.writeFileSync(path.join(repo, 'src', 'App.tsx'), OLD_PROP_SOURCE);
+
+    await expect(
+      upgrade({from: '0.6.8', apply: true}, {cwd: repo}),
+    ).rejects.toMatchObject({code: 'ERR_VERSION_DETECT'});
+    expect(fs.readFileSync(path.join(repo, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+    expect(fs.readFileSync(path.join(home, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
   }, SLOW);
 });

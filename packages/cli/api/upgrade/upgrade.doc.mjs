@@ -77,7 +77,7 @@ export const doc = {
       name: 'options.path',
       type: 'string',
       description:
-        "Source directory to scan. A path you name is relative to `ctx.cwd`; the default, `./src`, is the project's own `src`.",
+        'Source directory to scan. A path you name, in any spelling, is relative to `ctx.cwd`. When it is omitted, the upgrade scans `./src` at the project root.',
       default: './src',
     },
     {
@@ -104,7 +104,7 @@ export const doc = {
       name: 'ctx.cwd',
       type: 'string',
       description:
-        'Any folder in the project to upgrade. The upgrade runs at the project root, the nearest folder at or above it with a package.json.',
+        'Any folder in the project to upgrade. The upgrade runs at the project root: the nearest folder at or above it whose package.json declares an Astryx package, or that a workspace whose root declares one lists, found without passing a repository root or reaching the home folder from inside it. With no such folder, it runs in `ctx.cwd`.',
       default: 'process.cwd()',
     },
   ],
@@ -142,7 +142,7 @@ export const doc = {
     },
     {
       code: 'ERR_VERSION_DETECT',
-      when: 'the project has installed neither @astryxdesign/core nor legacy @xds/core, in its own node_modules or in a folder up to its workspace root, or the Core its workspace holds is not the version the project declares; with `registry`, only when copied-composition receipts exist and @astryxdesign/core is not installed',
+      when: "the project has installed neither @astryxdesign/core nor legacy @xds/core in its own node_modules, nor, for a member its workspace lists, in a folder up to the workspace root (with no Astryx project, in `ctx.cwd`'s own node_modules); with `registry`, only when copied-composition receipts exist and @astryxdesign/core is not installed",
     },
     {
       code: 'ERR_DEP_MISSING',
