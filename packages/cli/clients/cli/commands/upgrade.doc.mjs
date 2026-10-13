@@ -116,6 +116,17 @@ export const doc = {
   ],
   related: ['init', 'doctor'],
   notes: [
+    {type: 'heading', level: 3, text: 'A CLI older than your Core'},
+    {
+      type: 'prose',
+      text:
+        'Core codemods ship inside the CLI, so a CLI older than the installed @astryxdesign/core has none for ' +
+        'the releases after its own version. upgrade then says it cannot finish, never reports your code as up to date, ' +
+        'and prints the same upgrade pinned to the CLI release that matches your Core, such as ' +
+        '`npx @astryxdesign/cli@<core-version> upgrade --from <old-version> --apply`. The codemods this CLI has still run. ' +
+        'It exits 0, so a script checks the JSON: the result carries `cliBehindCore` with `cliVersion` (the newest release ' +
+        'this CLI has codemods for) and `command`.',
+    },
     {type: 'heading', level: 3, text: 'Protected files'},
     {
       type: 'prose',
