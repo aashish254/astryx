@@ -30,7 +30,9 @@ import {cliError, rejectEmptyArgument} from '../lib/cli-error.mjs';
 import {
   answersQueries,
   discover as discoverApi,
+  OFFICIAL_SOURCE_NAME,
 } from '../../../api/discover/discover.mjs';
+import {isValidSemver} from '../../../foundation/env/semver.mjs';
 import {Project} from '../../../foundation/config/project.mjs';
 import {warnOnIntegrationIssues} from '../../../foundation/integrations/integration-warnings.mjs';
 import {getCliInvocation} from '../../../foundation/env/package-manager.mjs';
@@ -216,6 +218,23 @@ function addsMoreThanThemes(entry) {
 }
 
 /**
+ * What an official entry's add command installs, when that is not the version
+ * the page shows: the project's Core version, or the Core range it declares.
+ * @param {string} install the package-manager command
+ * @param {string | undefined} shown the version the page shows
+ * @param {string | undefined} source the entry's source
+ * @returns {string | undefined}
+ */
+function pinNote(install, shown, source) {
+  if (source !== OFFICIAL_SOURCE_NAME) return undefined;
+  const pin = /\S@([\d^~<>=*xXv][^"]*)"?$/u.exec(install)?.[1];
+  if (pin == null || pin === shown) return undefined;
+  return isValidSemver(pin)
+    ? `This installs ${pin}, the version that matches this project's Core.`
+    : `This installs the newest release in ${pin}, the Core range this project declares.`;
+}
+
+/**
  * The "Add it" blocks for a package the project does not have: the command
  * that adds it, then what makes its items usable. A theme still needs
  * `theme add` once the package is installed; anything else loads on the next
@@ -224,11 +243,14 @@ function addsMoreThanThemes(entry) {
  * @param {string[]} themes theme slugs the package or item adds
  * @param {boolean} addsOther whether it adds anything besides themes
  * @param {string} run how to invoke the CLI
+ * @param {string} [note] what the command installs, when the page shows
+ *   another version
  * @returns {import('../formatters/index.mjs').Block[]}
  */
-function addBlocks(install, themes, addsOther, run) {
+function addBlocks(install, themes, addsOther, run, note) {
   /** @type {import('../formatters/index.mjs').Block[]} */
   const blocks = [section('Add it'), code(install)];
+  if (note) blocks.push(text(note));
   if (themes.length > 0) {
     blocks.push(
       text(
@@ -437,6 +459,7 @@ export function registerDiscover(program) {
                     ),
                   ),
                   run,
+                  pinNote(d.install, d.version, d.source),
                 ),
               );
             } else if (d.installedAs) {
@@ -479,6 +502,7 @@ export function registerDiscover(program) {
                     d.kind === 'theme' ? [d.name] : [],
                     d.kind !== 'theme',
                     run,
+                    pinNote(d.install, d.version, d.source),
                   )
                 : []),
               text(`Its package: ${run} discover ${d.package}`),

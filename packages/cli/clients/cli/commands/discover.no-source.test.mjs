@@ -212,8 +212,26 @@ describe('astryx discover and the project’s own package.json', () => {
     const neutral = JSON.parse(stdout).meta.available.find(
       entry => entry.name === '@astryxdesign/theme-neutral',
     );
-    expect(neutral.version).toBe('0.6.8');
+    // The entry shows the latest release and installs the declared Core's.
+    expect(neutral.version).toBe(CLI_VERSION);
     expect(neutral.install).toMatch(/ @astryxdesign\/theme-neutral@0\.6\.8$/);
+  });
+
+  it('pins the Core range a fresh clone declares, quoted for the shell', async () => {
+    writeProject({dependencies: {'@astryxdesign/core': '^0.6.8'}});
+
+    const {status, stdout} = await runCli(['discover', '--json'], {
+      cwd: project,
+    });
+
+    expect(status).toBe(0);
+    const neutral = JSON.parse(stdout).meta.available.find(
+      entry => entry.name === '@astryxdesign/theme-neutral',
+    );
+    expect(neutral.version).toBe(CLI_VERSION);
+    expect(neutral.install).toMatch(
+      / "@astryxdesign\/theme-neutral@\^0\.6\.8"$/,
+    );
   });
 
   it('neither installs nor offers an official theme the project only peer-depends on', async () => {
@@ -315,8 +333,11 @@ describe('astryx discover in a project that loads an integration', () => {
     expect(stdout).not.toContain('Astryx loads an integration');
   });
 
-  it("shows, lists and pins the project's Core version, and finds it by version", async () => {
-    for (const core of ['0.6.8', '0.8.0']) {
+  it("lists the latest release and the project's Core version, pins the Core version, and finds both", async () => {
+    for (const [core, latest] of [
+      ['0.6.8', CLI_VERSION],
+      ['99.0.0', '99.0.0'],
+    ]) {
       install('@astryxdesign/core', core);
 
       const page = await runCli(
@@ -325,24 +346,25 @@ describe('astryx discover in a project that loads an integration', () => {
       );
       expect(page.status, core).toBe(0);
       const {data} = JSON.parse(page.stdout);
-      expect(data.version, core).toBe(core);
-      expect(data.latest, core).toBe(core);
-      expect(
-        data.versions.map(v => v.version),
-        core,
-      ).toEqual([core]);
+      expect(data.latest, core).toBe(latest);
+      expect(data.version, core).toBe(latest);
+      expect(data.versions.map(v => v.version).sort(), core).toEqual(
+        [...new Set([CLI_VERSION, core])].sort(),
+      );
       expect(data.install, core).toMatch(
         new RegExp(
           ` @astryxdesign/theme-gothic@${core.replaceAll('.', '\\.')}$`,
         ),
       );
 
-      const lookup = await runCli(
-        ['discover', `@astryxdesign/theme-gothic@${core}`, '--json'],
-        {cwd: project},
-      );
-      expect(lookup.status, core).toBe(0);
-      expect(JSON.parse(lookup.stdout).data.version, core).toBe(core);
+      for (const wanted of new Set([core, CLI_VERSION])) {
+        const lookup = await runCli(
+          ['discover', `@astryxdesign/theme-gothic@${wanted}`, '--json'],
+          {cwd: project},
+        );
+        expect(lookup.status, `${core} ${wanted}`).toBe(0);
+        expect(JSON.parse(lookup.stdout).data.version, wanted).toBe(wanted);
+      }
 
       const list = await runCli(['discover', '--json'], {cwd: project});
       expect(
@@ -350,11 +372,11 @@ describe('astryx discover in a project that loads an integration', () => {
           entry => entry.name === '@astryxdesign/theme-gothic',
         ).version,
         core,
-      ).toBe(core);
+      ).toBe(latest);
     }
   });
 
-  it('prints the same version on the page as in its add command', async () => {
+  it('says which version its add command installs when the page shows the latest release', async () => {
     install('@astryxdesign/core', '0.6.8');
 
     const {status, stdout} = await runCli(
@@ -363,29 +385,62 @@ describe('astryx discover in a project that loads an integration', () => {
     );
 
     expect(status).toBe(0);
-    expect(stdout).toMatch(/^version:\s+0\.6\.8$/m);
-    expect(stdout).toMatch(/^latest:\s+0\.6\.8$/m);
-    // Every pinned version the page prints is the one it shows.
-    expect(
-      [...stdout.matchAll(/theme-gothic@([\w.-]+)/g)].map(m => m[1]),
-    ).toEqual(['0.6.8']);
+    expect(stdout).toMatch(
+      new RegExp(`^latest:\\s+${CLI_VERSION.replaceAll('.', '\\.')}$`, 'm'),
+    );
+    expect(stdout).toMatch(/^- 0\.6\.8 {2}date unknown$/m);
+    // The verb follows the detected package manager.
+    expect(stdout).toMatch(/^\S+ \S+ @astryxdesign\/theme-gothic@0\.6\.8$/m);
+    expect(stdout).toContain(
+      "This installs 0.6.8, the version that matches this project's Core.",
+    );
   });
 
-  it('shows a declared official theme as installed on its page', async () => {
+  it('pins the declared Core range on the page and says so', async () => {
     writeProject({
       type: 'module',
-      dependencies: {'@astryxdesign/theme-butter': CLI_VERSION},
+      dependencies: {'@astryxdesign/core': '>=0.6.8 <0.8.0'},
     });
-    install('@astryxdesign/theme-butter', '0.7.0');
 
-    const page = await runCli(
-      ['discover', '@astryxdesign/theme-butter', '--json'],
+    const {status, stdout} = await runCli(
+      ['discover', '@astryxdesign/theme-gothic'],
       {cwd: project},
     );
-    expect(page.status).toBe(0);
-    const {data} = JSON.parse(page.stdout);
-    expect(data).toMatchObject({installed: true, version: '0.7.0'});
-    expect(data).not.toHaveProperty('install');
+
+    expect(status).toBe(0);
+    expect(stdout).toMatch(
+      /^\S+ \S+ "@astryxdesign\/theme-gothic@>=0\.6\.8 <0\.8\.0"$/m,
+    );
+    expect(stdout).toContain(
+      'This installs the newest release in >=0.6.8 <0.8.0, the Core range this project declares.',
+    );
+  });
+
+  it('keeps latest at the newest release for an installed official theme', async () => {
+    install('@astryxdesign/core', '0.6.8');
+    writeProject({
+      type: 'module',
+      dependencies: {'@astryxdesign/theme-butter': '0.6.8'},
+    });
+    install('@astryxdesign/theme-butter', '0.6.8');
+
+    const list = await runCli(['discover', '--json'], {cwd: project});
+    expect(
+      JSON.parse(list.stdout).data.find(
+        entry => entry.name === '@astryxdesign/theme-butter',
+      ),
+    ).toMatchObject({version: '0.6.8', latest: CLI_VERSION});
+
+    const page = await runCli(['discover', '@astryxdesign/theme-butter'], {
+      cwd: project,
+    });
+    expect(page.stdout).toMatch(
+      new RegExp(
+        `^- ${CLI_VERSION.replaceAll('.', '\\.')} {2}date unknown {2}latest$`,
+        'm',
+      ),
+    );
+    expect(page.stdout).toMatch(/^- 0\.6\.8 {2}date unknown {2}installed$/m);
   });
 
   it('keeps the error code for a version or item of an official package it does not show', async () => {

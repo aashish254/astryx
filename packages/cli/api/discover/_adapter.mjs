@@ -29,6 +29,7 @@ import {
 import {loadDocs} from '../../foundation/discovery/component-loader.mjs';
 import {collectIdentities} from '../../foundation/integrations/contribution-inventory.mjs';
 import {detectPackageManager} from '../../foundation/env/package-manager.mjs';
+import {isValidSemver, semverCompare} from '../../foundation/env/semver.mjs';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
 import {CLI_ROOT, findInstalledPackage} from '../../foundation/fs/paths.mjs';
 import {parseDiscoverCatalog} from '../../authoring/discover/parse.mjs';
@@ -65,10 +66,10 @@ const DEPENDENCY_FIELDS = [
  */
 
 /**
- * An official package as this CLI lists it, with at most one version: the one
- * discover shows and its add command pins (spec:AST-051 FR2, FR10). With none,
- * the add command pins nothing.
- * @typedef {DiscoverPackage} OfficialPackage
+ * An official package as this CLI lists it (spec:AST-051 FR10), with what its
+ * add command pins (FR2): the project's Core version, the Core range the
+ * project declares, or the latest release; with none, it pins nothing.
+ * @typedef {DiscoverPackage & {pin?: string}} OfficialPackage
  */
 
 /**
@@ -339,11 +340,34 @@ export function officialDeclarations(project, official) {
 }
 
 /**
- * The project's Core version: the installed copy's, else an exact version its
- * own package.json declares (a fresh clone before install). `range` reports a
- * declared range with nothing installed, which pins nothing.
+ * One part of a semver range: an optional comparator and a version that may
+ * use `x` or `*` wildcards.
+ */
+const RANGE_PART =
+  /^(?:[<>]=?|=|\^|~)?v?(?:\d+|[xX*])(?:\.(?:\d+|[xX*])){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+
+/**
+ * Whether a dependency spec is a semver range every supported package manager
+ * resolves: comparators, wildcards, `||` and hyphen ranges. A dist-tag, path,
+ * URL, alias or workspace protocol is not.
+ * @param {string} spec
+ * @returns {boolean}
+ */
+function isSemverRange(spec) {
+  const parts = spec
+    .trim()
+    .split(/\s*\|\|\s*|\s+/u)
+    .filter(part => part !== '-');
+  return parts.length > 0 && parts.every(part => RANGE_PART.test(part));
+}
+
+/**
+ * The project's Core: the installed copy's version, else what its own
+ * package.json declares (a fresh clone before install): an exact `version`, or
+ * a semver `range`. Neither, for a declaration no package manager can pin
+ * against, such as a path or a dist-tag. Null when the project has no Core.
  * @param {Project | undefined} project
- * @returns {{version?: string, range?: true} | null}
+ * @returns {{version?: string, range?: string} | null}
  */
 function projectCore(project) {
   const installed = installedVersion(project, '@astryxdesign/core');
@@ -352,20 +376,34 @@ function projectCore(project) {
   for (const field of OWN_DEPENDENCY_FIELDS) {
     const spec = manifest?.pkg?.[field]?.['@astryxdesign/core'];
     if (typeof spec !== 'string') continue;
-    const exact = spec.replace(/^=/u, '').trim();
-    return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(exact)
-      ? {version: exact}
-      : {range: true};
+    const exact = spec.trim().replace(/^=\s*/u, '');
+    if (isValidSemver(exact)) return {version: exact};
+    return isSemverRange(spec) ? {range: spec.trim()} : {};
   }
   return null;
+}
+
+/**
+ * Newest first: by release number, then a release before its prereleases.
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+function newerFirst(a, b) {
+  const byNumber = semverCompare(b, a);
+  if (byNumber !== 0) return byNumber;
+  const aRelease = !a.includes('-');
+  if (aRelease !== !b.includes('-')) return aRelease ? -1 : 1;
+  return b.localeCompare(a, 'en', {numeric: true});
 }
 
 /**
  * The command that adds a package with the project's package manager. Discover
  * only prints it; it never runs it. Asked for one version, it adds that
  * version. Given the official list, it otherwise pins an official package to
- * the one version its entry lists (spec:AST-051 FR2), so the pinned version is
- * always one discover shows and can look up.
+ * what its entry names (spec:AST-051 FR2): the project's Core version or
+ * declared Core range, else the latest release. A range is quoted, because
+ * `^`, `<`, `>`, `|` and spaces mean something to a shell.
  * @param {Project | undefined} project
  * @param {{official?: OfficialPackage[]}} [options]
  * @returns {(name: string, version?: string) => string}
@@ -382,8 +420,12 @@ export function addCommand(project, {official = []} = {}) {
           : 'npm install';
   const byName = new Map(official.map(pkg => [pkg.package, pkg]));
   return (name, version) => {
-    const pin = version ?? byName.get(name)?.versions[0]?.version;
-    return `${verb} ${pin ? `${name}@${pin}` : name}`;
+    if (version) return `${verb} ${name}@${version}`;
+    const pin = byName.get(name)?.pin;
+    if (!pin) return `${verb} ${name}`;
+    return isValidSemver(pin)
+      ? `${verb} ${name}@${pin}`
+      : `${verb} "${name}@${pin}"`;
   };
 }
 
@@ -600,7 +642,7 @@ export async function callSources(project, request = {}, options = {}) {
   );
   /** @type {CatalogResult['packages']} */
   const added = [];
-  for (const pkg of official.packages) {
+  for (const {pin: _pin, ...pkg} of official.packages) {
     if (seen.has(pkg.package)) continue;
     if (request.package && pkg.package !== request.package) continue;
     added.push({...pkg, source: OFFICIAL_SOURCE_NAME, official: true});
@@ -644,17 +686,20 @@ export function officialFirst(items, official, nameOf) {
 
 /**
  * The official list this CLI carries (spec:AST-051 FR10). The file holds no
- * versions. Each entry lists at most one: the version its add command pins
- * (FR2), so what discover shows, what it can look up, and what it installs
- * agree. That version is the project's Core version (installed, else declared
- * exactly) for a package released with Core and for a canary-only package; a
- * release CLI's own version for a package released with Core when the project
- * has no Core; and a canary CLI's own version for a canary-only package when
- * the project has no Core. Otherwise the entry lists none and pins nothing:
- * a canary CLI may have been published without some packages, and a declared
- * Core range names no single version. Canary-only packages are listed only by
- * a canary CLI, and never beside a released Core, which they cannot install
- * with.
+ * versions; each entry takes them from this CLI and the project:
+ *
+ * - Its latest release is the newest release this CLI knows: its own version
+ *   on a release CLI, or the project's Core version when that is a newer
+ *   release.
+ * - A package released with Core lists a release CLI's own version and the
+ *   project's Core version (installed, else declared exactly), so each,
+ *   the latest release included, can be looked up. Its add command pins the project's Core version, else the Core range
+ *   the project declares, else the latest release; nothing on a canary CLI in
+ *   a project with no Core, which may have been published without it.
+ * - A canary-only package is listed only by a canary CLI, as a prerelease at
+ *   the project's Core version when that is a prerelease, else at the CLI's
+ *   own version when the project has no Core. It is not listed beside a
+ *   released or declared Core, which it cannot be installed with.
  *
  * @param {{file?: string, version?: string, project?: Project}} [options] the
  *   list file and the CLI version to read it for, both defaulting to this
@@ -672,36 +717,55 @@ export function officialList({
     const core = project == null ? null : projectCore(project);
     const list = JSON.parse(fs.readFileSync(file, 'utf8'));
     const canaryCli = /-canary\./u.test(cli);
+    /** @type {(v: string | undefined) => v is string} */
+    const isRelease = v => v != null && !v.includes('-');
+    const latest =
+      [cli, core?.version].filter(isRelease).sort(newerFirst)[0] ?? null;
     /** @type {OfficialPackage[]} */
     const packages = [];
     for (const pkg of list.packages) {
-      const canaryOnly = pkg.canaryOnly === true;
-      if (canaryOnly && !canaryCli) continue;
+      /** @type {string[]} */
+      let listed = [];
+      /** @type {string | null} */
+      let entryLatest = null;
       /** @type {string | undefined} */
       let pin;
-      if (core?.version) {
-        const releasedCore = !core.version.includes('-');
-        if (canaryOnly && releasedCore) continue;
-        if (canaryOnly || pkg.releasedWithCore === true) pin = core.version;
-      } else if (core?.range) {
-        if (canaryOnly) continue;
-      } else if (canaryOnly) {
-        pin = cli;
-      } else if (pkg.releasedWithCore === true && !canaryCli) {
-        pin = cli;
+      if (pkg.canaryOnly === true) {
+        if (!canaryCli) continue;
+        if (core == null) pin = cli;
+        else if (core.version && !isRelease(core.version)) pin = core.version;
+        else continue;
+        listed = [pin];
+      } else if (pkg.releasedWithCore === true) {
+        entryLatest = latest;
+        listed = [
+          ...new Set(
+            [isRelease(cli) ? cli : undefined, core?.version].filter(
+              /** @returns {v is string} */ v => v != null,
+            ),
+          ),
+        ].sort(newerFirst);
+        pin =
+          core == null
+            ? canaryCli
+              ? undefined
+              : cli
+            : (core.version ?? core.range);
       }
-      const prerelease = pin != null && pin.includes('-');
       packages.push({
         package: pkg.package,
         integration: pkg.package,
         aliases: [],
         ...(pkg.description ? {description: pkg.description} : {}),
-        latest: pin != null && !prerelease ? pin : null,
-        versions:
-          pin == null
-            ? []
-            : [{version: pin, publishedAt: null, prerelease, status: 'ok'}],
+        latest: entryLatest,
+        versions: listed.map(v => ({
+          version: v,
+          publishedAt: null,
+          prerelease: v.includes('-'),
+          status: 'ok',
+        })),
         contributions: pkg.contributions,
+        ...(pin ? {pin} : {}),
       });
     }
     return {packages};
