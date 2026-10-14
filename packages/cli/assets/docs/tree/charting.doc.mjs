@@ -290,7 +290,7 @@ export function useProductChartColorOptions() {
       content: [
         {
           type: 'prose',
-          text: 'For a verified live DOM or SVG paint property, import `dataVars` and pass the value directly. Importing `dataVars` retains the complete atomic data-variable group once for the compiled app; it does not create a stylesheet for every chart.',
+          text: 'For a verified live DOM or SVG paint property, import `dataVars` and pass the value directly only when the referenced variable is available from the app’s compiled StyleX data group, an explicitly authored value in the active built theme, or an explicit local fallback. When the app’s StyleX build compiles the import, it retains the complete atomic data-variable group once for the app; it does not create a stylesheet for every chart. The prebuilt `astryx.css` does not declare the canonical data-color group, and a built theme supplies only the data colors it explicitly authors. In an app that uses only prebuilt CSS, verify that the built theme authors the selected color; otherwise pass the concrete value from `useTheme().token()` or provide a local fallback.',
         },
         {
           type: 'code',
@@ -413,7 +413,7 @@ JSON.stringify(exportConfig);`,
       content: [
         {
           type: 'prose',
-          text: 'Recharts passes the demonstrated bar, grid, axis, tooltip, and legend text values to live SVG or HTML properties. Use Astryx variables for those verified properties. This example does not imply that every Recharts prop or future release accepts CSS references.',
+          text: 'Recharts passes the demonstrated bar, grid, axis, tooltip, and legend text values to live SVG or HTML properties. Use `dataVars` for those verified properties when each referenced data color is available from the app’s compiled StyleX data group, an explicitly authored value in the active built theme, or an explicit local fallback. An app that uses only prebuilt `astryx.css` plus a built theme should not assume every data variable exists: for a color the built theme does not explicitly author, pass the concrete `useTheme().token()` value instead or provide a local fallback. This example does not imply that every Recharts prop or future release accepts CSS references.',
         },
         {
           type: 'code',
