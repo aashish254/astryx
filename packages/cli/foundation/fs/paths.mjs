@@ -186,10 +186,8 @@ export function findPackageRoot(startDir) {
  * The Astryx project `startDir` belongs to: the nearest folder at or above it
  * whose package.json declares an Astryx package (`@astryxdesign/*`, or the
  * legacy `@xds/*`), or that a workspace whose root declares one lists as a
- * member. The search stops at a repository root, and it never reaches the
- * home folder from a folder inside it: the home folder is the project only
- * when the search starts there and it declares Astryx. Returns null when no
- * folder qualifies.
+ * member. The search stops at a repository root, and it ends at the home
+ * folder without counting it. Returns null when no folder qualifies.
  *
  * @param {string} startDir
  * @returns {string|null}
@@ -198,9 +196,7 @@ export function findAstryxProject(startDir) {
   const start = path.resolve(startDir);
   const home = homeFolder();
   for (const dir of foldersUpFrom(start)) {
-    if (home != null && realDir(dir) === home) {
-      return dir === start && declaresAstryx(dir) ? dir : null;
-    }
+    if (home != null && realDir(dir) === home) return null;
     if (declaresAstryx(dir) || isAstryxWorkspaceMember(dir)) return dir;
     if (
       REPOSITORY_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))

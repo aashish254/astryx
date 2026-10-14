@@ -92,7 +92,7 @@ const execFileAsync = promisify(execFile);
  * folder inside a project upgrades that project exactly as a run from its
  * root does. Its source, config, agent docs and
  * protection declarations all live there. The search stops at a repository
- * root and never reaches the home folder from inside it (see
+ * root and ends at the home folder without counting it (see
  * `findAstryxProject`). A `path` the caller names, in any spelling (`./src`,
  * `src`, `src/`), is read from `cwd`, where they typed it. With no `path`,
  * the upgrade scans `./src` at the project root. With no Astryx project, the
@@ -109,6 +109,44 @@ export function scopeToProject(options, cwd) {
   const namedPath =
     options.path == null ? {} : {path: path.resolve(here, options.path)};
   return {options: {...options, ...namedPath}, cwd: root, origin: here};
+}
+
+/**
+ * The result of an upgrade that ran at a project root above the folder the
+ * command ran in, with its file paths made relative to that folder, so each
+ * resolves from where the command ran: `modifiedFiles`, `agentDocs.files`, and
+ * the `file` of each `protectedFiles`, `declinedCandidates` and `errors`
+ * entry. Copied-composition paths stay relative to the scanned source folder.
+ * A result of a run at the project root is returned as it is.
+ * @template {{type: string, data: object}} T
+ * @param {T} result
+ * @param {{cwd: string, origin?: string}} scope from `scopeToProject`
+ * @returns {T}
+ */
+export function relativeToOrigin(result, {cwd: root, origin}) {
+  if (origin == null) return result;
+  /** @param {string} file */
+  const rebase = file =>
+    path.relative(origin, path.resolve(root, file)).split(path.sep).join('/') ||
+    '.';
+  /** @type {Record<string, any>} */
+  const data = {...result.data};
+  if (data.agentDocs) {
+    data.agentDocs = {
+      ...data.agentDocs,
+      files: data.agentDocs.files.map(rebase),
+    };
+  }
+  if (data.modifiedFiles) data.modifiedFiles = data.modifiedFiles.map(rebase);
+  for (const key of ['protectedFiles', 'declinedCandidates', 'errors']) {
+    if (data[key]) {
+      data[key] = data[key].map((/** @type {{file: string}} */ entry) => ({
+        ...entry,
+        file: rebase(entry.file),
+      }));
+    }
+  }
+  return /** @type {T} */ ({...result, data});
 }
 
 /**
