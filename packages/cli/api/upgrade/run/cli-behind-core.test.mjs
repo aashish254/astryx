@@ -5,8 +5,9 @@
  * Core has none for the releases after its own version. Every result past the
  * up-to-date exit says so in `cliBehindCore`, with the same upgrade pinned to
  * the CLI release that matches the Core; a CLI that covers the range returns
- * what it always did. The pinned command names the directory the run scanned
- * as an absolute path, and the shell reads every argument back unchanged.
+ * what it always did. The pinned command changes to the folder the run used
+ * and names the directory it scanned as an absolute path, so a POSIX shell
+ * runs it there, with every argument unchanged, wherever it is pasted.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
@@ -17,6 +18,7 @@ import * as path from 'node:path';
 import {upgrade} from '../upgrade.mjs';
 import {CLI_ROOT} from '../../../foundation/fs/paths.mjs';
 import {
+  commandInFolder,
   getDlxPrefix,
   quoteCommandArgument,
 } from '../../../foundation/env/package-manager.mjs';
@@ -59,31 +61,37 @@ function write(rel, body) {
  * @param {...string} args the arguments after `upgrade`
  */
 function pinned(...args) {
-  return [
-    getDlxPrefix(dir),
-    `@astryxdesign/cli@${NEWER_CORE}`,
-    'upgrade',
-    ...args.map(arg => quoteCommandArgument(arg)),
-  ].join(' ');
+  return commandInFolder(
+    dir,
+    [
+      getDlxPrefix(dir),
+      `@astryxdesign/cli@${NEWER_CORE}`,
+      'upgrade',
+      ...args.map(arg => quoteCommandArgument(arg)),
+    ].join(' '),
+  );
 }
 
-/** A stand-in for each package runner: prints the arguments the shell passed. */
+/**
+ * Stand-ins for the package runners: each prints the folder it runs in and the
+ * arguments the shell passed.
+ */
 const RUNNERS = ['npx', 'pnpm', 'yarn', 'bunx']
   .map(
     name =>
-      `${name}() { "$0" -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' -- "$@"; }`,
+      `${name}() { "$0" -e 'process.stdout.write(JSON.stringify({cwd: process.cwd(), argv: process.argv.slice(1)}))' -- "$@"; }`,
   )
   .join('; ');
 
 /**
- * The arguments a POSIX shell passes when it runs `command`, from the pinned
- * CLI package on.
+ * What a POSIX shell runs for `command` pasted in `cwd`: the folder the
+ * package runner ran in, and its arguments from the pinned CLI package on.
  * @param {string} command
- * @param {string} cwd the folder the shell runs in
- * @returns {string[]}
+ * @param {string} cwd the folder the command is pasted in
+ * @returns {{cwd: string, args: string[]}}
  */
-function shellArguments(command, cwd) {
-  const argv = JSON.parse(
+function runInShell(command, cwd) {
+  const ran = JSON.parse(
     execFileSync(
       '/bin/sh',
       ['-c', `${RUNNERS}; ${command}`, process.execPath],
@@ -93,7 +101,10 @@ function shellArguments(command, cwd) {
       },
     ),
   );
-  return argv.slice(argv.indexOf(`@astryxdesign/cli@${NEWER_CORE}`));
+  return {
+    cwd: ran.cwd,
+    args: ran.argv.slice(ran.argv.indexOf(`@astryxdesign/cli@${NEWER_CORE}`)),
+  };
 }
 
 beforeEach(() => {
@@ -181,13 +192,15 @@ describe('a CLI older than the installed Core', {timeout: SLOW}, () => {
     );
   });
 
-  // A package runner can run the CLI somewhere other than where the command
-  // was typed: Yarn 1 runs `yarn astryx` at the project root. A relative path
-  // copied into the command then named another directory when the command ran
-  // from the folder it was typed in.
-  it('names the directory the run scanned as an absolute path', async () => {
+  // Where an upgrade runs decides what it finds: the installed Core is read
+  // from that folder, and --path must stay inside it. The command printed
+  // without a folder failed when pasted anywhere else: ERR_PATH_TRAVERSAL from
+  // a subfolder, ERR_VERSION_DETECT from a parent. A package runner can also
+  // move the run: Yarn 1 runs `yarn astryx` at the project root.
+  it('changes to the folder the run used and names the directory it scanned as an absolute path', async () => {
     installCore(NEWER_CORE);
     write('app/index.tsx', TYPEAHEAD_SOURCE);
+    const project = fs.realpathSync(dir);
 
     for (const [given, scanned] of [
       [undefined, path.join(dir, 'src')],
@@ -203,14 +216,21 @@ describe('a CLI older than the installed Core', {timeout: SLOW}, () => {
 
       expect(command).toBe(pinned('--from', CLI_VERSION, '--path', scanned));
       if (process.platform !== 'win32') {
-        const fromApp = shellArguments(command, path.join(dir, 'app'));
-        expect(fromApp[fromApp.indexOf('--path') + 1]).toBe(scanned);
+        for (const pastedIn of [
+          path.join(dir, 'app'),
+          path.dirname(dir),
+          path.parse(dir).root,
+        ]) {
+          const ran = runInShell(command, pastedIn);
+          expect(ran.cwd).toBe(project);
+          expect(ran.args[ran.args.indexOf('--path') + 1]).toBe(scanned);
+        }
       }
     }
   });
 
   it.skipIf(process.platform === 'win32')(
-    'quotes the command so a POSIX shell passes every argument unchanged',
+    'quotes the command so a POSIX shell enters the folder and passes every argument unchanged',
     async () => {
       fs.rmSync(dir, {recursive: true, force: true});
       dir = fs.mkdtempSync(
@@ -232,12 +252,13 @@ describe('a CLI older than the installed Core', {timeout: SLOW}, () => {
         {cwd: dir},
       );
 
-      expect(
-        shellArguments(
-          /** @type {string} */ (res.data.cliBehindCore?.command),
-          dir,
-        ),
-      ).toEqual([
+      const ran = runInShell(
+        /** @type {string} */ (res.data.cliBehindCore?.command),
+        path.dirname(dir),
+      );
+
+      expect(ran.cwd).toBe(fs.realpathSync(dir));
+      expect(ran.args).toEqual([
         `@astryxdesign/cli@${NEWER_CORE}`,
         'upgrade',
         '--from',

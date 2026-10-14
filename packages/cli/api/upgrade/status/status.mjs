@@ -47,15 +47,17 @@ export function statusUpToDate({from, to, agentDocs, registryCompositions}) {
  * The one warning for a CLI older than the installed Core: it has no codemods
  * for the releases after its own version, and the pinned command does. The
  * command gets a line of its own, so it copies exactly, whatever quotes or
- * backticks its arguments carry.
+ * backticks its arguments carry. On Windows it is written for PowerShell, and
+ * the warning says so.
  * @param {import('../upgrade.type.mjs').CliBehindCore} cliBehindCore
  * @param {string} to the installed Core version
  */
 export function logCliBehindCore({cliVersion, command}, to) {
+  const shell = process.platform === 'win32' ? ' in PowerShell' : '';
   logger.warn(
     `This CLI (${cliVersion}) is older than the installed @astryxdesign/core (${to}): ` +
       `it has no codemods for releases after ${cliVersion}, so it cannot finish this upgrade. ` +
-      'Run it with the CLI that matches your Core:',
+      `Run it${shell} with the CLI that matches your Core:`,
   );
   logger.warn(`  ${command}`);
 }

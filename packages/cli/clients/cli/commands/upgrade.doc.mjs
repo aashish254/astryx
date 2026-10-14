@@ -124,9 +124,10 @@ export const doc = {
         'Core codemods ship inside the CLI, so a CLI older than the installed @astryxdesign/core has none for ' +
         'the releases after its own version. upgrade then says it cannot finish, never reports your code as up to date, ' +
         'and prints the same upgrade pinned to the CLI release that matches your Core, such as ' +
-        '`npx @astryxdesign/cli@<core-version> upgrade --from <old-version> --path <source-dir> --apply`. ' +
-        'It names the directory this run scanned as an absolute path, so it scans the same code from any folder, ' +
-        'and quotes each argument for your shell. The codemods this CLI has still run. ' +
+        '`cd <project> && npx @astryxdesign/cli@<core-version> upgrade --from <old-version> --path <source-dir> --apply`. ' +
+        'It changes to the folder this run used and names the directory it scanned as an absolute path, so pasted from ' +
+        'any folder it upgrades the same code. It is written for a POSIX shell (sh, bash, zsh), or for PowerShell on Windows, ' +
+        'with each argument quoted for that shell; cmd.exe is not a target. The codemods this CLI has still run. ' +
         'It exits 0, so a script checks the JSON: the result carries `cliBehindCore` with `cliVersion` (the newest release ' +
         'this CLI has codemods for) and `command`.',
     },

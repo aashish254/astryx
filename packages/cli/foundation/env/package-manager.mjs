@@ -515,16 +515,13 @@ export function formatCliCommand(command, targetDir) {
 
 /**
  * Quote one argument of a printed command so the shell it is pasted into
- * passes it on unchanged. A value made only of letters, digits and `@ / . _ -`
- * (and, on Windows, a drive path's `:` and `\`) stays bare.
- *
- * - POSIX shells (sh, bash, zsh, fish): single quotes, inside which `$`,
- *   backticks, `!`, spaces and double quotes are literal. An embedded single
- *   quote is written `'\''`.
- * - Windows: double quotes, which cmd and PowerShell both read literally for a
- *   value with spaces. A value with `$`, a backtick, `"`, `%` or `!`, which one
- *   of them expands inside double quotes, gets PowerShell's literal single
- *   quotes instead, with an embedded single quote doubled.
+ * passes it on unchanged. Printed commands target a POSIX shell (sh, bash,
+ * zsh), and PowerShell on Windows; cmd.exe is not a target. A value made only
+ * of letters, digits and `@ / . _ -` (and, on Windows, a drive path's `:` and
+ * `\`) stays bare. Any other value gets single quotes, inside which both
+ * shells read `$`, backticks, `%`, `!`, spaces and double quotes literally. An
+ * embedded single quote is written `'\''` for a POSIX shell and doubled for
+ * PowerShell.
  *
  * @param {string} value
  * @param {string} [platform] the `process.platform` the command is printed for
@@ -534,9 +531,30 @@ export function quoteCommandArgument(value, platform = process.platform) {
   const text = String(value);
   if (platform === 'win32') {
     if (/^[A-Za-z0-9@/._:\\-]+$/u.test(text)) return text;
-    if (!/[$`"%!]/u.test(text)) return `"${text}"`;
     return `'${text.replace(/'/gu, "''")}'`;
   }
   if (/^[A-Za-z0-9@/._-]+$/u.test(text)) return text;
   return `'${text.replace(/'/gu, `'\\''`)}'`;
+}
+
+/**
+ * A printed command that changes to `dir`, then runs `command` there, so it
+ * does the same work pasted from any folder. It runs `command` only when the
+ * change worked. For a POSIX shell: `cd <dir> && <command>`. For PowerShell
+ * on Windows: `cd -LiteralPath <dir> -ErrorAction Stop; <command>`, because
+ * `-LiteralPath` reads `[` and `]` in a folder name literally, and a failed
+ * change stops the line in Windows PowerShell 5.1, which has no `&&`, as in
+ * PowerShell 7.
+ *
+ * @param {string} dir an absolute folder
+ * @param {string} command the command to run there, its arguments already
+ *   quoted with {@link quoteCommandArgument}
+ * @param {string} [platform] the `process.platform` the command is printed for
+ * @returns {string}
+ */
+export function commandInFolder(dir, command, platform = process.platform) {
+  const folder = quoteCommandArgument(dir, platform);
+  return platform === 'win32'
+    ? `cd -LiteralPath ${folder} -ErrorAction Stop; ${command}`
+    : `cd ${folder} && ${command}`;
 }
