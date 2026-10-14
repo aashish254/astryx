@@ -1052,27 +1052,44 @@ async function capture(page: Page, scenario: Case) {
   }
 }
 
-test('captures DropdownMenu states with sensor receipts', async ({
-  browser,
-}: {
-  browser: Browser;
-}) => {
-  test.setTimeout(10 * 60 * 1000);
-  const results = new Map<string, Awaited<ReturnType<typeof capture>>>();
-  for (const scenario of CASES) {
-    const context = await browser.newContext({
-      viewport: scenario.viewport,
-      deviceScaleFactor: 2,
-      hasTouch: scenario.pointer === 'coarse',
-      isMobile: scenario.pointer === 'coarse',
-    });
-    const page = await context.newPage();
-    try {
-      results.set(scenario.state, await capture(page, scenario));
-    } finally {
-      await context.close();
+// One frame takes about half a minute on the CI runner, so the frames run as
+// bounded serial chunks rather than one long test. They share one results map
+// and one manifest; the cross-frame checks run after the last chunk.
+const CHUNK_SIZE = 8;
+const CHUNKS = Array.from(
+  {length: Math.ceil(CASES.length / CHUNK_SIZE)},
+  (_, index) => CASES.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE),
+);
+const results = new Map<string, Awaited<ReturnType<typeof capture>>>();
+
+test.describe.configure({mode: 'serial'});
+
+for (const [index, chunk] of CHUNKS.entries()) {
+  test(`captures DropdownMenu states ${index + 1}/${CHUNKS.length} with sensor receipts`, async ({
+    browser,
+  }: {
+    browser: Browser;
+  }) => {
+    test.setTimeout(10 * 60 * 1000);
+    for (const scenario of chunk) {
+      const context = await browser.newContext({
+        viewport: scenario.viewport,
+        deviceScaleFactor: 2,
+        hasTouch: scenario.pointer === 'coarse',
+        isMobile: scenario.pointer === 'coarse',
+      });
+      const page = await context.newPage();
+      try {
+        results.set(scenario.state, await capture(page, scenario));
+      } finally {
+        await context.close();
+      }
     }
-  }
+  });
+}
+
+test('every frame was captured, and the frames agree across states', () => {
+  expect([...results.keys()]).toEqual(CASES.map(scenario => scenario.state));
   // The anchored menu reflects its documented presentation capability.
   expect(results.get('keyboard-open')?.presentation).toBe('popover');
   expect(results.get('bottom-sheet')?.presentation).toBe('bottom-sheet');
