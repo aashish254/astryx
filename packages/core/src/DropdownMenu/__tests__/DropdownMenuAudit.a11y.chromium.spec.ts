@@ -447,6 +447,159 @@ async function highlightFill(page: Page) {
   }, png.toString('base64'));
 }
 
+type Observed = {
+  presentation: string | null;
+  menuCount: number;
+  rowsSummary: {
+    role: string | null;
+    label: string;
+    checked: string | null;
+    disabled: boolean;
+    variant: string | null;
+  }[];
+  focusedRowIndex: number;
+  activeIsMenu: boolean;
+  menuScroll: {
+    scrollHeight: number;
+    clientHeight: number;
+    overflowY: string;
+  } | null;
+  regionControls: {inputs: string[]; buttons: string[]};
+  triggerExpanded: string | null;
+  dialogCount: number;
+};
+
+/**
+ * Each frame proves the state it claims, not merely that a menu exists. A
+ * frame whose claim this cannot check fails rather than passing silently.
+ */
+function assertClaimedState(
+  scenario: Case,
+  observed: Observed,
+  box: {x: number; y: number; width: number; height: number},
+) {
+  const {state} = scenario;
+  const rows = observed.rowsSummary;
+  const focusedRow = rows[observed.focusedRowIndex];
+  const expectAnchored = () => {
+    expect(observed.presentation, `${state}: anchored menu`).toBe('popover');
+  };
+  const expectSheet = () => {
+    expect(observed.presentation, `${state}: bottom sheet`).toBe(
+      'bottom-sheet',
+    );
+    expect(observed.dialogCount, `${state}: sheet dialog`).toBeGreaterThan(0);
+  };
+
+  if (state.startsWith('trigger-rest')) {
+    expect(observed.menuCount, `${state}: no menu open`).toBe(0);
+    expect(observed.triggerExpanded).toBe('false');
+    return;
+  }
+  if (
+    state.startsWith('keyboard-open') ||
+    state.startsWith('forced-colors-focus') ||
+    state === 'popover-narrow'
+  ) {
+    expectAnchored();
+    expect(observed.triggerExpanded).toBe('true');
+    expect(observed.focusedRowIndex, `${state}: first row focused`).toBe(0);
+    expect(focusedRow?.disabled).toBe(false);
+    if (state === 'popover-narrow') {
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        scenario.viewport.width + 0.5,
+      );
+    }
+    return;
+  }
+  if (state === 'pointer-open' || state === 'header-footer') {
+    expectAnchored();
+    expect(observed.activeIsMenu, `${state}: the menu itself is focused`).toBe(
+      true,
+    );
+    expect(observed.focusedRowIndex, `${state}: no row focused`).toBe(-1);
+    if (state === 'header-footer') {
+      expect(observed.regionControls.inputs).toContain('Filter labels');
+      expect(observed.regionControls.buttons).toContain('Create label');
+    }
+    return;
+  }
+  if (state.startsWith('hover-row') || state === 'pressed-row') {
+    expectAnchored();
+    expect(observed.focusedRowIndex, `${state}: second row focused`).toBe(1);
+    return;
+  }
+  if (state.startsWith('disabled-row')) {
+    expectAnchored();
+    const disabledIndexes = rows.flatMap((row, index) =>
+      row.disabled ? [index] : [],
+    );
+    const lastEnabled = rows.reduce(
+      (last, row, index) => (row.disabled ? last : index),
+      -1,
+    );
+    expect(disabledIndexes.length, `${state}: a disabled row`).toBeGreaterThan(
+      0,
+    );
+    // End lands on the last enabled row: the trailing disabled row is skipped.
+    expect(lastEnabled).toBeLessThan(rows.length - 1);
+    expect(observed.focusedRowIndex).toBe(lastEnabled);
+    expect(focusedRow?.disabled).toBe(false);
+    return;
+  }
+  if (state.startsWith('destructive-row')) {
+    expectAnchored();
+    expect(focusedRow?.variant, `${state}: destructive row focused`).toBe(
+      'destructive',
+    );
+    return;
+  }
+  if (state.startsWith('checkbox-rows')) {
+    expectAnchored();
+    expect(rows.map(row => row.role)).toEqual([
+      'menuitemcheckbox',
+      'menuitemcheckbox',
+    ]);
+    expect(rows.map(row => row.checked)).toEqual(['false', 'true']);
+    return;
+  }
+  if (state === 'radio-rows') {
+    expectAnchored();
+    expect(rows.map(row => row.role)).toEqual([
+      'menuitemradio',
+      'menuitemradio',
+      'menuitemradio',
+    ]);
+    const checked = rows.filter(row => row.checked === 'true');
+    expect(checked.map(row => row.label)).toEqual(['Newest']);
+    return;
+  }
+  if (state.startsWith('submenu-open')) {
+    expectAnchored();
+    expect(observed.menuCount).toBeGreaterThan(1);
+    expect(observed.focusedRowIndex, `${state}: focus in the flyout`).toBe(
+      rows.findIndex(row => row.label === 'Folder A'),
+    );
+    return;
+  }
+  if (state === 'overflow-scroll') {
+    expectAnchored();
+    const scroll = observed.menuScroll;
+    expect(scroll, `${state}: menu measured`).not.toBeNull();
+    expect(scroll?.scrollHeight ?? 0).toBeGreaterThan(
+      (scroll?.clientHeight ?? 0) + 1,
+    );
+    expect(['auto', 'scroll']).toContain(scroll?.overflowY);
+    return;
+  }
+  if (state.startsWith('bottom-sheet') || state === 'adaptive-narrow-coarse') {
+    expectSheet();
+    return;
+  }
+  throw new Error(`${state}: no claimed-state assertion`);
+}
+
 async function capture(page: Page, scenario: Case) {
   const pageErrors: string[] = [];
   const onError = (error: Error) => pageErrors.push(String(error));
@@ -630,8 +783,54 @@ async function capture(page: Page, scenario: Case) {
           '.astryx-dropdown-menu-section-heading',
         );
         const focusStyle = focusedRow ? getComputedStyle(focusedRow) : null;
+        const isShown = (el: Element) => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        };
+        // Controls in the popover but outside the role="menu" element: the
+        // header and footer regions.
+        const host = menu?.closest('[popover]') ?? null;
+        const outside =
+          host != null && menu != null
+            ? [...host.querySelectorAll('input, button')].filter(
+                el => !menu.contains(el) && isShown(el),
+              )
+            : [];
+        const menuStyle = menu ? getComputedStyle(menu) : null;
         return {
           open,
+          rowsSummary: rows.map(row => ({
+            role: row.getAttribute('role'),
+            label: (label(row)?.textContent ?? '').trim(),
+            checked: row.getAttribute('aria-checked'),
+            disabled: row.getAttribute('aria-disabled') === 'true',
+            variant: row.getAttribute('data-variant'),
+          })),
+          focusedRowIndex: focusedRow ? rows.indexOf(focusedRow) : -1,
+          activeIsMenu: menu != null && active === menu,
+          menuScroll:
+            menu && menuStyle
+              ? {
+                  scrollHeight: menu.scrollHeight,
+                  clientHeight: menu.clientHeight,
+                  overflowY: menuStyle.overflowY,
+                }
+              : null,
+          regionControls: {
+            inputs: outside
+              .filter(el => el.matches('input'))
+              .map(el => el.getAttribute('placeholder') ?? ''),
+            buttons: outside
+              .filter(el => el.matches('button'))
+              .map(el => (el.textContent ?? '').trim()),
+          },
+          triggerExpanded:
+            document
+              .querySelector('#storybook-root button[aria-haspopup]')
+              ?.getAttribute('aria-expanded') ?? null,
+          dialogCount: [
+            ...document.querySelectorAll('[role="dialog"], dialog'),
+          ].filter(isShown).length,
           menuCount: menus.length,
           menuRole: menu?.getAttribute('role') ?? null,
           presentation: menu?.getAttribute('data-presentation') ?? null,
@@ -726,6 +925,7 @@ async function capture(page: Page, scenario: Case) {
     if (scenario.drive === 'keyboard-submenu') {
       expect(observed.menuCount).toBeGreaterThan(1);
     }
+    assertClaimedState(scenario, observed, box);
     if (scenario.forcedColors === 'after') {
       expect(observed.focusedRowBackground).toBe(band?.highlight);
       expect(band?.ratio ?? 0).toBeGreaterThan(0.5);
