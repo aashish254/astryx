@@ -458,6 +458,7 @@ type Observed = {
     variant: string | null;
   }[];
   focusedRowIndex: number;
+  focusedItem: {role: string | null; label: string; menuIndex: number} | null;
   activeIsMenu: boolean;
   menuScroll: {
     scrollHeight: number;
@@ -578,9 +579,12 @@ function assertClaimedState(
   if (state.startsWith('submenu-open')) {
     expectAnchored();
     expect(observed.menuCount).toBeGreaterThan(1);
-    expect(observed.focusedRowIndex, `${state}: focus in the flyout`).toBe(
-      rows.findIndex(row => row.label === 'Folder A'),
-    );
+    // Focus is on the flyout's first row, not anywhere in the root menu.
+    expect(observed.focusedItem, `${state}: a row is focused`).not.toBeNull();
+    expect(observed.focusedItem?.role).toBe('menuitem');
+    expect(observed.focusedItem?.label).toBe('Folder A');
+    expect(observed.focusedItem?.menuIndex, `${state}: in the flyout`).toBe(1);
+    expect(observed.focusedRowIndex, `${state}: not a root row`).toBe(-1);
     return;
   }
   if (state === 'overflow-scroll') {
@@ -739,8 +743,12 @@ async function capture(page: Page, scenario: Case) {
           ...document.querySelectorAll<HTMLElement>('.astryx-dropdown-menu'),
         ].filter(el => el.getBoundingClientRect().height > 0);
         const menu = menus[0] ?? null;
+        // The root menu's own rows: a flyout renders inside the root menu's
+        // DOM, so rows belonging to a nested menu are left out here.
         const rows = menu
-          ? [...menu.querySelectorAll<HTMLElement>('[role^="menuitem"]')]
+          ? [
+              ...menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'),
+            ].filter(row => row.closest('[role="menu"]') === menu)
           : [];
         const active = document.activeElement as HTMLElement | null;
         const focusedRow =
@@ -807,6 +815,19 @@ async function capture(page: Page, scenario: Case) {
             variant: row.getAttribute('data-variant'),
           })),
           focusedRowIndex: focusedRow ? rows.indexOf(focusedRow) : -1,
+          // The focused row wherever it is — root menu or a flyout — and the
+          // position of its own menu among the visible menus.
+          focusedItem: focusedRow
+            ? {
+                role: focusedRow.getAttribute('role'),
+                label: (label(focusedRow)?.textContent ?? '').trim(),
+                menuIndex: menus.indexOf(
+                  focusedRow.closest<HTMLElement>(
+                    '[role="menu"]',
+                  ) as HTMLElement,
+                ),
+              }
+            : null,
           activeIsMenu: menu != null && active === menu,
           menuScroll:
             menu && menuStyle
