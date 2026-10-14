@@ -872,35 +872,31 @@ describe('installAgentDocs', () => {
     ['a list', '{"context": {"fileName": ["AGENTS.md", "GEMINI.md"]}}'],
     ['a name', '{"context": {"fileName": "AGENTS.md"}}'],
     ['comments', '{\n  // Gemini reads AGENTS.md\n  "context": {/* both */ "fileName": ["AGENTS.md", "GEMINI.md"]}\n}\n'],
-  ])('leaves GEMINI.md out when the project Gemini settings read AGENTS.md (%s)', (_label, settings) => {
+    ['another file', '{"context": {"fileName": "GEMINI.md"}}'],
+  ])('writes the GEMINI.md import whatever the project Gemini settings read (%s)', (_label, settings) => {
+    // Gemini loads project settings only when it starts at the project root;
+    // started in a subfolder, the import is its only copy.
     setupCorePackage(tmpDir);
     fs.mkdirSync(path.join(tmpDir, '.gemini'));
     fs.writeFileSync(path.join(tmpDir, '.gemini', 'settings.json'), settings);
 
-    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md']);
-    expect(fs.existsSync(path.join(tmpDir, 'GEMINI.md'))).toBe(false);
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe(GEMINI_IMPORT);
   });
 
-  it('removes its import from GEMINI.md once the project Gemini settings read AGENTS.md', () => {
+  it('keeps its GEMINI.md import when the project Gemini settings read AGENTS.md', () => {
     setupCorePackage(tmpDir);
-    installAgentDocs(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'GEMINI.md'), `# Gemini\n\n${GEMINI_IMPORT}`);
     fs.mkdirSync(path.join(tmpDir, '.gemini'));
     fs.writeFileSync(
       path.join(tmpDir, '.gemini', 'settings.json'),
       '{"context": {"fileName": ["AGENTS.md", "GEMINI.md"]}}',
     );
-    fs.writeFileSync(path.join(tmpDir, 'GEMINI.md'), `# Gemini\n\n${GEMINI_IMPORT}`);
 
     expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
-    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe('# Gemini\n');
-  });
-
-  it('adds the import when the project Gemini settings do not read AGENTS.md', () => {
-    setupCorePackage(tmpDir);
-    fs.mkdirSync(path.join(tmpDir, '.gemini'));
-    fs.writeFileSync(path.join(tmpDir, '.gemini', 'settings.json'), '{"context": {"fileName": "GEMINI.md"}}');
-
-    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'GEMINI.md'), 'utf-8')).toBe(
+      `# Gemini\n\n${GEMINI_IMPORT}`,
+    );
   });
 
   it('leaves a file that is AGENTS.md under another name alone', () => {

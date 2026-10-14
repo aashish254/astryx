@@ -14,8 +14,9 @@
  * - The Claude Code file the project already has holds a copy: root CLAUDE.md,
  *   else .claude/CLAUDE.md. Init creates no Claude file.
  * - Gemini CLI reads only GEMINI.md: it gets a managed import, `@./AGENTS.md`,
- *   created when missing, unless GEMINI.md already imports AGENTS.md or the
- *   project's Gemini settings read AGENTS.md.
+ *   created when missing, unless GEMINI.md already imports AGENTS.md. Project
+ *   settings that point Gemini at AGENTS.md don't replace it: Gemini loads them
+ *   only when it starts at the project root.
  * - Existing Cursor (.cursorrules) and Hermes (.hermes.md, HERMES.md) files
  *   keep a full block.
  *
@@ -305,61 +306,6 @@ function geminiImportsAgentsMd(targetDir) {
   return findGeminiImports(withoutManagedBlock(content)).some(
     rel => path.resolve(targetDir, rel) === agents,
   );
-}
-
-/**
- * `text` without JavaScript-style comments outside strings, the way Gemini CLI
- * reads its settings files.
- * @param {string} text
- * @returns {string}
- */
-function stripJsonComments(text) {
-  let out = '';
-  let inString = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) {
-      out += ch;
-      if (ch === '\\') {
-        out += text[i + 1] ?? '';
-        i++;
-      } else if (ch === '"') {
-        inString = false;
-      }
-    } else if (ch === '"') {
-      inString = true;
-      out += ch;
-    } else if (ch === '/' && text[i + 1] === '/') {
-      while (i + 1 < text.length && text[i + 1] !== '\n') i++;
-    } else if (ch === '/' && text[i + 1] === '*') {
-      const end = text.indexOf('*/', i + 2);
-      i = end === -1 ? text.length : end + 1;
-    } else {
-      out += ch;
-    }
-  }
-  return out;
-}
-
-/**
- * Whether the project's Gemini CLI settings (`.gemini/settings.json`) point
- * `context.fileName` at AGENTS.md, so Gemini reads it without an import.
- * @param {string} targetDir
- * @returns {boolean}
- */
-function geminiReadsAgentsMd(targetDir) {
-  let settings;
-  try {
-    settings = JSON.parse(
-      stripJsonComments(
-        fs.readFileSync(path.join(targetDir, '.gemini', 'settings.json'), 'utf-8'),
-      ),
-    );
-  } catch {
-    return false;
-  }
-  const names = settings?.context?.fileName;
-  return (Array.isArray(names) ? names : [names]).includes(AGENTS_MD);
 }
 
 /**
@@ -1222,9 +1168,9 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
 /**
  * Plan the default layout. AGENTS.md holds the block. The Claude Code file the
  * project already has holds a copy, so the block sits in a file the project
- * commits; init creates no Claude file. GEMINI.md imports AGENTS.md unless
- * Gemini CLI already reads it. Every wrapper here imports AGENTS.md, so it
- * already reaches the block.
+ * commits; init creates no Claude file. GEMINI.md imports AGENTS.md unless it
+ * already does. Every wrapper here imports AGENTS.md, so it already reaches the
+ * block.
  *
  * @param {string} targetDir
  * @param {string[]} existing
@@ -1250,10 +1196,12 @@ function planDefaultAgentDocs(targetDir, existing, wrappers, aliases) {
     if (present.has(p)) plan.set(p, p === claudeCopy ? 'block' : 'strip');
   }
 
-  // Gemini CLI reads only GEMINI.md, unless the project's settings point it at
-  // AGENTS.md. An import GEMINI.md already has, even inline, is enough.
+  // Gemini CLI reads GEMINI.md. Project settings can point it at AGENTS.md
+  // too, but Gemini loads them only when it starts at the project root, so the
+  // import is written anyway: two copies at the root beat none in a subfolder.
+  // An import GEMINI.md already has, even inline, is enough.
   if (!aliases.has(GEMINI_MD)) {
-    if (geminiReadsAgentsMd(targetDir) || geminiImportsAgentsMd(targetDir)) {
+    if (geminiImportsAgentsMd(targetDir)) {
       if (present.has(GEMINI_MD)) plan.set(GEMINI_MD, 'strip');
     } else {
       plan.set(GEMINI_MD, 'import');
@@ -1396,8 +1344,7 @@ function stripManagedBlock(filePath, compressedIndex) {
  *   exists, else an existing .claude/CLAUDE.md. Remove a block from the other
  *   one, so Claude Code reads one copy. Create no Claude file.
  * - Write a managed import of AGENTS.md to GEMINI.md (created when missing),
- *   unless GEMINI.md already imports AGENTS.md or the project's Gemini
- *   settings read AGENTS.md.
+ *   unless GEMINI.md already imports AGENTS.md.
  * - Keep a full block in every other existing standalone file.
  * - Leave `@path` import wrappers untouched; if an older run expanded a block
  *   into one, remove that duplicate block. When a wrapper imports a file
