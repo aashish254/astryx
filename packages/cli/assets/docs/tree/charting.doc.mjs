@@ -42,7 +42,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: 'If Astryx is not set up in the app yet, follow the public {@link generic:getting-started} guide for Core, CSS, and build setup. Then run `astryx docs theme` to choose a published or product-owned theme. This chart guide works with whichever active `<Theme>` the app uses; Neutral is not required. Add the renderer package used by the chart: `npm install recharts` for Recharts, or `npm install vega vega-lite` for Vega-Lite.',
+          text: 'If Astryx is not set up in the app yet, follow the public {@link generic:getting-started} guide for Core, CSS, and build setup. Then run `astryx docs theme` to choose a published or product-owned theme. This chart guide works with whichever active `<Theme>` the app uses. Add the renderer package used by the chart: `npm install recharts` for Recharts, or `npm install vega vega-lite` for Vega-Lite.',
         },
         {
           type: 'prose',
