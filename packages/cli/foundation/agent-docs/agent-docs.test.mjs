@@ -1606,6 +1606,75 @@ describe('agent docs never go into the home folder', () => {
     fs.mkdirSync(project);
     expect(installAgentDocs(project)).toEqual(['AGENTS.md', 'GEMINI.md']);
   });
+
+  /**
+   * A git project that declares Astryx, at `rel` under the home folder, with
+   * Core installed at `version`.
+   * @param {string} rel
+   * @param {string} version
+   */
+  function writeProject(rel, version) {
+    const project = path.join(tmpDir, rel);
+    fs.mkdirSync(path.join(project, 'src'), {recursive: true});
+    fs.writeFileSync(path.join(project, '.git'), 'gitdir: /elsewhere/.git/worktrees/web\n');
+    fs.writeFileSync(
+      path.join(project, 'package.json'),
+      JSON.stringify({name: 'web', dependencies: {'@astryxdesign/core': version}}),
+    );
+    const core = path.join(project, 'node_modules', '@astryxdesign', 'core');
+    fs.mkdirSync(core, {recursive: true});
+    fs.writeFileSync(path.join(core, 'package.json'), JSON.stringify({version}));
+    return project;
+  }
+
+  it.each([
+    ['a Codex worktree', path.join('.codex', 'worktrees', 'a1b2c3', 'web')],
+    ['a Cursor worktree', path.join('.cursor', 'worktrees', 'web', 'x9y8')],
+    ['a project with its package.json one level in', path.join('.config', 'web')],
+  ])('writes and refreshes the docs of a project inside a settings folder (%s)', (_label, rel) => {
+    const project = writeProject(rel, '1.0.0');
+
+    expect(resolveAgentDocsRoot(path.join(project, 'src'))).toBe(project);
+    expect(installAgentDocs(project)).toEqual(['AGENTS.md', 'GEMINI.md']);
+
+    // upgrade refreshes the block in place.
+    writeProject(rel, '2.0.0');
+    expect(installAgentDocs(project, {onlyReplace: true})).toEqual(['AGENTS.md']);
+    expect(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf-8')).toContain(
+      'Astryx v2.0.0',
+    );
+
+    // Nothing reaches the settings folder or the home folder.
+    const settings = path.join(tmpDir, rel.split(path.sep)[0]);
+    expect(fs.readdirSync(settings)).toEqual([rel.split(path.sep)[1]]);
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8')).toBe(
+      personal,
+    );
+  });
+
+  it('refuses the top of a settings folder even with a package.json, and the folders in it outside a project', () => {
+    // A package.json in ~/.claude (for hook scripts, say) would otherwise put the
+    // block in ~/.claude/CLAUDE.md, which Claude Code reads in every project.
+    fs.writeFileSync(path.join(tmpDir, '.claude', 'package.json'), '{"name":"hooks"}\n');
+    fs.mkdirSync(path.join(tmpDir, '.claude', 'hooks'));
+
+    expect(() => installAgentDocs(path.join(tmpDir, '.claude'))).toThrow(AgentDocsHomeError);
+    expect(() => installAgentDocs(path.join(tmpDir, '.claude', 'hooks'))).toThrow(
+      AgentDocsHomeError,
+    );
+    expect(resolveAgentDocsRoot(path.join(tmpDir, '.claude', 'hooks'))).toBe(
+      path.join(tmpDir, '.claude'),
+    );
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8')).toBe(
+      personal,
+    );
+
+    // A worktree folder whose project has no package.json is not a project.
+    const bare = path.join(tmpDir, '.codex', 'worktrees', 'a1b2c3', 'notes');
+    fs.mkdirSync(bare, {recursive: true});
+    expect(() => installAgentDocs(bare)).toThrow(AgentDocsHomeError);
+    expect(fs.readdirSync(bare)).toEqual([]);
+  });
 });
 
 describe('resolveAgentDocsRoot', () => {

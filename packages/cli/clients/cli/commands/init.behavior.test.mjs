@@ -218,9 +218,52 @@ describe('astryx init in the home folder', () => {
     expect(json.status).toBe(0);
     const env = JSON.parse(json.stdout);
     expect(env.data.docsWritten).toEqual([]);
-    expect(env.data.docsError.message).toMatch(/settings folders in it/);
+    expect(env.data.docsError.message).toMatch(/settings folder in it outside a project/);
     expect(fs.readdirSync(dir)).toEqual(before);
     expect(read('.claude/CLAUDE.md')).toBe(personal);
+  });
+});
+
+describe('astryx init in an agent worktree inside a home settings folder', () => {
+  const saved = {HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE};
+
+  beforeEach(() => {
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+  });
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it.each([
+    ['Codex', path.join('.codex', 'worktrees', 'a1b2c3', 'web')],
+    ['Cursor', path.join('.cursor', 'worktrees', 'web', 'x9y8')],
+  ])('writes at the project root of a %s worktree', async (_tool, rel) => {
+    const project = path.join(tmpDir, rel);
+    fs.mkdirSync(path.join(project, 'src'), {recursive: true});
+    fs.writeFileSync(path.join(project, '.git'), 'gitdir: /elsewhere/.git/worktrees/web\n');
+    fs.writeFileSync(
+      path.join(project, 'package.json'),
+      JSON.stringify({name: 'web', dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
+
+    const json = await runCli(['init', '--json'], {cwd: path.join(project, 'src')});
+    expect(json.status).toBe(0);
+    const env = JSON.parse(json.stdout);
+    expect(env.data.docsWritten).toEqual(['../AGENTS.md', '../GEMINI.md']);
+    expect(env.data.docsError).toBeNull();
+
+    const explicit = await runCli(['init', '--agent-docs-path', 'AI.md', '--json'], {
+      cwd: path.join(project, 'src'),
+    });
+    expect(JSON.parse(explicit.stdout).data.docsWritten).toEqual(['AI.md']);
+
+    // Nothing reaches the settings folder itself.
+    const settings = path.join(tmpDir, rel.split(path.sep)[0]);
+    expect(fs.readdirSync(settings)).toEqual(['worktrees']);
   });
 });
 
