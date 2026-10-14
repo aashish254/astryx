@@ -36,6 +36,7 @@ import {
 } from '../../foundation/agent-docs/agent-docs.mjs';
 import {
   CLI_PACKAGE,
+  commandInFolder,
   formatCliCommand,
   getDlxPrefix,
   quoteCommandArgument,
@@ -128,12 +129,14 @@ function readRunningCliVersion() {
  * releases' migrations. The returned command repeats this upgrade with the CLI
  * release that matches the installed Core.
  *
- * The command names `sourcePath`, the directory this run scanned, as an
- * absolute `--path`, so it scans that directory from any folder. A package
- * runner can run the CLI somewhere other than where the command was typed
- * (Yarn 1 runs `yarn astryx` at the project root), and a relative path would
- * then name another directory. Every argument is quoted for the shell of the
- * platform the command is printed on.
+ * Where an upgrade runs decides what it finds: the installed Core is read
+ * from that folder, and `--path` must stay inside it. So the command first
+ * changes to `cwd`, the folder this run used, then names `sourcePath`, the
+ * directory this run scanned, as an absolute `--path`. Pasted from any folder,
+ * it finds the same Core and scans the same directory, even after a package
+ * runner moved this run (Yarn 1 runs `yarn astryx` at the project root). It is
+ * written for a POSIX shell, or for PowerShell on Windows (cmd.exe is not a
+ * target), with every argument quoted for that shell.
  *
  * Returns null when the CLI covers the whole range (`to` is not newer than
  * both the CLI and `from`), when the CLI's own version cannot be read, or when
@@ -166,15 +169,11 @@ export function detectCliBehindCore({
   if (options.force) args.push('--force');
   if (options.installDeps) args.push('--install-deps');
   if (options.apply) args.push('--apply');
-  return {
-    cliVersion,
-    command: [
-      getDlxPrefix(cwd),
-      ...[`${CLI_PACKAGE}@${to}`, ...args].map(arg =>
-        quoteCommandArgument(arg),
-      ),
-    ].join(' '),
-  };
+  const upgrade = [
+    getDlxPrefix(cwd),
+    ...[`${CLI_PACKAGE}@${to}`, ...args].map(arg => quoteCommandArgument(arg)),
+  ].join(' ');
+  return {cliVersion, command: commandInFolder(path.resolve(cwd), upgrade)};
 }
 
 /**

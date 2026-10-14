@@ -4,16 +4,19 @@
  * @file `astryx upgrade` with a CLI older than the installed Core: the human
  * output never says the code is up to date, warns once with the same upgrade
  * pinned to the CLI release that matches the Core, and keeps the exit status;
- * `--json` carries the same facts in `cliBehindCore`.
+ * `--json` carries the same facts in `cliBehindCore`. Pasted anywhere, the
+ * printed command runs that upgrade in the same project.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
+import {spawnSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {runCli} from '../../../test-utils/run-cli.mjs';
 import {CLI_ROOT} from '../../../foundation/fs/paths.mjs';
 import {
+  commandInFolder,
   getDlxPrefix,
   quoteCommandArgument,
 } from '../../../foundation/env/package-manager.mjs';
@@ -49,23 +52,42 @@ afterEach(() => {
 });
 
 /**
- * The pinned command the CLI prints for this project. It names the source
- * directory as the CLI resolved it, from the folder it ran in.
+ * The pinned command the CLI prints for this project. It names the folder the
+ * CLI ran in and the source directory as the CLI resolved them.
  * @param {...string} rest the arguments after `--path <dir>`
  */
 function pinned(...rest) {
-  const src = path.join(fs.realpathSync(tmpDir), 'src');
-  return [
-    getDlxPrefix(tmpDir),
-    `@astryxdesign/cli@${NEWER_CORE}`,
-    'upgrade',
-    '--from',
-    CLI_VERSION,
-    '--path',
-    quoteCommandArgument(src),
-    ...rest,
-  ].join(' ');
+  const project = fs.realpathSync(tmpDir);
+  return commandInFolder(
+    project,
+    [
+      getDlxPrefix(tmpDir),
+      `@astryxdesign/cli@${NEWER_CORE}`,
+      'upgrade',
+      '--from',
+      CLI_VERSION,
+      '--path',
+      quoteCommandArgument(path.join(project, 'src')),
+      ...rest,
+    ].join(' '),
+  );
 }
+
+/**
+ * Stand-ins for the package runners: each drops its own words and the pinned
+ * package, then runs this CLI with the rest of the command.
+ */
+const RUNS_THIS_CLI = [
+  ['npx', 1],
+  ['bunx', 1],
+  ['pnpm', 2],
+  ['yarn', 2],
+]
+  .map(
+    ([name, words]) =>
+      `${name}() { shift ${words}; "$0" ${quoteCommandArgument(path.join(CLI_ROOT, 'clients', 'cli', 'bin', 'astryx.mjs'))} "$@"; }`,
+  )
+  .join('; ');
 
 describe('astryx upgrade with a CLI older than the installed Core', () => {
   it('says it cannot finish and prints the upgrade pinned to the matching CLI', async () => {
@@ -102,4 +124,37 @@ describe('astryx upgrade with a CLI older than the installed Core', () => {
       command: pinned(),
     });
   });
+
+  // Where an upgrade runs decides what it finds: the installed Core is read
+  // from that folder, and --path must stay inside it. Printed without its
+  // folder, the command exited 1 when pasted in a subfolder
+  // (ERR_PATH_TRAVERSAL) or in the folder above (ERR_VERSION_DETECT).
+  it.skipIf(process.platform === 'win32')(
+    'prints a command that upgrades the same project wherever it is pasted',
+    async () => {
+      write('src/deep/index.ts', 'export const y = 2;\n');
+      const r = await runCli(['--json', 'upgrade', '--from', CLI_VERSION], {
+        cwd: tmpDir,
+      });
+      const {command} = JSON.parse(r.stdout).data.cliBehindCore;
+
+      for (const pastedIn of [
+        path.join(tmpDir, 'src', 'deep'),
+        path.dirname(tmpDir),
+      ]) {
+        const ran = spawnSync(
+          '/bin/sh',
+          ['-c', `${RUNS_THIS_CLI}; ${command}`, process.execPath],
+          {cwd: pastedIn, encoding: 'utf8'},
+        );
+
+        expect(ran.status, ran.stderr).toBe(0);
+        expect(ran.stdout).toContain(`Installed target: ${NEWER_CORE}`);
+        expect(ran.stdout).toContain(
+          `Scanning ${path.join(fs.realpathSync(tmpDir), 'src')} `,
+        );
+      }
+    },
+    30_000,
+  );
 });
