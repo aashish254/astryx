@@ -61,17 +61,31 @@ const menuItemStyles = stylex.create({
     borderRadius: `max(0px, calc(var(--_dropdown-menu-radius, ${spacingVars['--spacing-2']}) - var(--_dropdown-menu-padding, ${spacingVars['--spacing-1']})))`,
     fontFamily: typographyVars['--font-family-body'],
     fontSize: typeScaleVars['--text-label-size'],
-    color: colorVars['--color-text-primary'],
+    color: {
+      default: colorVars['--color-text-primary'],
+      ':focus': {
+        default: null,
+        '@media (forced-colors: active)': 'HighlightText',
+      },
+    },
     backgroundColor: {
       default: 'transparent',
-      ':focus': colorVars['--color-overlay-hover'],
+      // Forced colors replace the overlay with the page color, which would
+      // leave the focused row identical to its neighbours (WCAG 2.4.7); the
+      // system highlight pair marks it instead, as a native menu does.
+      ':focus': {
+        default: colorVars['--color-overlay-hover'],
+        '@media (forced-colors: active)': 'Highlight',
+      },
       // The pressed look only where hover exists. Under a finger the row a
       // press BEGAN on would otherwise stay painted while the highlight (focus)
       // moves to the row under the finger — two rows lit.
       '@media (hover: hover)': {
         default: null,
-        ':active:where(:not(:disabled,[aria-disabled="true"]))':
-          colorVars['--color-overlay-pressed'],
+        ':active:where(:not(:disabled,[aria-disabled="true"]))': {
+          default: colorVars['--color-overlay-pressed'],
+          '@media (forced-colors: active)': 'Highlight',
+        },
       },
     },
     borderWidth: 0,
@@ -92,7 +106,14 @@ const menuItemStyles = stylex.create({
     // neutral overlay from `root` so the hover state matches every other menu
     // item. The root color covers the label/description via the Item custom
     // properties (and any bare text). Semantic error tokens keep it theme-aware.
-    color: colorVars['--color-error'],
+    // The focused row keeps the forced-colors highlight pair from `root`.
+    color: {
+      default: colorVars['--color-error'],
+      ':focus': {
+        default: null,
+        '@media (forced-colors: active)': 'HighlightText',
+      },
+    },
     '--_item-label-color': colorVars['--color-error'],
     '--_item-description-color': colorVars['--color-error'],
   },

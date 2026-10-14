@@ -119,10 +119,22 @@ const triggerStyles = stylex.create({
     borderRadius: `max(0px, calc(var(--_dropdown-menu-radius, ${spacingVars['--spacing-2']}) - var(--_dropdown-menu-padding, ${spacingVars['--spacing-1']})))`,
     fontFamily: typographyVars['--font-family-body'],
     fontSize: typeScaleVars['--text-label-size'],
-    color: colorVars['--color-text-primary'],
+    color: {
+      default: colorVars['--color-text-primary'],
+      ':focus': {
+        default: null,
+        '@media (forced-colors: active)': 'HighlightText',
+      },
+    },
     backgroundColor: {
       default: 'transparent',
-      ':focus': colorVars['--color-overlay-hover'],
+      // Forced colors replace the overlay with the page color, which would
+      // leave the focused row identical to its neighbours (WCAG 2.4.7); the
+      // system highlight pair marks it instead, as a native menu does.
+      ':focus': {
+        default: colorVars['--color-overlay-hover'],
+        '@media (forced-colors: active)': 'Highlight',
+      },
     },
     borderWidth: 0,
     borderStyle: 'none',
@@ -881,7 +893,7 @@ export function DropdownMenuSubMenu(
               data-testid={menuDataTestId}
               {...menuPress.menuProps}
               {...mergeProps(
-                themeProps('dropdown-menu'),
+                themeProps('dropdown-menu', {presentation: 'popover'}),
                 stylex.props(
                   flyoutStyles.menu,
                   hasOverflow

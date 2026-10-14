@@ -41,10 +41,22 @@ const styles = stylex.create({
   root: {
     width: '100%',
     borderRadius: `max(0px, calc(var(--_dropdown-menu-radius, ${spacingVars['--spacing-2']}) - var(--_dropdown-menu-padding, ${spacingVars['--spacing-1']})))`,
-    color: colorVars['--color-text-primary'],
+    color: {
+      default: colorVars['--color-text-primary'],
+      ':focus': {
+        default: null,
+        '@media (forced-colors: active)': 'HighlightText',
+      },
+    },
     backgroundColor: {
       default: 'transparent',
-      ':focus': colorVars['--color-overlay-hover'],
+      // Forced colors replace the overlay with the page color, which would
+      // leave the focused row identical to its neighbours (WCAG 2.4.7); the
+      // system highlight pair marks it instead, as a native menu does.
+      ':focus': {
+        default: colorVars['--color-overlay-hover'],
+        '@media (forced-colors: active)': 'Highlight',
+      },
     },
     cursor: {
       default: 'pointer',
@@ -105,9 +117,9 @@ export interface DropdownMenuCheckboxItemProps extends Omit<
    */
   onChange?: (checked: boolean) => void;
   /**
-   * Whether the item is disabled. Disabled items stay focusable (via
-   * `aria-disabled`) so they remain discoverable by keyboard and assistive
-   * technology, but activation is blocked.
+   * Whether the item is disabled. A disabled item stays in the accessibility
+   * tree as disabled (`aria-disabled`) but takes no focus: the arrow keys,
+   * typeahead, and the pointer highlight skip it, and activation is blocked.
    * @default false
    */
   isDisabled?: boolean;

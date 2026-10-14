@@ -43,7 +43,7 @@ export const docs = {
       type: 'boolean',
       default: 'false',
       description:
-        'Whether the item is disabled. Disabled items stay focusable (via aria-disabled) so they remain discoverable by keyboard and assistive technology, but activation is blocked.',
+        'Whether the item is disabled. A disabled item stays in the accessibility tree as disabled (aria-disabled) but takes no focus: the arrow keys, typeahead, and the pointer highlight skip it, and activation is blocked.',
     },
     {
       name: 'hasCloseOnSelect',
@@ -98,7 +98,8 @@ export const docsDense = {
     icon: 'icon before label',
     value: 'checked state (controlled, w/ onChange)',
     onChange: 'fired w/ next checked state on toggle',
-    isDisabled: 'disabled; stays focusable via aria-disabled',
+    isDisabled:
+      'disabled (aria-disabled); skipped by arrows/typeahead, not focusable',
     hasCloseOnSelect: 'close menu on toggle (default false, stays open)',
     ref: 'forwarded to the row root (the role="menuitemcheckbox" element)',
     endContent: 'content after label+description',
