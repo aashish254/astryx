@@ -372,8 +372,24 @@ async function drive(page: Page, scenario: Case) {
     await page.keyboard.press(
       scenario.direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight',
     );
+    // `:popover-open` belongs to the flyout's layer host, not to its inner
+    // role="menu" element, so wait on what a user sees instead: a second
+    // visible menu, with focus on a row inside it. Bounded, so a flyout that
+    // never opens fails this frame quickly instead of stalling the chunk.
     await page.waitForFunction(
-      () => document.querySelectorAll('[role="menu"]:popover-open').length > 1,
+      () => {
+        const menus = [
+          ...document.querySelectorAll<HTMLElement>('[role="menu"]'),
+        ].filter(menu => menu.getBoundingClientRect().height > 0);
+        const active = document.activeElement;
+        return (
+          menus.length > 1 &&
+          active?.getAttribute('role') === 'menuitem' &&
+          active.closest('[role="menu"]') === menus[1]
+        );
+      },
+      undefined,
+      {timeout: 5000},
     );
   } else if (
     scenario.drive === 'hover-second-row' ||
