@@ -136,9 +136,9 @@ async function applyAgents(cwd, options, invocation, data) {
       data.docsError = {kind: 'path-safety', message: err.message};
       return;
     }
-    // The home folder and its settings folders are never a project: nothing is
-    // written, the reason is printed, and the exit code stays the soft-failure
-    // one.
+    // The home folder, and a settings folder in it outside a project, are
+    // refused: nothing is written, the reason is printed, and the exit code
+    // stays the soft-failure one.
     if (err instanceof AgentDocsHomeError) {
       logger.error(`Error: ${err.message}`);
       data.docsError = {kind: 'install-failed', message: err.message};

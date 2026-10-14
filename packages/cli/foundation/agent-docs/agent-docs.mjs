@@ -19,8 +19,9 @@
  * - Existing Cursor (.cursorrules) and Hermes (.hermes.md, HERMES.md) files
  *   keep a full block.
  *
- * No mode writes into the home folder or the settings folders in it: agents
- * read the files there in every project.
+ * No mode writes into the home folder, or into a settings folder in it outside a
+ * project: agents read the files there in every project. A project inside a
+ * settings folder, such as an agent worktree, is written normally.
  *
  * --agent <tool>: target a specific tool preset (claude, cursor, codex, hermes, muse, all)
  * --agent-docs-path <path>: explicit file path(s)
@@ -363,15 +364,16 @@ function geminiReadsAgentsMd(targetDir) {
 
 /**
  * Thrown when agent docs would be written into the home folder, or into a
- * settings folder in it such as `~/.gemini`. Agents read the files there (for
- * example `~/.claude/CLAUDE.md` or `~/.gemini/GEMINI.md`) in every project, so
- * a project's version-pinned block never goes there. Removal stays allowed.
+ * settings folder in it such as `~/.gemini` outside a project. Agents read the
+ * files there (for example `~/.claude/CLAUDE.md` or `~/.gemini/GEMINI.md`) in
+ * every project, so a project's version-pinned block never goes there. Removal
+ * stays allowed.
  */
 export class AgentDocsHomeError extends Error {
   /** @param {string} dir */
   constructor(dir) {
     super(
-      `Agent docs are not written into the home folder or the settings folders in it (${dir}): agents read the files there in every project. Run init inside a project folder.`,
+      `Agent docs are not written into the home folder, or into a settings folder in it outside a project (${dir}): agents read the files there in every project. Run init inside a project folder.`,
     );
     this.name = 'AgentDocsHomeError';
   }
@@ -419,8 +421,13 @@ function isHomeFolder(dir) {
 }
 
 /**
- * Whether `dir` is the home folder or inside a settings folder in it, a folder
- * of the home folder whose name starts with a dot (`~/.gemini`, `~/.claude`).
+ * Whether agent docs stay out of `dir`: the home folder, or a folder in a
+ * settings folder of it (a folder of the home folder whose name starts with a
+ * dot, such as `~/.gemini` or `~/.claude`) that belongs to no project there.
+ * Agents read the files at the top of a settings folder in every project, so
+ * the settings folder itself is never a project, even with a package.json. A
+ * folder below it with a package.json at or above it is a project, such as an
+ * agent worktree in `~/.codex/worktrees/<id>/<repo>`.
  * @param {string} dir
  * @returns {boolean}
  */
@@ -431,12 +438,20 @@ function isHomeOrSettingsFolder(dir) {
   if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
     return false;
   }
-  return rel.split(path.sep)[0].startsWith('.');
+  const parts = rel.split(path.sep);
+  if (!parts[0].startsWith('.')) return false;
+  // Look for a package.json from `dir` up to, not including, the settings folder.
+  let current = realDir(dir);
+  for (let depth = parts.length; depth > 1; depth--) {
+    if (fs.existsSync(path.join(current, 'package.json'))) return false;
+    current = path.dirname(current);
+  }
+  return true;
 }
 
 /**
- * Throw {@link AgentDocsHomeError} when `targetDir` is the home folder or
- * inside a settings folder in it.
+ * Throw {@link AgentDocsHomeError} when `targetDir` is the home folder, or a
+ * settings folder in it outside a project.
  * @param {string} targetDir
  */
 export function assertAgentDocsTarget(targetDir) {
@@ -1409,8 +1424,8 @@ function stripManagedBlock(filePath, compressedIndex) {
  * @returns {string[]} List of files written
  * @throws {import('../fs/path-safety.mjs').PathSafetyError} when a file it would
  *   write resolves outside `targetDir`; nothing is written.
- * @throws {AgentDocsHomeError} when `targetDir` is the home folder or a settings
- *   folder in it; nothing is written.
+ * @throws {AgentDocsHomeError} when `targetDir` is the home folder, or a settings
+ *   folder in it outside a project; nothing is written.
  */
 export function installAgentDocs(
   targetDir,

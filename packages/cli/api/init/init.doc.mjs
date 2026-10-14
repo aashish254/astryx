@@ -21,7 +21,7 @@ export const doc = {
     'including guidance from configured integrations, at the project root: to AGENTS.md, ' +
     "to the project's Claude Code file (CLAUDE.md, else .claude/CLAUDE.md), and as a " +
     'one-line import of AGENTS.md in GEMINI.md unless Gemini CLI already reads AGENTS.md. ' +
-    'In the home folder or a settings folder in it, it writes none. It then ' +
+    'In the home folder, or in a settings folder in it outside a project, it writes none. It then ' +
     "prints getting-started guidance; `features` / `all` print only the chosen features' " +
     'guidance instead (the theme feature also writes the annotated theme template). ' +
     'With `removeAgents` it removes the managed agent-docs block instead of installing.',

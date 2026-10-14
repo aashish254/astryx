@@ -22,8 +22,10 @@ export const doc = {
     'GEMINI.md unless Gemini CLI already reads AGENTS.md. It then prints getting-started ' +
     'steps. Agent docs go to the project root: the nearest folder at or above this one ' +
     'whose package.json declares an @astryxdesign package, else the nearest with any ' +
-    'package.json, else this folder. In the home folder or a settings folder in it, no ' +
-    "agent docs are written. --features and --all print only the chosen features' " +
+    'package.json, else this folder. In the home folder, or in a settings folder in it ' +
+    'such as ~/.gemini outside a project, no agent docs are written; a project inside a ' +
+    'settings folder, such as an agent worktree, works. --features and --all print only ' +
+    "the chosen features' " +
     'guidance (no getting-started steps); the theme feature also writes an annotated theme template.',
   fn: 'init',
   options: [
@@ -75,7 +77,7 @@ export const doc = {
   exitCodes: [
     {
       code: 0,
-      when: 'success, including agent docs that could not be written for a reason other than a path escape, such as running in the home folder or a settings folder in it, or a GEMINI.md skipped because it resolves outside the project (reported as docsError)',
+      when: 'success, including agent docs that could not be written for a reason other than a path escape, such as running in the home folder or in a settings folder in it outside a project, or a GEMINI.md skipped because it resolves outside the project (reported as docsError)',
     },
     {
       code: 1,
