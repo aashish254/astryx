@@ -923,9 +923,8 @@ describe('installAgentDocs', () => {
   it('preserves import wrappers while initializing standalone files', () => {
     setupCorePackage(tmpDir);
     fs.writeFileSync(path.join(tmpDir, 'AGENTS.md'), '# Agents\n');
-    fs.mkdirSync(path.join(tmpDir, '.claude'), {recursive: true});
-    const wrapperPath = path.join(tmpDir, '.claude', 'CLAUDE.md');
-    const wrapper = '@../AGENTS.md\n';
+    const wrapperPath = path.join(tmpDir, '.hermes.md');
+    const wrapper = '@AGENTS.md\n';
     fs.writeFileSync(wrapperPath, wrapper);
     fs.writeFileSync(path.join(tmpDir, '.cursorrules'), 'Cursor rules.\n');
 
@@ -969,11 +968,10 @@ describe('installAgentDocs', () => {
   it('removes a managed block previously expanded into an import wrapper', () => {
     setupCorePackage(tmpDir);
     installAgentDocs(tmpDir, {agent: 'codex'});
-    fs.mkdirSync(path.join(tmpDir, '.claude'), {recursive: true});
-    const wrapperPath = path.join(tmpDir, '.claude', 'CLAUDE.md');
-    const wrapper = '@../AGENTS.md\n';
+    const wrapperPath = path.join(tmpDir, '.hermes.md');
+    const wrapper = '@AGENTS.md\n';
     fs.writeFileSync(wrapperPath, wrapper);
-    installAgentDocs(tmpDir, {agent: 'claude'});
+    installAgentDocs(tmpDir, {agent: 'hermes'});
     expect(fs.readFileSync(wrapperPath, 'utf-8')).toContain(
       '<!-- ASTRYX:START -->',
     );
@@ -981,7 +979,7 @@ describe('installAgentDocs', () => {
     const written = installAgentDocs(tmpDir, {onlyReplace: true});
 
     expect(written).toContain('AGENTS.md');
-    expect(written).toContain('.claude/CLAUDE.md');
+    expect(written).toContain('.hermes.md');
     expect(fs.readFileSync(wrapperPath, 'utf-8')).toBe(wrapper);
   });
 
@@ -1012,15 +1010,69 @@ describe('installAgentDocs', () => {
     expect(blocksSeen(tmpDir)).toEqual(ONCE_EACH);
   });
 
-  it('adds no Claude copy when a Claude file imports AGENTS.md', () => {
+  it('gives a root CLAUDE.md that imports AGENTS.md a copy too', () => {
+    // Claude Code does not follow an import of a file above the folder it
+    // starts in, so a session in a subfolder reads only the copy.
     setupCorePackage(tmpDir);
-    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n\n@AGENTS.md\n');
+    const claude = '# Claude\n\n@AGENTS.md\n';
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), claude);
 
-    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'GEMINI.md']);
-    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toBe(
-      '# Claude\n\n@AGENTS.md\n',
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']);
+    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
+    expect(content.startsWith(`${claude}\n<!-- ASTRYX:START -->`)).toBe(true);
+    expect(countBlocks(tmpDir, ['AGENTS.md', 'CLAUDE.md'])).toBe(2);
+    expect(fs.existsSync(path.join(tmpDir, '.claude'))).toBe(false);
+
+    // Running again keeps the copy where it is.
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8')).toBe(content);
+  });
+
+  it('keeps the copy in root CLAUDE.md, not .claude/CLAUDE.md, when root CLAUDE.md imports AGENTS.md', () => {
+    // Root CLAUDE.md is committed even where .claude/ is ignored, so a fresh
+    // clone still gives a session in a subfolder its copy.
+    setupCorePackage(tmpDir, '2.0.0');
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n\n@AGENTS.md\n');
+    fs.mkdirSync(path.join(tmpDir, '.claude'));
+    fs.writeFileSync(
+      path.join(tmpDir, '.claude', 'CLAUDE.md'),
+      '# Local\n\n<!-- ASTRYX:START -->\nAstryx v1.0.0 · old\n<!-- ASTRYX:END -->\n',
     );
-    expect(fs.existsSync(path.join(tmpDir, '.claude', 'CLAUDE.md'))).toBe(false);
+
+    expect(installAgentDocs(tmpDir)).toEqual([
+      'AGENTS.md',
+      'CLAUDE.md',
+      '.claude/CLAUDE.md',
+      'GEMINI.md',
+    ]);
+    expect(countBlocks(tmpDir, ['CLAUDE.md'])).toBe(1);
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8')).toBe(
+      '# Local\n',
+    );
+  });
+
+  it('gives a .claude/CLAUDE.md that imports AGENTS.md a copy when there is no root CLAUDE.md', () => {
+    setupCorePackage(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'AGENTS.md'), '# Agents\n');
+    fs.mkdirSync(path.join(tmpDir, '.claude'));
+    fs.writeFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), '@../AGENTS.md\n');
+
+    expect(installAgentDocs(tmpDir)).toEqual(['AGENTS.md', '.claude/CLAUDE.md', 'GEMINI.md']);
+    const content = fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8');
+    expect(content.startsWith('@../AGENTS.md\n\n<!-- ASTRYX:START -->')).toBe(true);
+  });
+
+  it('onlyReplace: refreshes the copy in a Claude file that imports AGENTS.md instead of removing it', () => {
+    setupCorePackage(tmpDir, '1.0.0');
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Claude\n\n@AGENTS.md\n');
+    installAgentDocs(tmpDir);
+    setupCorePackage(tmpDir, '2.0.0');
+
+    expect(installAgentDocs(tmpDir, {onlyReplace: true})).toEqual(['AGENTS.md', 'CLAUDE.md']);
+    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
+    expect(content).toContain('@AGENTS.md');
+    expect(content).toContain('Astryx v2.0.0');
+    expect(content).not.toContain('Astryx v1.0.0');
   });
 
   it('--agent all after the default keeps the GEMINI.md import and one Claude copy', () => {

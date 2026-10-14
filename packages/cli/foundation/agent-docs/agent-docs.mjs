@@ -12,7 +12,8 @@
  * - AGENTS.md holds the block. Most agents read it; Claude Code reads it when
  *   the folder has no CLAUDE.md or .claude/CLAUDE.md.
  * - The Claude Code file the project already has holds a copy: root CLAUDE.md,
- *   else .claude/CLAUDE.md. Init creates no Claude file.
+ *   else .claude/CLAUDE.md, even when it imports AGENTS.md, because Claude Code
+ *   does not follow that import from a subfolder. Init creates no Claude file.
  * - Gemini CLI reads only GEMINI.md: it gets a managed import, `@./AGENTS.md`,
  *   created when missing, unless GEMINI.md already imports AGENTS.md. Project
  *   settings that point Gemini at AGENTS.md don't replace it: Gemini loads them
@@ -1166,11 +1167,29 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
 }
 
 /**
+ * The Claude Code file that holds the copy of the block: root CLAUDE.md, which
+ * projects commit even when they ignore .claude/, else .claude/CLAUDE.md. It
+ * holds the copy even when it imports AGENTS.md: Claude Code does not follow an
+ * import of a file above the folder it starts in, so a session started in a
+ * subfolder reads only the copy.
+ *
+ * @param {Set<string>} present Existing agent docs that are not AGENTS.md under
+ *   another name.
+ * @param {Set<string>} aliases Files that are AGENTS.md under another name.
+ * @returns {string | null} null when the project has no Claude file, or when
+ *   root CLAUDE.md is AGENTS.md under another name and so holds the block.
+ */
+function claudeCopyFile(present, aliases) {
+  if (aliases.has(CLAUDE_MD)) return null;
+  return [CLAUDE_MD, CLAUDE_DIR_MD].find(p => present.has(p)) ?? null;
+}
+
+/**
  * Plan the default layout. AGENTS.md holds the block. The Claude Code file the
- * project already has holds a copy, so the block sits in a file the project
- * commits; init creates no Claude file. GEMINI.md imports AGENTS.md unless it
- * already does. Every wrapper here imports AGENTS.md, so it already reaches the
- * block.
+ * project already has holds a copy (see {@link claudeCopyFile}), so the block
+ * sits in a file the project commits; init creates no Claude file. GEMINI.md
+ * imports AGENTS.md unless it already does. Every other wrapper here imports
+ * AGENTS.md, so it already reaches the block.
  *
  * @param {string} targetDir
  * @param {string[]} existing
@@ -1185,13 +1204,10 @@ function planDefaultAgentDocs(targetDir, existing, wrappers, aliases) {
   const plan = new Map([[AGENTS_MD, 'block']]);
 
   // Claude Code reads CLAUDE.md and .claude/CLAUDE.md, and skips AGENTS.md
-  // when either exists. One standalone Claude file holds the copy: root
-  // CLAUDE.md, which projects commit even when they ignore .claude/, else
-  // .claude/CLAUDE.md. A root CLAUDE.md that is AGENTS.md under another name
-  // already holds the block.
-  const claudeCopy = aliases.has(CLAUDE_MD)
-    ? null
-    : ([CLAUDE_MD, CLAUDE_DIR_MD].find(p => present.has(p) && !wrappers.has(p)) ?? null);
+  // when either exists. One Claude file holds the copy, so Claude Code reads
+  // it once in a subfolder and at most twice at the root, where it also
+  // follows that file's import of AGENTS.md.
+  const claudeCopy = claudeCopyFile(present, aliases);
   for (const p of [CLAUDE_MD, CLAUDE_DIR_MD]) {
     if (present.has(p)) plan.set(p, p === claudeCopy ? 'block' : 'strip');
   }
@@ -1341,17 +1357,18 @@ function stripManagedBlock(filePath, compressedIndex) {
  * Default strategy (no agent/paths specified), so every agent reads the block:
  * - Write the block to AGENTS.md (created when missing).
  * - Write the block to the project's Claude Code file: root CLAUDE.md when it
- *   exists, else an existing .claude/CLAUDE.md. Remove a block from the other
- *   one, so Claude Code reads one copy. Create no Claude file.
+ *   exists, else an existing .claude/CLAUDE.md, even when it imports AGENTS.md.
+ *   Remove a block from the other one. Create no Claude file.
  * - Write a managed import of AGENTS.md to GEMINI.md (created when missing),
  *   unless GEMINI.md already imports AGENTS.md.
  * - Keep a full block in every other existing standalone file.
- * - Leave `@path` import wrappers untouched; if an older run expanded a block
- *   into one, remove that duplicate block. When a wrapper imports a file
- *   other than AGENTS.md, the project keeps its own layout: every standalone
- *   file gets the block.
- * A refresh (`onlyReplace`) rewrites existing blocks in place, leaves imports
- * of AGENTS.md as they are, and creates nothing.
+ * - Leave every other `@path` import wrapper untouched; if an older run
+ *   expanded a block into one, remove that duplicate block. When a wrapper
+ *   imports a file other than AGENTS.md, the project keeps its own layout:
+ *   every standalone file gets the block.
+ * A refresh (`onlyReplace`) rewrites existing blocks in place, the Claude
+ * file's copy included, leaves imports of AGENTS.md as they are, and creates
+ * nothing.
  *
  * @param {string} targetDir
  * @param {object} [options]
@@ -1467,6 +1484,14 @@ export function installAgentDocs(
   const existing = discoverAgentDocs(targetDir);
   if (onlyReplace) {
     const wrappers = findAgentDocWrappers(readAgentDocImports(targetDir, existing));
+    // The Claude file keeps its copy even when it imports AGENTS.md, so a
+    // refresh rewrites that block rather than removing it.
+    const {agentsAliases} = findSharedAgentDocs(targetDir, existing);
+    const claudeCopy = claudeCopyFile(
+      new Set(existing.filter(p => !agentsAliases.has(p))),
+      agentsAliases,
+    );
+    if (claudeCopy != null) wrappers.delete(claudeCopy);
     return writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, true);
   }
   // A wrapper that imports something other than AGENTS.md, or two agent docs
