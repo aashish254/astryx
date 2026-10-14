@@ -443,14 +443,14 @@ describe('findAstryxProject', () => {
     expect(findAstryxProject(tools)).toBeNull();
   });
 
-  it('counts the home folder only when the search starts there', () => {
+  it('never counts the home folder', () => {
     writeProject(tmpDir, DECLARES_CORE);
     const desktop = path.join(tmpDir, 'Desktop');
     fs.mkdirSync(desktop, {recursive: true});
 
     withHome(tmpDir, () => {
       expect(findAstryxProject(desktop)).toBeNull();
-      expect(findAstryxProject(tmpDir)).toBe(tmpDir);
+      expect(findAstryxProject(tmpDir)).toBeNull();
     });
   });
 

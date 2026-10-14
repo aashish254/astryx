@@ -4,7 +4,8 @@
  * @file `astryx upgrade` from a folder inside a project: a `--path` you type
  * is read from that folder, however you spell it, and without `--path` the
  * upgrade scans the project's own src. The option's default must not read as
- * a typed `./src`.
+ * a typed `./src`. The `--json` result names files relative to the folder the
+ * command ran in.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
@@ -56,12 +57,12 @@ afterEach(() => {
   fs.rmSync(root, {recursive: true, force: true});
 });
 
-/** @param {string[]} args */
-async function upgradeFromFrontend(args) {
+/** @param {string[]} args @param {string} [folder] */
+async function upgradeFrom(args, folder = 'frontend') {
   const r = await runCli(
     ['upgrade', '--from', '0.6.8', ...args, '--apply', '--json'],
     {
-      cwd: path.join(root, 'frontend'),
+      cwd: path.join(root, folder),
     },
   );
   expect(r.status).toBe(0);
@@ -72,19 +73,25 @@ describe('upgrade --path from a folder inside the project', () => {
   it.each([['./src'], ['src'], ['src/'], ['./src/']])(
     'reads --path %s from the folder you ran in',
     async spelling => {
-      const result = await upgradeFromFrontend(['--path', spelling]);
+      const result = await upgradeFrom(['--path', spelling]);
 
-      expect(result.data.modifiedFiles).toEqual(['frontend/src/App.tsx']);
+      expect(result.data.modifiedFiles).toEqual(['src/App.tsx']);
       expect(renamed('frontend/src/App.tsx')).toBe(true);
       expect(renamed('src/App.tsx')).toBe(false);
     },
   );
 
   it("scans the project's src without --path", async () => {
-    const result = await upgradeFromFrontend([]);
+    const result = await upgradeFrom([]);
 
-    expect(result.data.modifiedFiles).toEqual(['src/App.tsx']);
+    expect(result.data.modifiedFiles).toEqual(['../src/App.tsx']);
     expect(renamed('src/App.tsx')).toBe(true);
     expect(renamed('frontend/src/App.tsx')).toBe(false);
+  });
+
+  it('names files from the project root when run there', async () => {
+    const result = await upgradeFrom([], '.');
+
+    expect(result.data.modifiedFiles).toEqual(['src/App.tsx']);
   });
 });

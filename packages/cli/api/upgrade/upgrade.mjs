@@ -24,7 +24,7 @@
 import {list} from './list/list.mjs';
 import {registryUpgrade} from './registry/registry.mjs';
 import {run} from './run/run.mjs';
-import {scopeToProject} from './_adapter.mjs';
+import {relativeToOrigin, scopeToProject} from './_adapter.mjs';
 import {isValidSemver} from '../../foundation/env/semver.mjs';
 import {getCliInvocation} from '../../foundation/env/package-manager.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
@@ -110,7 +110,11 @@ export async function upgrade(options = {}, {cwd = process.cwd()} = {}) {
     return list();
   }
 
-  // A run from a subfolder upgrades the project the folder belongs to.
+  // A run from a subfolder upgrades the project the folder belongs to, and
+  // names files relative to the folder it ran in.
   const scoped = scopeToProject(options, cwd);
-  return run(scoped.options, {cwd: scoped.cwd, origin: scoped.origin});
+  return relativeToOrigin(
+    await run(scoped.options, {cwd: scoped.cwd, origin: scoped.origin}),
+    scoped,
+  );
 }

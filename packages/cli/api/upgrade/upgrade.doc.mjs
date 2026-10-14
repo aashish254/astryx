@@ -102,7 +102,7 @@ export const doc = {
       name: 'ctx.cwd',
       type: 'string',
       description:
-        'Any folder in the project to upgrade. The upgrade runs at the project root: the nearest folder at or above it whose package.json declares an Astryx package, or that a workspace whose root declares one lists, found without passing a repository root or reaching the home folder from inside it. With no such folder, it runs in `ctx.cwd`.',
+        'Any folder in the project to upgrade. The upgrade runs at the project root: the nearest folder at or above it whose package.json declares an Astryx package, or that a workspace whose root declares one lists, found without passing a repository root or counting the home folder. With no such folder, it runs in `ctx.cwd`. File paths in the result are relative to `ctx.cwd`; copied-composition paths are relative to the scanned source directory.',
       default: 'process.cwd()',
     },
   ],

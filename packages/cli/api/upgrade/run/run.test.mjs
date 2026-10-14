@@ -6,7 +6,8 @@
  * or out-of-tree path must be rejected), the receipt must say whether that
  * dir existed at all, a run from any folder in a project upgrades that
  * project (the nearest folder whose package.json declares Astryx, never the
- * home folder from inside it), and the target Core is the project's own.
+ * home folder) and names files relative to the folder it ran in, and the
+ * target Core is the project's own.
  */
 
 import {describe, it, expect, beforeEach, afterEach} from 'vitest';
@@ -14,6 +15,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {upgrade} from '../upgrade.mjs';
+import {relativeToOrigin} from '../_adapter.mjs';
 import {generateCompressedIndex} from '../../../foundation/agent-docs/agent-docs.mjs';
 
 const SLOW = 30_000;
@@ -184,15 +186,15 @@ describe('upgrade.run — a run from a subfolder upgrades the project', () => {
 
   const appSource = () => fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8');
 
-  it.each([['src'], ['src/l1/l2']])(
+  it.each([['src', 'App.tsx'], ['src/l1/l2', '../../App.tsx']])(
     'scans the project src by default when run from %s',
-    async folder => {
+    async (folder, reported) => {
       const res = await upgrade({from: '0.6.8', apply: true}, {cwd: path.join(dir, folder)});
 
       expect(res.type).toBe('upgrade.run');
       expect(res.data.sourcePathFound).toBe(true);
       expect(res.data.filesChanged).toBe(1);
-      expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
+      expect(res.data.modifiedFiles).toEqual([reported]);
       expect(appSource()).toContain('emptySearchText="None"');
     },
     SLOW,
@@ -223,9 +225,70 @@ describe('upgrade.run — a run from a subfolder upgrades the project', () => {
 
     expect(res.type).toBe('upgrade.run');
     expect(res.data.agentDocs.action).toBe('refreshed');
-    expect(res.data.agentDocs.files).toEqual(['AGENTS.md']);
+    expect(res.data.agentDocs.files).toEqual(['../../AGENTS.md']);
     expect(fs.existsSync(path.join(dir, 'src', 'l1', 'AGENTS.md'))).toBe(false);
   }, SLOW);
+});
+
+describe('upgrade.run — the result names files relative to the folder it ran in', () => {
+  let dir;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-receipt-'));
+    seedOldPropProject(dir);
+    fs.writeFileSync(path.join(dir, 'src', 'Generated.tsx'), `// @generated\n${OLD_PROP_SOURCE}`);
+    fs.writeFileSync(path.join(dir, 'AGENTS.md'), `# Agents\n\n${generateCompressedIndex('0.6.8')}\n`);
+    fs.mkdirSync(path.join(dir, 'frontend'), {recursive: true});
+  });
+  afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
+
+  it.each([
+    ['frontend', '../'],
+    ['.', ''],
+  ])('from %s, every file path resolves from that folder', async (folder, up) => {
+    const cwd = path.join(dir, folder);
+
+    const res = await upgrade({from: '0.6.8'}, {cwd});
+
+    expect(res.type).toBe('upgrade.run');
+    expect(res.data.modifiedFiles).toEqual([`${up}src/App.tsx`]);
+    expect(res.data.protectedFiles.map(item => item.file)).toEqual([`${up}src/Generated.tsx`]);
+    for (const file of [...res.data.modifiedFiles, ...res.data.protectedFiles.map(item => item.file)]) {
+      expect(fs.existsSync(path.join(cwd, file))).toBe(true);
+    }
+  }, SLOW);
+
+  it('leaves a result from a run at the project root as it is', () => {
+    const result = {type: 'upgrade.run', data: {modifiedFiles: ['src/App.tsx']}};
+
+    expect(relativeToOrigin(result, {cwd: dir})).toBe(result);
+  });
+
+  it('rewrites every project-relative path and leaves copied-composition paths alone', () => {
+    const registryCompositions = {items: [{item: 'example', path: 'components/Example.tsx', files: []}]};
+    const result = relativeToOrigin(
+      {
+        type: 'upgrade.run',
+        data: {
+          agentDocs: {status: 'stale', files: ['AGENTS.md']},
+          modifiedFiles: ['src/App.tsx'],
+          protectedFiles: [{file: 'src/Generated.tsx', codemods: ['a']}],
+          declinedCandidates: [{file: 'src/Loose.tsx', reason: 'unproven'}],
+          errors: [{file: '.', codemod: 'post-codemod-hook', error: 'failed'}],
+          registryCompositions,
+        },
+      },
+      {cwd: dir, origin: path.join(dir, 'apps', 'web')},
+    );
+
+    expect(result.data).toEqual({
+      agentDocs: {status: 'stale', files: ['../../AGENTS.md']},
+      modifiedFiles: ['../../src/App.tsx'],
+      protectedFiles: [{file: '../../src/Generated.tsx', codemods: ['a']}],
+      declinedCandidates: [{file: '../../src/Loose.tsx', reason: 'unproven'}],
+      errors: [{file: '../..', codemod: 'post-codemod-hook', error: 'failed'}],
+      registryCompositions,
+    });
+  });
 });
 
 describe("upgrade.run — the target Core is the project's own", () => {
@@ -331,7 +394,7 @@ describe("upgrade.run — the target Core is the project's own", () => {
     const res = await upgrade({from: '0.6.8', apply: true}, {cwd: path.join(member, 'src')});
 
     expect(res.type).toBe('upgrade.run');
-    expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
+    expect(res.data.modifiedFiles).toEqual(['App.tsx']);
     expect(fs.readFileSync(path.join(member, 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
     expect(fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
   }, SLOW);
@@ -357,7 +420,7 @@ describe('upgrade.run — a path you name is read from the folder you ran in, in
       );
 
       expect(res.type).toBe('upgrade.run');
-      expect(res.data.modifiedFiles).toEqual(['frontend/src/App.tsx']);
+      expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
       expect(fs.readFileSync(path.join(dir, 'frontend', 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
       expect(fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
     },
@@ -403,7 +466,17 @@ describe('upgrade.run — the project is the nearest folder that declares Astryx
     const res = await upgrade({from: '0.6.8', apply: true}, {cwd: tool});
 
     expect(res.type).toBe('upgrade.run');
+    expect(res.data.modifiedFiles).toEqual(['../../src/App.tsx']);
+  }, SLOW);
+
+  it('upgrades the home folder as a folder outside any project, when run there', async () => {
+    seedOldPropProject(home);
+
+    const res = await withHome(home, () => upgrade({from: '0.6.8', apply: true}, {cwd: home}));
+
+    expect(res.type).toBe('upgrade.run');
     expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
+    expect(fs.readFileSync(path.join(home, 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
   }, SLOW);
 
   it('does not leave a repository for the project around it', async () => {
