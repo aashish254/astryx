@@ -418,7 +418,9 @@ JSON.stringify(exportConfig);`,
         {
           type: 'code',
           lang: 'tsx',
-          code: `import {dataVars} from '@astryxdesign/core/theme/dataTokens.stylex';
+          code: `import {useLayoutEffect, useState} from 'react';
+import {useTheme} from '@astryxdesign/core/theme';
+import {dataVars} from '@astryxdesign/core/theme/dataTokens.stylex';
 import {
   colorVars,
   radiusVars,
@@ -436,6 +438,27 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+
+function cssLengthToPixels(value: string): number {
+  if (typeof document === 'undefined' || !document.body) return 0;
+  const probe = document.createElement('div');
+  probe.style.blockSize = '0';
+  probe.style.inlineSize = value;
+  probe.style.pointerEvents = 'none';
+  probe.style.position = 'fixed';
+  probe.style.visibility = 'hidden';
+  if (!probe.style.inlineSize) return 0;
+  document.body.appendChild(probe);
+  const pixels = probe.getBoundingClientRect().width;
+  probe.remove();
+  return Number.isFinite(pixels) ? pixels : 0;
+}
+
+function useCssLengthInPixels(value: string): number {
+  const [pixels, setPixels] = useState(0);
+  useLayoutEffect(() => setPixels(cssLengthToPixels(value)), [value]);
+  return pixels;
+}
 
 type RevenueDatum = {
   quarter: string;
@@ -455,6 +478,8 @@ const revenueHover =
   ')';
 
 export function RevenueChart({data}: RevenueChartProps) {
+  const {token} = useTheme();
+  const barRadius = useCssLengthInPixels(token('--radius-element'));
   const tick = {
     fill: colorVars['--color-text-secondary'],
     fontFamily: typographyVars['--font-family-body'],
@@ -507,14 +532,11 @@ export function RevenueChart({data}: RevenueChartProps) {
             }}
           />
           <Bar
-            activeBar={{
-              fill: revenueHover,
-              stroke: colorVars['--color-text-primary'],
-              strokeWidth: 2,
-            }}
+            activeBar={{fill: revenueHover}}
             dataKey="revenue"
             fill={revenueColor}
             isAnimationActive={false}
+            radius={[barRadius, barRadius, 0, 0]}
           />
         </BarChart>
       </ResponsiveContainer>
@@ -524,7 +546,7 @@ export function RevenueChart({data}: RevenueChartProps) {
         },
         {
           type: 'prose',
-          text: "`ResponsiveContainer` needs a parent with a definite height. Keep that height and chart margins renderer-owned; use Astryx spacing tokens only for chrome around the plot. Use `radiusVars['--radius-element']` for CSS-valued tooltip radius. If a Recharts geometry prop needs a number, resolve and deliberately convert the CSS length as shown in the Canvas section. This fixed example disables series animation; if motion communicates meaningful change, connect it to the product’s reduced-motion handling.",
+          text: "`ResponsiveContainer` needs a parent with a definite height. Keep that height and chart margins renderer-owned; use Astryx spacing tokens only for chrome around the plot. Use `radiusVars['--radius-element']` for CSS-valued tooltip radius. Recharts bar radius needs a number, so this example resolves the active theme’s radius and measures the CSS length before paint instead of hardcoding a renderer-specific value. The active state changes the series fill without adding a heavy outline; add a border only when it carries necessary non-color meaning, and use an appropriate semantic border role rather than a text color. This fixed example disables series animation; if motion communicates meaningful change, connect it to the product’s reduced-motion handling.",
         },
         {
           type: 'prose',
@@ -651,6 +673,10 @@ export function useVegaLiteThemeConfig(): Config {
         {
           type: 'prose',
           text: "`token` follows the nearest Astryx `Theme`; import the provider with `import {Theme} from '@astryxdesign/core/theme';`. To switch modes on the same page, keep `mode` in product state and update `<Theme theme={productTheme} mode={mode}>`. Keep the chart at the same component position instead of keying it by mode.",
+        },
+        {
+          type: 'prose',
+          text: 'Compile the final Vega-Lite spec and inspect its warnings and emitted legend/order behavior. Encodings of the same field can merge: for example, adding an opacity encoding with `legend: null` can suppress the color legend too, and conflicting sort declarations can discard a requested series order. Keep one intentional series legend, set a consistent domain/order, and verify the compiled result instead of assuming the source config wins.',
         },
         {
           type: 'prose',
