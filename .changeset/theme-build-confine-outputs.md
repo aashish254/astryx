@@ -1,7 +1,7 @@
 ---
-'@astryxdesign/cli': minor
+'@astryxdesign/cli': patch
 ---
 
-[breaking] `astryx theme build` and `themeBuild()` write only inside the working directory (`cwd` for the API). An absolute `--out` path outside it, or a theme file outside it whose outputs would go beside it (also with `--family`), now fails with `ERR_PATH_TRAVERSAL` before anything is written, and `--check` refuses the same paths; before, both wrote outside the working directory. Absolute paths inside the working directory still build, including ones that reach it through a symlink. To migrate, run the build from a directory that contains the theme file and its outputs, such as the package or repository root, or pass an `--out` path inside the working directory; API callers pass a `cwd` that contains them.
+[fix] `astryx theme build` and `themeBuild()` now write only inside the working directory (`cwd` for the API), as `architecture:cli-surface/INV10` requires; under `architecture:cli-surface/INV10a` the refusal is a compatible fix. Each of these now fails with `ERR_PATH_TRAVERSAL` before anything is written, and `--check` refuses the same paths: an absolute `--out` path outside the working directory, a theme file outside it whose outputs would go beside it, and `--family` with its root theme file outside it. Paths inside the working directory still build, including through a symlink. To migrate, run the build from a folder that holds the theme file and its outputs, or pass an `--out` path inside that folder; API callers pass a `cwd` that holds them.
 
 @josephfarina
