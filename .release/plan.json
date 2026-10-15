@@ -1,0 +1,1099 @@
+{
+  "schemaVersion": 2,
+  "version": "0.7.1",
+  "branch": "release/v0.7.1",
+  "cutSha": "ba59d5c99903873d5ca6fdf297df4eef754cc66a",
+  "changesets": [
+    {
+      "path": ".changeset/alert-dialog-doc-surface-part.md",
+      "sha256": "a6ebbb232991a0bf956d32e0dd64c3afad226c09b120a4c23d8960ba58179f05",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "`AlertDialog`'s anatomy lists the dialog surface — the modal panel that holds the title, description, and buttons — and `Calendar`'s anatomy lists the calendar root and the day button, so every part that carries a theming target (`alert-dialog`, `calendar`, `calendar-day`) is named in the component docs.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/base-typeahead-stale-focus-bootstrap.md",
+      "sha256": "1559260e43bb82ffc3de21723c59a37336a188326aaee7daecee9430a8ca5a74",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Typeahead`, `Tokenizer`, and `PowerSearch`: focusing an empty field with `hasEntriesOnFocus` after its search source changed now bootstraps entries from the new source. Previously the results cached from the old source were already invalidated but still blocked the bootstrap, so focusing or clicking into the field opened nothing until the user typed. Cached results that are still current are re-shown without a new bootstrap, as before.",
+      "contributors": [
+        "imdreamrunner"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/bottom-sheet-focus-return-last-input.md",
+      "sha256": "b3b67ec836a783eeea03138a0c6cfd9df81f57dec2d7599c26c4b1f535d02b3c",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`BottomSheet` returns focus without a focus ring after a pointer close (a tap in WebKit, or a pointer close of a sheet opened from the keyboard) and keeps the ring after a keyboard close, including on a `DropdownMenu` bottom-sheet trigger the caller renders (`renderTrigger`). The sheet now asks the browser not to treat that focus as keyboard focus, the way Dialog's focus moves do.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/calendar-controlled-empty.md",
+      "sha256": "e94dc010ff42a3478567405f5f940e8e41bcd616ae680476fef5252097f56732",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep DateInput's calendar selection empty after clearing the field.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/calendar-page-keys.md",
+      "sha256": "f87f42ae34978a51ea33f033d1a6c605695ab9d0985a376341cdf6cea197f073",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Calendar`: PageUp and PageDown move the focused day by a month — into the month the grid shows, on the same day of the month where it exists — instead of by a week; a page from a borrowed adjacent-month day lands on that day of the month now shown rather than on the month's first day. With two months, a page or an arrow crossing a month edge from the first month now lands on the correct day (the second grid no longer overrides the first grid's target). An arrow or page past `min`/`max` changes nothing, and a page into a month with no enabled day keeps focus in the grid.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/calendar-skip-outside-days.md",
+      "sha256": "4c249dcbed1b02312f606de43e814b64fff3587d1a38598dc5f291396cffa1e1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Calendar`: the arrow keys, Home and End no longer land on a borrowed adjacent-month day (shown dimmed, exposed as disabled, and inert to Enter, Space and clicks). An arrow crosses into that month and focuses the real day there, including across the two grids of a two-month view; Home and End stop at the first or last enabled day of the week in the month shown. A month with no enabled day holds no Tab stop.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/calendar-week-corner-role.md",
+      "sha256": "ec27581d6a800b14de5e343c23a48067221f8093642a2aad7a961e2637952ed0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Calendar` with `hasWeekNumbers`: the blank cell above the week-number column is now a `columnheader` named with the locale's own word for the week field (from CLDR, visually hidden), so every cell in the header row has a grid role and assistive technology reads the weekday header row without a stray unnamed cell.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/chat-trigger-allow-spaces.md",
+      "sha256": "8720979b3e959f3dd868d1efdd8ebaa89ed7df539afbde9efa5f34695c716ff2",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Chat: mention people and topics by multi-word names with opt-in `hasMultiWordQuery` on `ChatComposerTrigger`",
+      "contributors": [
+        "Geervan"
+      ],
+      "body": "Set `hasMultiWordQuery: true` on a trigger whose suggestions contain spaces, and typing `@Jordan Le` keeps narrowing the menu instead of closing it at the first space. The query runs until a line break or about 64 characters, typed text is never changed unless a row is picked, and an unmatched multi-word phrase hides the menu unless the trigger sets `emptySearchText`. Triggers that don't opt in still end their query at a space.\n\nFor every trigger: while results for the current query are still loading, Enter sends the message as typed and never picks a row from an earlier query. Results that arrive after a send or after the editor clears are dropped, so the menu never reopens over an empty composer. Escape and the arrow keys pass through while the menu is hidden, and IME keystrokes never pick a row."
+    },
+    {
+      "path": ".changeset/chatmessage-empty-slots.md",
+      "sha256": "218f6906cb1a08d03a67ff66994689cc51ca5b93b08341c18c4db4209cdaf256",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ChatMessage` no longer leaves empty space for an avatar, name, or metadata that renders nothing. Booleans and empty strings create no slot, and any other slot content that renders nothing, such as an empty Fragment or a component that returns `null`, collapses its wrapper. A name that renders no text falls back to the translated sender label, while numeric values such as `0` still render.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-docs-syntax-diff-slots.md",
+      "sha256": "fb652ff2c2b6c60feb3b43298bcbdac5eb21f00de408bca330d6b37b809f3114",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The generated token docs list the five diff row slots of the syntax vocabulary — `--color-syntax-added`, `--color-syntax-removed`, `--color-syntax-diff-header`, `--color-syntax-added-marker`, `--color-syntax-removed-marker` — with their defaults, so `astryx docs tokens` describes nineteen syntax slots.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-docs-tailwind-layer-first-import.md",
+      "sha256": "469220cb96c81ad20b940ead1928287bce6a44c4472467f09fa85f3623b9763e",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The Tailwind and migration setup docs now say that `globals.css` (or a `layers.css` holding only the `@layer` line) must be the first import in the root layout or app entry, before the `astryx-themes` module or any component that imports theme CSS; otherwise Tailwind preflight overrides Astryx base styles and theme overrides lose. The Tailwind v3 coexistence snippet moves its `@layer` line into a `layers.css` imported first, because Next.js (webpack or Turbopack) hoists CSS imports above an inline `@layer` line.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-search-build-read-tree-once.md",
+      "sha256": "767526016dc0953b840cf3b65dae10b46586178a7922536635ce210eb6df3660",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "perf",
+      "headline": "`astryx search` and `astryx build`, and the `search` and `build` API functions, read each source directory once per call instead of once per candidate. Results are unchanged. A warm `search` drops from about 1.9 s to 0.4 s on macOS.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/codeblock-diff-language.md",
+      "sha256": "90c6cd875447836a9bbab8814d490a28ca69c28a703a1286df968104c4208a65",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`CodeBlock` gains `isDiff`, a diff layer over any `language`, and Markdown renders a ```diff fence as tinted diff rows instead of plain text.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "With `isDiff`, lines starting with `+` sit on a success-tinted row, `-` on an error-tinted row, `@@` hunk headers (and a `--- `/`+++ ` file-header pair directly before one) on a quiet muted row, and the rest of every line keeps the language's syntax highlighting. The glyph renders in its own column so the code's indentation lines up on every row and stays in the copied text. A changed row's margin reads the change: the tint runs under the line-number gutter too and spans the full scroll width of a long line, and the line number and the glyph take the row's marker colour, while the code keeps the syntax theme's colours. These are five new syntax-theme slots — `--color-syntax-added`, `--color-syntax-removed`, `--color-syntax-diff-header` (row paints, defaulting to `--color-success-muted` and `--color-error-muted` at 25% strength and to `--color-background-muted`; a defined syntax theme that leaves the header paint unset gets none, its header rows sitting on its own background in its punctuation colour) and `--color-syntax-added-marker`, `--color-syntax-removed-marker` (defaulting to `--color-text-green` and `--color-text-red` in the default syntax theme; a defined syntax theme that leaves them unset keeps its own line-number colour) — so existing and custom syntax themes need no change and may override them.\n\nMarkdown maps a ```diff-<lang> fence to the layer over `<lang>` (labelled `<lang> diff`) and a ```diff fence to the layer over plaintext (labelled `diff`), so a diff keeps its header, copy button, disclosure, and a viewport name that still says `diff`.\n\nA ```diff fence that should stay plain text can use ```text. A custom `components.code` renderer is unchanged: it keeps receiving the fence's leading word characters in `language` (`diff` for both ```diff and ```diff-tsx, as today), so an existing `language === 'diff'` check still matches, and receives nothing new."
+    },
+    {
+      "path": ".changeset/codeblock-overflow-tab-stop.md",
+      "sha256": "d53d0132cf4ea6390a3abedf4230d4e59620b30203e605df690d9de16bba70db",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`CodeBlock`'s code viewport is a keyboard Tab stop only while its content actually overflows, through the shared scroll capability: a short snippet no longer adds an unexplained stop to the page's Tab order, a wide or capped block still does, and a viewport that stops overflowing keeps focus where it is. Role and accessible name are unchanged.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/command-palette-input-semantics.md",
+      "sha256": "c1b9de46119713e6de8293e40db7cc3d6fd5802bfd407739aaaec08b9d441854",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`CommandPaletteInput` gets accurate search semantics and a real name (AST-017 FR53; WCAG 2.2 4.1.2 Name, Role, Value):",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "- A standalone field with no popup attributes was `role=\"combobox\"` with `aria-expanded=\"true\"` and `aria-autocomplete=\"list\"`; it is now `role=\"searchbox\"` with no popup state. Pass `role=\"combobox\"`, or your popup's own ARIA attributes, to keep the old semantics. A field that already passes popup attributes (`aria-expanded`, `aria-controls`, `aria-owns`, `aria-haspopup`, and the like) stays a `combobox` and keeps them, and a field inside `CommandPalette` is unchanged.\n- The field's default accessible name was its placeholder (`Search…`, or the caller's `placeholder`); it is now `Search commands`, translated. Pass `label` to keep a specific name, for example `label=\"Search…\"` for the old default. A caller whose custom `placeholder` served as the name keeps working code and hears the generic name until it passes `label`.\n- The CLI's async-search CommandPalette block names its field `Search files`.\n- `endContent={true}` no longer renders an empty trailing slot, and `endContent={0}` renders inside the trailing slot instead of after it."
+    },
+    {
+      "path": ".changeset/command-palette-item-disabled.md",
+      "sha256": "a8aad60405bbaa7aaadc1fc796f988af244a82c068effd36837c196c7cc33202",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep standalone command-palette item IDs on the rendered option and suppress consumer click callbacks when an item is disabled.",
+      "contributors": [
+        "cixzhang",
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/command-palette-shared-dismissal.md",
+      "sha256": "1b430593ed5059eb16bf52788bb97a9d9a58f3c53a20750d3b3c2d2022db5cf0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep CommandPalette dismissal, text entry, result focus, and empty-state accessibility aligned with shared contracts. These accessibility behaviors change (AST-017 FR53; WCAG 2.2 2.1.1 Keyboard and 4.1.2 Name, Role, Value):",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "- While no selectable result exists, the results container no longer exposes an empty `listbox`, and the query field reports `aria-expanded=\"false\"` with no `aria-controls` or `aria-activedescendant`. It was an expanded combobox controlling an empty listbox.\n- Home and End move the caret in the query field, as in any text field; they used to jump to the first and last result. Page Up and Page Down still jump to the first and last result.\n- A search with no results announces the empty message the palette renders (`No results` by default, or the caller's `emptySearchText`), once the search settles. It used to announce `No results for <query>`, whatever the palette showed. An override of the `@astryx.commandPalette.noResultsFor` catalog entry no longer has any effect; use `emptySearchText` to customize the message."
+    },
+    {
+      "path": ".changeset/context-menu-cursor-anchor-box.md",
+      "sha256": "6b1e6cc15179319e4eef9545a6233f2b8bb634e73370a7dcf24cbefc2c27e7a5",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ContextMenu` paints in Safari when its trigger sits inside a scroll container. The menu is anchored to a box at the pointer, and that box was empty: WebKit counts an empty anchor box inside a scroller as clipped, so the default `position-visibility: anchors-visible` hid the open menu. The anchor is now 1px, kept inside the trigger, so the menu still hides while a scroller clips the pointer position and paints again when it scrolls back. A pointer-opened menu now starts 1px lower, below the pixel under the pointer.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/context-menu-layer-dismissal.md",
+      "sha256": "2f8957434a9b3157cfc004e3a3a7e71a2f45bf93c08bf13a5b3f31b5c60088a3",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "ContextMenu: preserve nested overlays on Escape and compose trigger event handlers",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/core-stylex-throw-validation.md",
+      "sha256": "2c5ff46928833f447692940101a16952c97439b011167bc67c6001a33d8f7a56",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "chore",
+      "headline": "The core build now fails when StyleX rejects a declaration such as a `border`, `background`, or `all` shorthand, instead of silently dropping it from the shipped CSS. The emitted `dist/` is unchanged. No API change.",
+      "contributors": [
+        "kyu-rong"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/date-input-part-style-props-docs.md",
+      "sha256": "fdc18d1f4db941b9e40bf55fc5a33d1a932fedcf27e06a3b5b898b928d745042",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "List `DateInput`'s `containerClassName`, `containerStyle`, `controlClassName`, and `controlStyle` props in its API reference, alongside `containerXstyle` and `controlXstyle`.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dateinput-month-scroller-keys.md",
+      "sha256": "a97bf16261fba939488a8658c51637f0ff03cbb90beb6bbc9370542286280d0c",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The touch month scroller shared by `DateInput` and `DateTimeInput`: under RTL the horizontal arrows follow the reading direction (ArrowLeft moves to the next day, ArrowRight to the previous), and every keyboard move — arrows and Home/End — now lands on the real day in its own month pane rather than on the dimmed, disabled copy a neighbouring pane shows at its edge. Touch scrolling is unchanged.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/daterangeinput-clear-returns-focus.md",
+      "sha256": "8722e21f88ed2f2de91e78296a9c99939ffd22223b0b4980ab3e5886f357f06c",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`DateRangeInput`: activating the clear button with the keyboard now returns focus to the range trigger. Previously the button unmounted once the range was cleared and focus fell to `<body>`, so a keyboard user had to Tab back in from the top of the page. Pointer clears are unchanged.",
+      "contributors": [
+        "kyu-rong"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dialog-compose-root-events.md",
+      "sha256": "291d5ed50ff904f6e73b2f53d443e12d640bbbbdc2c963a51fb70bb3d295a022",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Dialog` now preserves consumer `onClick` handlers while retaining its controlled backdrop-dismissal behavior.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dialog-header-renderable-slots.md",
+      "sha256": "f588ea3bb25c934bfba8bf689c62d5e0043cfcf754d97d8cf74dc4bad4631225",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`DialogHeader` now keeps valid numeric zero content inside its `startContent` and `endContent` wrappers and theme targets.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/divider-renderable-labels.md",
+      "sha256": "b3f63a4e7210806f19d739c82bae120e2128e9299b89a2bc15bf0fc5d5f79e0f",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Divider` now keeps numeric zero labels inside the labelled separator and omits boolean or empty-string labels without leaving empty label spacing.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-checkbox-item-handlers.md",
+      "sha256": "50ecff473d9cae09238e488410a774d524c9025a598f9b0770048a6553859bbd",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`DropdownMenuCheckboxItem` now preserves consumer click and pointer-move handlers while keeping its checked-state, disabled, hover-focus, and close-menu behavior.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-regions-dialog.md",
+      "sha256": "7a6ffa1829b3c0e1b055dd5da047822a85f51a4d3cc08c0abc71ee3d4da2be8a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A `DropdownMenu` with `header` or `footer` is now exposed as a modal dialog around its menu, as the APG Dialog pattern requires. The popover is a named `role=\"dialog\"` with `aria-modal` and the `role=\"menu\"` inside it; the trigger says `aria-haspopup=\"dialog\"` and its `aria-controls` names the popover holding the dialog. Tab and Shift+Tab wrap through the header, the menu and the footer instead of closing the menu at either end. Escape still closes and returns focus to the trigger. A menu without either prop is unchanged.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-trigger-focus-return.md",
+      "sha256": "e8685925d6dd31aab15b584468d8f2aac92481eea380ff2e4a5bd3516b8af8d8",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A `DropdownMenu` whose trigger the caller renders (`renderTrigger`) returns focus to it without a focus ring after a pointer pick (a mouse click in Chromium, a click or a tap in WebKit), as the built-in trigger already did: the menu now asks the browser not to treat that focus as keyboard focus, the way Dialog's focus moves do.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdownmenu-disabled-trigger.md",
+      "sha256": "e952bfdea082e7eae095b052bf5b71ea72a7f4d970a9f80ecfa383cc909a839e",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`DropdownMenu` and `MoreMenu`: a disabled trigger no longer opens the menu. A disabled trigger with a tooltip stays focusable (`aria-disabled`), and Button swallowed only Enter and Space, so ArrowDown, ArrowUp, a press, or a click could still open the anchored menu; the anchored open path and the bottom-sheet trigger's click now check the trigger's availability first, for the default Button and for a natively or `aria-disabled` custom trigger.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/form-layout-horizontal-labels-collapse-stretch.md",
+      "sha256": "0e911d8608ed77acd36ec607733055311894577deb1fb880e70e27c3259a2c83",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`FormLayout`: below the 480px collapse, `direction=\"horizontal-labels\"` controls now fill the column the way they do in a vertical `FormLayout`. Previously each control shrank to its content, so a `Selector` was only as wide as its current value. The two-column layout above 480px is unchanged.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/grid-columns-docs-reflow.md",
+      "sha256": "4e28e7cb716716bda1c265814f65278a111f88a0024b6e6c87ef2725b3f212e3",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Grid's `columns` docs now lead with the shape that reflows: a numeric `columns` is exactly N columns at every width and never reflows, and `columns={{minWidth, max}}` is the form for columns that must survive a phone. The `astryx docs layout/responsive` topic gains a \"Columns that reflow\" section with a reflowing stat row beside a fixed week row. No behavior changes.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/input-clear-tooltip-generic.md",
+      "sha256": "8f60ed02695550b4b1384a76dc20fa2500fa4baf6fca8555241c4eba42a6f7d8",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Clearable inputs: the clear button's tooltip now reads just \"Clear\" (localized) instead of repeating the field's label, so a long label no longer turns into awkward tooltip copy such as \"Clear Assigned engineering partner\". The button's accessible name is unchanged and still names the field, such as \"Clear Search\". Applies to every input that renders the shared clear button, including `TextInput`, `NumberInput`, the date and time inputs, `FileInput`, `Selector`, `MultiSelector`, `Typeahead`, and `Tokenizer`. Override the new `@astryx.inputClearButton.tooltip` catalog key to change the wording.",
+      "contributors": [
+        "athz",
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/input-group-button-edges.md",
+      "sha256": "f587e42b92a958518e8db230483367eb7eb8c169dfb8a76bf14e6874b4b16465",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Buttons used as InputGroup addons now share the group's outer shape, with square inner corners where they meet the adjacent input.",
+      "contributors": [
+        "rubyycheung"
+      ],
+      "body": "Standalone buttons and buttons rendered inside an input keep their existing shape and behavior."
+    },
+    {
+      "path": ".changeset/keep-hovercard-refs-stable-across-rerenders.md",
+      "sha256": "0be1adfffe4ff4c3b3e7a5f64c7d59330655c7b8a484e77851a3392019ecb303",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep `useHoverCard()` trigger refs stable across unchanged rerenders. The hook returned a fresh `ref`/`interactionRef` on every render because its callbacks depended on the whole `layer` and `touch` objects, which are rebuilt each render — React detached and re-attached every trigger listener and rewrote the trigger's inline `anchor-name` on each rerender. Hooks now depend on the stable layer and touch members instead, mirroring the Tooltip fix in #5951. (#6472)",
+      "contributors": [
+        "ManoharPaturi"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/markdown-code-wraps.md",
+      "sha256": "e378cfb5b969bdf45f46b37eadec7082e4686a4ff93e664befa72c3ee26fcc6d",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`Markdown` fenced code blocks wrap long lines instead of scrolling them sideways. A reader on a narrow screen sees the whole line without a horizontal scroll, and where `Markdown` and RichText give a code block the same width, a long line takes the same number of lines in both. Only the appearance changes: the code's text, line numbers, syntax colours and what Copy returns are unchanged, and a code block whose lines no longer overflow also no longer takes the scroll region's Tab stop, as a code block that fits never has. To keep the old sideways-scrolling look, render code yourself through the `components.code` prop with a `CodeBlock` that leaves `isWrapped` off.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/mobile-nav-focus-restore.md",
+      "sha256": "b55f58fc9a810d4e3eb820f7f12bb41c4d7adc327b8cde7d00f1a3a1c74b5314",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "MobileNav: return focus to the element that opened the drawer when it closes. The drawer relied entirely on the browser's implicit `<dialog>` focus restore, which was reported failing in Safari 26.5.2: `document.activeElement` became `<body>` after close, stranding keyboard and screen-reader users at the top of the document. MobileNav now captures the opener before `showModal()` moves focus into the top layer and hands it back as soon as the native dialog has closed, matching what `Dialog` already does. The close is deferred until the slide-out has played, so the restore waits for it too; until then the rest of the document is inert and an earlier `focus()` would be silently dropped. The restore also covers the AppShell path, where the drawer is torn down by an `<Activity>` switching to `mode=\"hidden\"` rather than by the close branch re-running. No API change. Focus is left untouched when there was no real opener (`activeElement` was `<body>`), when the opener has since left the DOM, or when the drawer is reopened before its pending close runs. (#3343)",
+      "contributors": [
+        "AKnassa"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/multiselector-clear-returns-focus.md",
+      "sha256": "eb981e319edd85097d9672186cae4f0438ac4dbaa9caa71a5e493d02826de448",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`MultiSelector`: activating the clear button with the keyboard now returns focus to the trigger, as `hasClear` documents. Previously the button unmounted once the selection was empty and focus fell to `<body>`, so a keyboard user had to Tab back in from the top of the page. Pointer clears are unchanged.",
+      "contributors": [
+        "kyu-rong"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/number-input-invalid-number-i18n.md",
+      "sha256": "68171f24b3c5aeefebb28b79b2e1443c05064e2e0ae76b6e280c5689e3e47cf9",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`NumberInput`: the screen-reader \"Invalid number\" alert now goes through the i18n translator, so an `InternationalizationProvider` locale or override can replace it. Adds `@astryx.numberInput.invalidNumber` to the `en` catalog. Locales without a translation yet still fall back to English.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/package-stylesheet-side-effects.md",
+      "sha256": "45c585d2553daa46395fec9fdb8f31cef45d06c06fe2e82710fde6cacb990295",
+      "packages": [
+        {
+          "name": "@astryxdesign/richtext",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`@astryxdesign/richtext` (and the Lab and Charts packages) now declare their stylesheet as a side effect, so a bundler that removes side-effect-free imports keeps `import '@astryxdesign/richtext/richtext.css'` instead of dropping it and leaving the editor unstyled. JavaScript modules stay tree-shakable.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/package-stylesheets-layer-order.md",
+      "sha256": "357c389f14059326f50d503d6b29486caaf26b6e888efe9480bc9ed369522229",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/richtext",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx.css`, `reset.css`, and every other package stylesheet (`richtext.css`, `lab.css`, `charts.css`) now open with `@layer reset, astryx-base, astryx-theme;`, the same line theme stylesheets carry. The Astryx layer order holds whichever Astryx stylesheet loads first: loading `reset.css` after `astryx.css` no longer lets the reset override component styles, and theme overrides keep winning. Setups that already declare the order on their own first line are unchanged.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/page-themes-diff-slots.md",
+      "sha256": "9862abce4d1d361a077ce6cb814d21e66d1c617dbbf76978e00aecf956a32cc1",
+      "packages": [
+        {
+          "name": "@astryxdesign/theme-stone",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-y2k",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-gothic",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Stone, Y2K, and Gothic set `CodeBlock`'s diff row slots in their own syntax palettes, so a reader of a diff on those themes gets added and removed rows whose code, line numbers, and `+`/`-` glyphs stay readable: every syntax token keeps at least 4.5:1 on the tinted rows in Stone (light and dark) and Y2K (light and dark), and in Gothic the rows take a deep green and a deep red at the background's own luminance, so every token keeps the contrast it has on the plain background. Line numbers and glyphs on changed rows use each theme's own green and red. The CLI's bundled copies of the three themes (`astryx theme eject`) carry the same palettes.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/plain-date-skipped-midnight.md",
+      "sha256": "ad2c73b5dec7fc7de45414560efbf531e9265565059a5139cb861bfff30e3870",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`plainDateToInstant` resolves wall times that daylight saving skips or repeats the way Temporal's default `\"compatible\"` disambiguation does (AST-067).",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": "- A skipped wall time moves forward by the length of the gap. In a zone that springs forward from a negative offset at local midnight, such as America/Santiago on September 6, 2026 or America/Havana on March 8, 2026, the start of that day came back as 11:00 PM the day before, so a week or day range landed on the wrong date; it is now the day's first instant (1:00 AM).\n- A repeated wall time resolves to its earlier occurrence in every zone. In zones with a positive offset, such as Europe/Berlin on October 25, 2026, it resolved to the later one."
+    },
+    {
+      "path": ".changeset/plain-date-years-1-99.md",
+      "sha256": "c4de777f69ddb00cee8c0d834653fe43dad62b0406efb53d154987355737ef97",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Calendar`: dates in years 1-99 now show their own year instead of 1900-1999. A value of `0001-01-15` was captioned \"January 1901\" with 1901's weekday layout and day labels, while `onChange` still emitted the year-1 ISO date. The shared date helpers behind the caption, day grid, week numbers, day counts, and timezone instants now keep years 1-99 as given. One limitation remains: in a timezone west of UTC, the instant for January 1 of year 1 still comes out a year early, because its timezone offset is read from a 1 BC wall clock without the era.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/powersearch-enter-on-focused-button.md",
+      "sha256": "c20ef5cc15fba2ae0e04e0710dcef8cce16b7c6e9c0007a1ed735ddf323cdc00",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`PowerSearch`: pressing Enter on a focused button in the filter editor now activates that button. Enter on Cancel closes the editor without applying the draft, and Enter on Delete removes the filter; before, both applied the draft instead. Enter in a text or number value field still applies the filter; Enter on the date picker's calendar button now opens the calendar.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/preserve-consumer-ids-on-standalone-commandpalet-3os9.md",
+      "sha256": "2fb9ce467cdf94909c3af584703c7c9ed1c58b2ca5280099236d845fb09fdb02",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Preserve consumer ids on standalone CommandPaletteList while retaining the managed ARIA id inside CommandPalette",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/reset-hidden-until-found.md",
+      "sha256": "81fb6cb6944ddc939ac89b7e9615d5384f99bb406f0fa9307e3338abbc6d193a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`reset.css` no longer hides `hidden=\"until-found\"` content with `display: none`. The browser's own rendering, `content-visibility: hidden`, now applies, so find in page and text fragment links can find the content and reveal it, as the HTML Standard specifies. Plain `hidden` elements are still `display: none`, and a browser without until-found support still hides the content with its own `[hidden]` rule.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/resize-handle-arrow-reopens.md",
+      "sha256": "9f7c44904abf0dda9eaa836b0959b19848070f581e2a95bfc835e249f699c483",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ResizeHandle`: on a collapsed pane, the arrow that grows it opens it one step above its minimum, or at its `collapsedSize` when that is larger (a single step below the collapse threshold used to leave it collapsed); the arrow that shrinks it stays a no-op. Enter and double-click still restore the previous size.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/resize-handle-enter-restores.md",
+      "sha256": "435e66be8e65b8e8ad3ffde26ec1fa6cd83ac6887c9f486a76fce926bc22a510",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ResizeHandle`: Enter and double-click on a collapsed pane restore it to the size it had before it collapsed, not to its minimum, and reopen it even when `minSize` is below `collapsedSize`. The handle uses `useResizable`'s own collapse and expand transitions; `ResizableProps` is unchanged, and a hand-built props object keeps the previous resize-to-minimum behavior.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/resize-handle-snap-arrows.md",
+      "sha256": "95fcc0a31a0143eec948e8e89c83eb7c760b7c4aa1cd30932749583ae551f35a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ResizeHandle`: with snap points set, an arrow key moves the pane to the adjacent snap point in its direction (Shift moves two), a point beyond the bounds counting as that bound — a 10px step used to snap straight back to the point it started on. With snap points, a shrink arrow at the lowest point no longer collapses a collapsible pane; Enter, double-click and dragging still do.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/resize-handle-valuemax.md",
+      "sha256": "f849394ac5dda9cb556f7016b4f0df8df736997dd8dd9f4d828a37b8848c3a28",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ResizeHandle`: a separator whose region sets no `maxSize` now reports an `aria-valuemax` — a measured extent standing in for the missing maximum (the window's extent on the region's axis, or the container's content box while a percentage bound observes it), never below the current size or, while collapsed, the minimum. Pixel-only regions inside a container still report no maximum (measuring one would add an observer). `ResizableProps` is unchanged; End still moves only to a configured maximum.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/richtext-readme-prebuilt-css.md",
+      "sha256": "c31e17193b5f527219238e7be8a166665a603115784b3e94db87010757c0dc05",
+      "packages": [
+        {
+          "name": "@astryxdesign/richtext",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The `@astryxdesign/richtext` README shows the full stylesheet setup: Core's `reset.css` and `astryx.css`, your theme's CSS, and `richtext.css`. It says the package ships prebuilt CSS, so you never compile its source, and that `richtext.css` sits in `@layer astryx-base`, so theme overrides win once `reset.css` (or the layer-order line) loads first.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/richtext-stable-release.md",
+      "sha256": "5b335847bb703c37d90d03769974fbe2d203acc66e66d4fd819ecd9b7adeee71",
+      "packages": [
+        {
+          "name": "@astryxdesign/richtext",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`@astryxdesign/richtext` is now a stable package, released together with `@astryxdesign/core` at the same version. Install it without the `@canary` tag: `npm install @astryxdesign/richtext`. It provides `RichTextEditor`, `RichTextView`, `RichTextEditorToolbar`, `RichTextEditorAutoLinkPlugin`, the headless Markdown serializers (also at `@astryxdesign/richtext/markdown`), and Markdown plugin support through `createRichTextExtension`. `RichTextView` and core `Markdown` render the same document the same way, and Markdown that is imported and exported without edits comes back byte for byte. `lexical` and the `@lexical/*` packages remain optional peer dependencies.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/scroll-overflow-hidden-subtree.md",
+      "sha256": "5e9b4f22f86d53e0a2bcd796023757bf58642d6e60a2340c5cbd355f3c58b14f",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`useScrollOverflow` (the strip of `TabList`, the scroller of `Carousel`) measures a resize, and its container at registration, only while the container is rendered. Inside a `display: none` ancestor or a `content-visibility: hidden` subtree the hook keeps its last state instead of reading layout, since a layout read there made the browser render the whole hidden subtree for the answer; the resize observation that comes with the reveal measures again, one frame after the reveal paints. A scroll is measured hidden or not, so a container script scrolled while hidden (a selected tab's reveal) is right at a reveal that brings no resize. Before, a hidden container reported no overflow.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/secondary-selector-theme-parity.md",
+      "sha256": "9a8b2de1cf557a0120b771d1abe2c5d44b917c7f59148d80210157d21e951f3d",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-butter",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-chocolate",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-gothic",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-stone",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/theme-y2k",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A `secondary` Selector, MultiSelector, or ComplexSelector now matches the theme's secondary Button: under butter, chocolate, gothic, stone, and y2k it takes that Button's border, fill, text color, and hover instead of the default borderless neutral fill, so a toolbar mixing secondary buttons and selectors reads as one set of controls. Disabled and read-only triggers keep a still fill on hover, as a disabled Button does, and a Selector or MultiSelector inside an InputGroup keeps the group's neutral fill and edges. The default theme is unchanged, the selector docs now say `secondary` follows the theme's secondary Button, and themes added with the CLI get the same parity.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/selector-clear-returns-focus.md",
+      "sha256": "db13426f0892ada1da285edf516f46331eed492879068b0d54cc7158372aa44e",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Selector`: activating the clear button with the keyboard now returns focus to the trigger, as `hasClear` documents. Previously the button unmounted once the value was cleared and focus fell to `<body>`, so a keyboard user had to Tab back in from the top of the page. Pointer clears are unchanged.",
+      "contributors": [
+        "kyu-rong"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/selector-family-secondary-variants.md",
+      "sha256": "5077c88bc657d6766bbb3455b9b31d0a263b714cbcc07c226c7486697bf13216",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Selector, MultiSelector, and ComplexSelector gain a `secondary` variant: a borderless, neutral-filled trigger matching secondary buttons in navigation and toolbar compositions. Inside an `InputGroup`, a secondary Selector or MultiSelector keeps its fill and takes the group's row height and connected edges. Existing `input` (default) and `ghost` behavior is unchanged.",
+      "contributors": [
+        "barm",
+        "ernestt"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/setup-docs-prebuilt-css.md",
+      "sha256": "e28e9b8ad2358ca62c38efdd2d05400a37bc042b2e2c93019596dfbe139d061b",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The styling setup docs now load the prebuilt stylesheets on every path. The \"StyleX from source\" path becomes \"StyleX for your own code\": it keeps `astryx.css` and points the StyleX compiler at your own and swizzled source only. A new \"Other Astryx packages\" section lists each package's stylesheet (`richtext.css`, `lab.css`, `charts.css`) and where to import it. Getting started no longer lists the two example setups that compile Astryx source; the remaining examples all load `astryx.css`.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/sidenav-resize-handle-controls.md",
+      "sha256": "ea421ac60fd8a7d32e8256457eda202809e6626c213f74476656951a338bbe29",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`SideNav`: the resize handle now names the navigation pane it resizes with `aria-controls` (the nav gets a generated id when the consumer gives none), as the APG window splitter pattern requires, so assistive technology can relate the separator to the pane.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/slider-end-max.md",
+      "sha256": "7f3639e343f8cb1d91434a6d7f96fd3035e64132f7fec029d829539068bf0b42",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Slider`: End now reaches `max` even when the step grid does not land on it (for `max={100}` with `step={3}`, End stopped at 99). Arrow and Page key results still snap to the nearest step and then clamp.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/slider-rtl-arrow-keys.md",
+      "sha256": "d083ddec2d000d7bf25d7fb6c87cdd6da4f88c8c7ef393b0fa053625b447f58a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Slider`: on a horizontal track under RTL the arrow keys now follow the mirrored track — ArrowLeft increases the value and ArrowRight decreases it, matching where the thumb moves on screen. ArrowUp/ArrowDown, PageUp/PageDown, Home/End, and vertical sliders are unchanged.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/theme-watch-stops-at-once.md",
+      "sha256": "9a49d8c725e9299f0fa76c00e00d50de4256e18732dc9f03eaf458e875188bd2",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx theme build --watch` stops as soon as it is interrupted (Ctrl-C or SIGTERM). A change saved while a rebuild was running no longer starts another rebuild after \"Stopped watching.\", and a rebuild in progress stops with the watcher instead of keeping the process alive.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/tokenizer-create-dedupe-by-label.md",
+      "sha256": "834ade702b62046dc3b3b0418bd52db601a73655e9dc3ee601248fd3b488f43f",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Stop Tokenizer's `hasCreate` \"Create X\" entry from offering a label that is already tokenized under a different id. The duplicate check compared the typed text against selected ids, but real selections usually carry an opaque id (`u1` under the label \"Alice\"), and the search results could not catch the match because they are pre-filtered to remove already-selected items — so typing an existing token's label offered \"Create\", which committed a second, duplicate token with a new id. The check now also compares against selected labels (case-insensitive), in both the Create entry and the stale-entry commit guard.",
+      "contributors": [
+        "ManoharPaturi"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/toolbar-popover-focus-boundary.md",
+      "sha256": "b5c7355d1e673c0eba532e08c1534c4a322a5b3d4db1bfc808ba22e1335a960b",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep Toolbar keyboard navigation and roving tab stops outside nested popover menus, without disabling toolbar navigation inside an outer popover.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/treelist-row-name.md",
+      "sha256": "866fc68fe65406832b4600e0ca94a8d94fb3e605528851ff4c20e35bee30d157",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`TreeList`: each row is now named by its label alone and described by its description (`aria-labelledby`/`aria-describedby` on the `treeitem`), so screen readers no longer read the chevron toggle's label or the description as part of a row's name, and link and action rows are named as rows, not only through their inner control. Typeahead matches the label rather than the row's whole text.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    }
+  ]
+}
