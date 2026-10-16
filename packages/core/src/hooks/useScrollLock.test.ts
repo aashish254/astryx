@@ -2,8 +2,10 @@
 
 /**
  * @file useScrollLock.test.ts
- * @input Uses vitest, @testing-library/react, useScrollLock hook
- * @output Unit tests for single and concurrent useScrollLock instances
+ * @input Uses vitest, @testing-library/react, useScrollLock hook, and a
+ *   stubbed viewport (jsdom does no layout)
+ * @output Unit tests for single and concurrent useScrollLock instances, and
+ *   for the body inset and published gutter under a classic scrollbar
  * @position Testing; validates useScrollLock.ts implementation
  *
  * SYNC: When useScrollLock.ts changes, update tests to match new behavior
@@ -11,7 +13,8 @@
 
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, renderHook} from '@testing-library/react';
-import {useScrollLock} from './useScrollLock';
+import {SCROLL_LOCK_GUTTER_PROPERTY, useScrollLock} from './useScrollLock';
+import {scrollLockGutter} from './scrollLockGutter.stylex';
 
 describe('useScrollLock', () => {
   afterEach(() => {
@@ -176,73 +179,145 @@ describe('useScrollLock', () => {
     expect(document.body.style.right).toBe('');
   });
 
-  it('holds the page still across the scrollbar it hides', () => {
-    // A 1024px window over a 1009px layout viewport = a 15px classic
-    // scrollbar. Pinning the body hides it, which would widen the page by
-    // those 15px and reflow everything sideways.
-    Object.defineProperty(window, 'innerWidth', {
-      value: 1024,
-      configurable: true,
-      writable: true,
+  describe('a classic (space-taking) scrollbar', () => {
+    // jsdom does no layout, so the viewport is stubbed in two halves: the
+    // `innerWidth`/`clientWidth` pair that says a space-taking scrollbar is
+    // rendered, and the fixed probe the hook measures the layout viewport
+    // with, which reads the scrollbar's width back once the body is pinned.
+    function stubViewport({
+      innerWidth,
+      clientWidth,
+      viewportWhilePinned,
+    }: {
+      innerWidth: number;
+      clientWidth: number;
+      viewportWhilePinned: number;
+    }) {
+      Object.defineProperty(window, 'innerWidth', {
+        value: innerWidth,
+        configurable: true,
+        writable: true,
+      });
+      Object.defineProperty(document.documentElement, 'clientWidth', {
+        value: clientWidth,
+        configurable: true,
+      });
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(
+        function (this: Element) {
+          const width =
+            document.body.style.position === 'fixed'
+              ? viewportWhilePinned
+              : clientWidth;
+          return {width} as DOMRect;
+        },
+      );
+      vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    }
+
+    const gutterProperty = () =>
+      document.documentElement.style.getPropertyValue(
+        SCROLL_LOCK_GUTTER_PROPERTY,
+      );
+
+    it('insets the pinned body by the width the viewport gained, and publishes it', () => {
+      // A 1024px window over a 1009px layout viewport = a 15px classic
+      // scrollbar. Pinning the body hides it and the viewport grows to 1024;
+      // the body must keep the 1009px box it had.
+      stubViewport({
+        innerWidth: 1024,
+        clientWidth: 1009,
+        viewportWhilePinned: 1024,
+      });
+
+      const lock = renderHook(() => useScrollLock(true));
+
+      expect(document.body.style.left).toBe('0px');
+      expect(document.body.style.right).toBe('15px');
+      expect(gutterProperty()).toBe('15px');
+
+      lock.unmount();
+
+      expect(document.body.style.right).toBe('');
+      expect(gutterProperty()).toBe('');
     });
-    Object.defineProperty(document.documentElement, 'clientWidth', {
-      value: 1009,
-      configurable: true,
+
+    it('measures what the viewport actually gained rather than assuming the scrollbar width', () => {
+      // A page that reserves the gutter itself (`scrollbar-gutter: stable` in
+      // its own stylesheet): the scrollbar is rendered, so the window is 15px
+      // wider than the layout viewport, but hiding it changes nothing.
+      stubViewport({
+        innerWidth: 1024,
+        clientWidth: 1009,
+        viewportWhilePinned: 1009,
+      });
+
+      const lock = renderHook(() => useScrollLock(true));
+
+      expect(document.body.style.right).toBe('0px');
+      expect(gutterProperty()).toBe('');
+
+      lock.unmount();
     });
-    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
-    const lock = renderHook(() => useScrollLock(true));
+    it('leaves the page alone when the scrollbar is an overlay one', () => {
+      stubViewport({
+        innerWidth: 1024,
+        clientWidth: 1024,
+        viewportWhilePinned: 1024,
+      });
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+      const lock = renderHook(() => useScrollLock(true));
 
-    lock.unmount();
+      expect(document.body.style.right).toBe('0px');
+      expect(gutterProperty()).toBe('');
+      // Nothing to measure, so no probe was laid out.
+      expect(Element.prototype.getBoundingClientRect).not.toHaveBeenCalled();
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('');
-  });
-
-  it('leaves the page alone when the scrollbar is an overlay one', () => {
-    Object.defineProperty(window, 'innerWidth', {
-      value: 1024,
-      configurable: true,
-      writable: true,
+      lock.unmount();
     });
-    Object.defineProperty(document.documentElement, 'clientWidth', {
-      value: 1024,
-      configurable: true,
+
+    it('never touches scrollbar-gutter: a reserved gutter is outside the viewport the overlays are sized against', () => {
+      stubViewport({
+        innerWidth: 1024,
+        clientWidth: 1009,
+        viewportWhilePinned: 1024,
+      });
+
+      const lock = renderHook(() => useScrollLock(true));
+
+      expect(document.documentElement.style.scrollbarGutter).toBe('');
+
+      lock.unmount();
     });
-    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
-    const lock = renderHook(() => useScrollLock(true));
+    it('measures for the outermost overlay only, and gives the inset back once', () => {
+      stubViewport({
+        innerWidth: 1024,
+        clientWidth: 1009,
+        viewportWhilePinned: 1024,
+      });
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('');
-    expect(document.body.style.paddingRight).toBe('');
+      const first = renderHook(() => useScrollLock(true));
+      const second = renderHook(() => useScrollLock(true));
 
-    lock.unmount();
-  });
+      expect(document.body.style.right).toBe('15px');
+      expect(gutterProperty()).toBe('15px');
 
-  it('holds the gutter for the outermost overlay only, and gives it back once', () => {
-    Object.defineProperty(window, 'innerWidth', {
-      value: 1024,
-      configurable: true,
-      writable: true,
+      first.unmount();
+
+      expect(document.body.style.right).toBe('15px');
+      expect(gutterProperty()).toBe('15px');
+
+      second.unmount();
+
+      expect(document.body.style.right).toBe('');
+      expect(gutterProperty()).toBe('');
     });
-    Object.defineProperty(document.documentElement, 'clientWidth', {
-      value: 1009,
-      configurable: true,
+
+    it('is the same property the StyleX constant reads', () => {
+      expect(scrollLockGutter.width).toBe(
+        `var(${SCROLL_LOCK_GUTTER_PROPERTY}, 0px)`,
+      );
     });
-    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-
-    const first = renderHook(() => useScrollLock(true));
-    const second = renderHook(() => useScrollLock(true));
-
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
-
-    first.unmount();
-
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
-
-    second.unmount();
-
-    expect(document.documentElement.style.scrollbarGutter).toBe('');
   });
 });

@@ -12,6 +12,8 @@
  *
  * SYNC: When placement, stacking, hosting, focus, announcement, or safe-area
  *   behavior changes, update ToastViewport.test.tsx, Toast.doc.mjs, and Toast.stories.tsx.
+ *   The right-edge gutter also reads the scroll lock's published width
+ *   (/packages/core/src/hooks/scrollLockGutter.stylex.ts).
  */
 
 import {
@@ -42,12 +44,19 @@ import {ToastContext, type ToastContextValue} from './ToastContext';
 import type {ToastEntry, ToastPosition, ToastDismissReason} from './types';
 import {useTranslator} from '../i18n';
 import {layerInsetProperties} from '../Layer/layerInset';
+import {scrollLockGutter} from '../hooks/scrollLockGutter.stylex';
 import type {LayerInset} from '../Layer/LayerContext';
 
 const SAFE_AREA_INLINE_START = `max(${spacingVars['--spacing-4']}, env(safe-area-inset-left, 0px))`;
 const SAFE_AREA_INLINE_END = `max(${spacingVars['--spacing-4']}, env(safe-area-inset-right, 0px))`;
 const SAFE_AREA_BLOCK_START = `max(${spacingVars['--spacing-4']}, env(safe-area-inset-top, 0px))`;
 const SAFE_AREA_BLOCK_END = `max(${spacingVars['--spacing-4']}, env(safe-area-inset-bottom, 0px))`;
+// The right-edge gutter also clears the width a scroll lock took from the
+// document scrollbar: the lock widens the viewport by that much at its right
+// edge, and a toast already on screen must not move when a modal opens.
+// Physical right, whichever edge is inline-end — that is where the scrollbar
+// was (see hooks/useScrollLock.ts).
+const SAFE_AREA_RIGHT_LOCKED = `calc(${SAFE_AREA_INLINE_END} + ${scrollLockGutter.width})`;
 const TOAST_EDGE_DRIFT = spacingVars['--spacing-2'];
 const TOAST_EDGE_DRIFT_NEGATIVE = `calc(-1 * ${TOAST_EDGE_DRIFT})`;
 
@@ -65,10 +74,10 @@ const styles = stylex.create({
     paddingBlockEnd: SAFE_AREA_BLOCK_END,
     paddingInlineStart: {
       default: SAFE_AREA_INLINE_START,
-      ':is([dir="rtl"] *)': SAFE_AREA_INLINE_END,
+      ':is([dir="rtl"] *)': SAFE_AREA_RIGHT_LOCKED,
     },
     paddingInlineEnd: {
-      default: SAFE_AREA_INLINE_END,
+      default: SAFE_AREA_RIGHT_LOCKED,
       ':is([dir="rtl"] *)': SAFE_AREA_INLINE_START,
     },
     pointerEvents: 'none',

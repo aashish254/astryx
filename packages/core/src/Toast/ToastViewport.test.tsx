@@ -889,9 +889,13 @@ describe('Toast native motion contract', () => {
       'var(--spacing-2)',
     );
     expect(getComputedStyle(wrappers[1]).paddingBottom).toBe('0px');
+    // The right-edge gutter is the safe-area max plus the width a scroll lock
+    // took from the document scrollbar, which reads 0px outside a lock.
     expect(
       normalizeCssFunction(getComputedStyle(viewport).paddingInlineEnd),
-    ).toBe('max(var(--spacing-4), env(safe-area-inset-right, 0px))');
+    ).toBe(
+      'calc(max(var(--spacing-4), env(safe-area-inset-right, 0px)) + var(--astryx-scroll-lock-gutter, 0px))',
+    );
 
     cleanup();
     render(

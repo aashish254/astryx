@@ -65,7 +65,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.documentElement.style.overflow = '';
+  document.body.style.cssText = '';
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -215,12 +215,12 @@ describe('MobileNav close path edge cases', () => {
     }
   });
 
-  it('restores documentElement overflow once the drawer has closed', () => {
+  it('releases the scroll lock once the drawer has closed', () => {
     vi.useFakeTimers();
     try {
       const {rerender} = render(<Drawer isOpen />);
       const dialog = screen.getByTestId('mobile-nav');
-      expect(document.documentElement.style.overflow).toBe('clip');
+      expect(document.body.style.position).toBe('fixed');
 
       // Two acts on purpose: the close timer is armed by the effect that runs
       // when the first act flushes, so advancing inside that same act would
@@ -231,25 +231,25 @@ describe('MobileNav close path edge cases', () => {
       act(() => {
         vi.advanceTimersByTime(300);
       });
-      // Pin the close itself. The effect cleanup resets overflow on every
-      // isOpen flip, so the overflow assertion alone passes even with the whole
-      // close path deleted — the test name would be the only thing left of it.
+      // Pin the close itself, not only the lock: the lock is released by the
+      // same timer, so the body assertion alone would pass with the close
+      // path deleted — the test name would be the only thing left of it.
       expect(dialog).not.toHaveAttribute('open');
       // A drawer that closes but leaves the page scroll-locked is its own
       // flavour of "the page is broken and nothing says why".
-      expect(document.documentElement.style.overflow).toBe('');
+      expect(document.body.style.position).toBe('');
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('restores documentElement overflow when unmounted while open', () => {
+  it('releases the scroll lock when unmounted while open', () => {
     const {unmount} = render(<Drawer isOpen />);
-    expect(document.documentElement.style.overflow).toBe('clip');
+    expect(document.body.style.position).toBe('fixed');
 
     unmount();
 
-    expect(document.documentElement.style.overflow).toBe('');
+    expect(document.body.style.position).toBe('');
   });
 
   it('leaves no pending close timer behind after unmount', () => {

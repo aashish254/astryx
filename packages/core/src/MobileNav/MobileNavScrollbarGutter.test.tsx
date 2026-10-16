@@ -3,20 +3,24 @@
 /**
  * @file MobileNavScrollbarGutter.test.tsx
  * @input Uses vitest, @testing-library/react, MobileNav, a stubbed viewport
- * @output Unit tests for the scrollbar gutter MobileNav reserves while open
+ * @output Unit tests for the scroll lock MobileNav holds while open and
+ *   through its slide-out
  * @position Testing; guards MobileNav.tsx against the open-drawer page shift
  *
- * MobileNav clips the document to lock background scroll, which hides a
- * classic scrollbar and widens the layout viewport by its width — the page
- * behind the drawer jumps sideways. The clip has to be paired with holding
- * that gutter open.
+ * MobileNav locks background scroll through the shared useScrollLock, which
+ * hides a classic scrollbar and lets the layout viewport take its width — so
+ * the drawer reaches the window edge — while insetting the pinned body by the
+ * same width so the page behind does not jump sideways. The lock has to last
+ * through the slide-out: the drawer exits against the geometry it opened with.
  *
  * SYNC: When MobileNav.tsx changes, update tests to match new behavior
  */
 
-import {describe, it, expect, beforeAll, afterEach} from 'vitest';
-import {render, cleanup} from '@testing-library/react';
+import {describe, it, expect, beforeAll, afterEach, vi} from 'vitest';
+import {render, cleanup, act} from '@testing-library/react';
 import {MobileNav} from './MobileNav';
+import {SCROLL_LOCK_GUTTER_PROPERTY} from '../hooks/useScrollLock';
+import {stubMatchMedia} from '../__tests__/stubMatchMedia';
 
 beforeAll(() => {
   // jsdom doesn't implement showModal/close on <dialog>
@@ -32,7 +36,12 @@ beforeAll(() => {
     };
 });
 
-/** jsdom does no layout, so both halves of the measurement are stubbed. */
+/**
+ * jsdom does no layout, so the viewport is stubbed in two halves: the
+ * `innerWidth`/`clientWidth` pair that says a space-taking scrollbar is
+ * rendered, and the fixed probe the lock measures the layout viewport with,
+ * which reads the scrollbar's width back once the body is pinned.
+ */
 function stubViewport(innerWidth: number, clientWidth: number) {
   Object.defineProperty(window, 'innerWidth', {
     value: innerWidth,
@@ -43,19 +52,31 @@ function stubViewport(innerWidth: number, clientWidth: number) {
     value: clientWidth,
     configurable: true,
   });
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(
+    function (this: Element) {
+      const width =
+        document.body.style.position === 'fixed' ? innerWidth : clientWidth;
+      return {width} as DOMRect;
+    },
+  );
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 }
 
-const rootGutter = () => document.documentElement.style.scrollbarGutter;
+const gutterProperty = () =>
+  document.documentElement.style.getPropertyValue(SCROLL_LOCK_GUTTER_PROPERTY);
 
-describe('MobileNav scrollbar gutter', () => {
+describe('MobileNav scroll lock', () => {
   afterEach(() => {
     cleanup();
+    document.body.style.cssText = '';
     document.documentElement.style.cssText = '';
     // @ts-expect-error -- drop the viewport stub so jsdom's own value comes back
     delete document.documentElement.clientWidth;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  it('holds the gutter open while the drawer is open', () => {
+  it('pins the body, inset by the scrollbar width, while the drawer is open', () => {
     stubViewport(1024, 1009);
 
     const view = render(
@@ -64,33 +85,56 @@ describe('MobileNav scrollbar gutter', () => {
       </MobileNav>,
     );
 
-    expect(document.documentElement.style.overflow).toBe('clip');
-    expect(rootGutter()).toBe('stable');
+    expect(document.body.style.position).toBe('fixed');
+    expect(document.body.style.right).toBe('15px');
+    expect(gutterProperty()).toBe('15px');
+    // The lock owns the gutter; nothing reserves it on the root.
+    expect(document.documentElement.style.scrollbarGutter).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
 
     view.unmount();
 
-    expect(document.documentElement.style.overflow).toBe('');
-    expect(rootGutter()).toBe('');
+    expect(document.body.style.position).toBe('');
+    expect(document.body.style.right).toBe('');
+    expect(gutterProperty()).toBe('');
   });
 
-  it('gives the gutter back when the drawer closes', () => {
+  it('keeps the lock through the slide-out and releases it once the dialog has closed', () => {
     stubViewport(1024, 1009);
+    stubMatchMedia({reduceMotion: false});
+    vi.useFakeTimers();
+    try {
+      const view = render(
+        <MobileNav isOpen={true} onOpenChange={() => {}}>
+          <span>Nav content</span>
+        </MobileNav>,
+      );
 
-    const view = render(
-      <MobileNav isOpen={true} onOpenChange={() => {}}>
-        <span>Nav content</span>
-      </MobileNav>,
-    );
+      expect(document.body.style.position).toBe('fixed');
 
-    expect(rootGutter()).toBe('stable');
+      act(() => {
+        view.rerender(
+          <MobileNav isOpen={false} onOpenChange={() => {}}>
+            <span>Nav content</span>
+          </MobileNav>,
+        );
+      });
 
-    view.rerender(
-      <MobileNav isOpen={false} onOpenChange={() => {}}>
-        <span>Nav content</span>
-      </MobileNav>,
-    );
+      // Still sliding out: the scrollbar coming back now would move the
+      // drawer mid-exit.
+      expect(document.body.style.position).toBe('fixed');
+      expect(gutterProperty()).toBe('15px');
 
-    expect(rootGutter()).toBe('');
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      expect(document.body.style.position).toBe('');
+      expect(document.body.style.right).toBe('');
+      expect(gutterProperty()).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('holds nothing when the scrollbar is an overlay one', () => {
@@ -102,8 +146,9 @@ describe('MobileNav scrollbar gutter', () => {
       </MobileNav>,
     );
 
-    expect(document.documentElement.style.overflow).toBe('clip');
-    expect(rootGutter()).toBe('');
-    expect(document.documentElement.style.paddingRight).toBe('');
+    expect(document.body.style.position).toBe('fixed');
+    expect(document.body.style.right).toBe('0px');
+    expect(gutterProperty()).toBe('');
+    expect(document.documentElement.style.scrollbarGutter).toBe('');
   });
 });
