@@ -1,0 +1,26 @@
+{
+  "foundation": {
+    "inlineStart": "12px",
+    "inlineEnd": "12px",
+    "blockStart": "8px",
+    "blockEnd": "8px"
+  },
+  "reset-layer": {
+    "inlineStart": "12px",
+    "inlineEnd": "12px",
+    "blockStart": "8px",
+    "blockEnd": "8px"
+  },
+  "late-layer-reset": {
+    "inlineStart": "0px",
+    "inlineEnd": "0px",
+    "blockStart": "0px",
+    "blockEnd": "0px"
+  },
+  "unlayered-reset": {
+    "inlineStart": "0px",
+    "inlineEnd": "0px",
+    "blockStart": "0px",
+    "blockEnd": "0px"
+  }
+}
