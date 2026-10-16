@@ -27,6 +27,16 @@ import {devWarn} from '../utils/devWarning';
 const LOCAL_ZONE_ALIAS = 'local';
 
 /**
+ * Zone identifiers the platform has already accepted.
+ *
+ * Validating one means constructing a formatter, and resolution runs on every
+ * render — on a live timestamp, several times a minute. An IANA identifier's
+ * validity cannot change while the page is open, so the probe is worth paying
+ * for once per identifier rather than once per render.
+ */
+const validTimezoneIDs = new Set<string>();
+
+/**
  * Zone identifiers already reported as unknown, keyed by the prop they came
  * from.
  *
@@ -60,6 +70,10 @@ export function resolveTimezoneID(
     return undefined;
   }
 
+  if (validTimezoneIDs.has(timezoneID)) {
+    return timezoneID;
+  }
+
   // An unrecognized identifier makes every Intl.DateTimeFormat constructor
   // throw a RangeError. Rendering a timestamp must never take down the tree —
   // degrade to the viewer's zone and say so, mirroring how an unparseable
@@ -80,5 +94,6 @@ export function resolveTimezoneID(
     return undefined;
   }
 
+  validTimezoneIDs.add(timezoneID);
   return timezoneID;
 }
