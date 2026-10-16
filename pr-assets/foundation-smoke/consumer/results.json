@@ -1,0 +1,140 @@
+{
+  "browser": "149.0.7827.55",
+  "plain-correct": {
+    "exitCode": 0,
+    "foundation": {
+      "inlineStart": "12px",
+      "inlineEnd": "12px",
+      "blockStart": "8px",
+      "blockEnd": "8px"
+    },
+    "reset-layer": {
+      "inlineStart": "12px",
+      "inlineEnd": "12px",
+      "blockStart": "8px",
+      "blockEnd": "8px"
+    },
+    "late-layer-reset": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    },
+    "unlayered-reset": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    }
+  },
+  "plain-light": {
+    "baseline": "12px",
+    "theme": "32px",
+    "utility": "8px"
+  },
+  "plain-dark": {
+    "baseline": "12px",
+    "theme": "32px",
+    "utility": "8px"
+  },
+  "plain-reset-layer": {
+    "exitCode": 0,
+    "foundation": {
+      "inlineStart": "12px",
+      "inlineEnd": "12px",
+      "blockStart": "8px",
+      "blockEnd": "8px"
+    }
+  },
+  "plain-late-reset": {
+    "exitCode": 1,
+    "foundation": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    }
+  },
+  "plain-unlayered-reset": {
+    "exitCode": 1,
+    "foundation": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    }
+  },
+  "tailwind-correct": {
+    "exitCode": 0,
+    "foundation": {
+      "inlineStart": "12px",
+      "inlineEnd": "12px",
+      "blockStart": "8px",
+      "blockEnd": "8px"
+    },
+    "reset-layer": {
+      "inlineStart": "12px",
+      "inlineEnd": "12px",
+      "blockStart": "8px",
+      "blockEnd": "8px"
+    },
+    "late-layer-reset": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    },
+    "unlayered-reset": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    }
+  },
+  "tailwind-light": {
+    "baseline": "12px",
+    "theme": "32px",
+    "utility": "8px"
+  },
+  "tailwind-dark": {
+    "baseline": "12px",
+    "theme": "32px",
+    "utility": "8px"
+  },
+  "tailwind-reset-layer": {
+    "exitCode": 0,
+    "foundation": {
+      "inlineStart": "12px",
+      "inlineEnd": "12px",
+      "blockStart": "8px",
+      "blockEnd": "8px"
+    }
+  },
+  "tailwind-late-reset": {
+    "exitCode": 1,
+    "foundation": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    }
+  },
+  "tailwind-unlayered-reset": {
+    "exitCode": 1,
+    "foundation": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    }
+  },
+  "tailwind-unlayered-preflight": {
+    "exitCode": 1,
+    "foundation": {
+      "inlineStart": "0px",
+      "inlineEnd": "0px",
+      "blockStart": "0px",
+      "blockEnd": "0px"
+    }
+  }
+}
