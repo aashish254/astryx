@@ -184,7 +184,7 @@ describe('doctor integration — command', () => {
     ]);
 
     expect(logCalls.join('\n')).toContain(
-      'astryx doctor integration templates <package>',
+      ' doctor integration templates <package>',
     );
     expect(process.exitCode).toBeUndefined();
   });

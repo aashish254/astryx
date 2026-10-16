@@ -65,7 +65,7 @@ Results for "button" (20 of 239):
                → astryx template BannerCollapsibleContent
 ```
 
-(The CLI prints the follow-up commands with your actual runner — `npx astryx …` when installed, or `npx @astryxdesign/cli …` when run one-off.)
+(The CLI prints the follow-up commands with your actual runner — `npx astryx …` when installed, or `npx @astryxdesign/cli …` when run one-off — or with the command an installed integration sets as its `cliCommand`.)
 
 Options:
 
@@ -652,13 +652,14 @@ export default {
 };
 ```
 
-| Field        | Type     | Purpose                                                                           |
-| ------------ | -------- | --------------------------------------------------------------------------------- |
-| `components` | `string` | Directory holding the package's components and their `.doc.*` files.              |
-| `templates`  | `string` | Directory holding the package's page/block templates.                             |
-| `codemods`   | `string` | Directory holding upgrade codemods run by `astryx upgrade`.                       |
-| `docs`       | `string` | Directory of reference docs; each `{topic}.doc.*` becomes a topic the CLI serves. |
-| `issuesUrl`  | `string` | Where "report an issue" links for this package's contributions point.             |
+| Field        | Type     | Purpose                                                                                                     |
+| ------------ | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `components` | `string` | Directory holding the package's components and their `.doc.*` files.                                        |
+| `templates`  | `string` | Directory holding the package's page/block templates.                                                       |
+| `codemods`   | `string` | Directory holding upgrade codemods run by `astryx upgrade`.                                                 |
+| `docs`       | `string` | Directory of reference docs; each `{topic}.doc.*` becomes a topic the CLI serves.                           |
+| `issuesUrl`  | `string` | Where "report an issue" links for this package's contributions point.                                       |
+| `cliCommand` | `string` | The command its users run the CLI with, such as `acme astryx`; every command the CLI prints starts with it. |
 
 Every field is optional; declare only the roots the package ships. There is no
 factory: write a plain object, and annotate it with the `AstryxIntegration` type

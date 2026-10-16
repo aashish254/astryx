@@ -8,11 +8,13 @@
  * the runner that launched us. Returns the correct command prefix for running
  * package binaries (e.g. 'npx astryx', 'yarn astryx', 'pnpm exec astryx'), and
  * the scoped one-off form ('npx @astryxdesign/cli') when the `astryx` bin does
- * not resolve from the project.
+ * not resolve from the project. An integration's declared `cliCommand`, then
+ * a host's door name, come first (see cli-command.mjs).
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {cliDoor, declaredCliCommand} from './cli-command.mjs';
 
 /**
  * A package manager we can install with and run binaries through.
@@ -473,7 +475,22 @@ export function cliBinResolves(targetDir = process.cwd()) {
 }
 
 /**
- * The safe, install-aware CLI invocation stem to suggest to users.
+ * The CLI invocation stem every printed command starts with. The one picker:
+ * every hint, error, Doctor fix and doc line that names a command goes through
+ * it (directly, or through {@link formatCliCommand} and
+ * {@link formatCliCommandsIn}). JSON fields that carry a command stay bare.
+ *
+ * In order:
+ *
+ * - The `cliCommand` an integration loaded in this project declares, e.g.
+ *   `acme astryx`. When two integrations declare different commands,
+ *   neither is used, the guess below is (even when a host set a door), and
+ *   `astryx doctor` warns.
+ * - The door a host ran this call through (see cli-command.mjs). Empty in a
+ *   plain run.
+ * - Otherwise the guess below.
+ *
+ * The guess:
  *
  * - The `astryx` bin resolves from `targetDir`: `<run-prefix> astryx`
  *   (e.g. `pnpm exec astryx`).
@@ -488,6 +505,21 @@ export function cliBinResolves(targetDir = process.cwd()) {
  * @returns {string}
  */
 export function getCliInvocation(targetDir) {
+  const declared = declaredCliCommand(targetDir);
+  if (declared.command) return declared.command;
+  if (declared.conflict) return guessCliInvocation(targetDir);
+  return cliDoor() ?? guessCliInvocation(targetDir);
+}
+
+/**
+ * The package-manager guess alone, without any integration's `cliCommand` or
+ * a host's door. The picker falls back to it when declared commands conflict,
+ * and Doctor names it then.
+ *
+ * @param {string} [targetDir]
+ * @returns {string}
+ */
+export function guessCliInvocation(targetDir) {
   if (isCliOneOff() || !cliBinResolves(targetDir)) {
     return `${getDlxPrefix(targetDir)} ${CLI_PACKAGE}`;
   }
@@ -511,4 +543,74 @@ export function formatCliCommand(command, targetDir) {
     .trim();
   const stem = getCliInvocation(targetDir);
   return sub ? `${stem} ${sub}` : stem;
+}
+
+/** Code-fence languages whose lines are shell commands. */
+const SHELL_FENCES = new Set(['', 'bash', 'sh', 'shell', 'zsh', 'console']);
+
+/** Code-fence languages that hold prose, such as a prompt to paste. */
+const PROSE_FENCES = new Set(['text', 'txt', 'markdown', 'md']);
+
+/** `astryx` where a shell line starts a command: line start, `$ `, `&&`, `||`, `;`, `|`. */
+const SHELL_COMMAND = /(^\s*(?:\$\s+)?|(?:&&|\|\||;|\|)\s*)astryx(?=\s|$)/g;
+
+/** `astryx` opening an inline code span: `` `astryx docs` `` or `` `astryx` ``. */
+const INLINE_COMMAND = /`astryx(?=[\s`])/g;
+
+/**
+ * Prefix the CLI commands in one line.
+ * @param {string} line
+ * @param {string} stem
+ * @param {string | null} lang the fence the line sits in; null for prose
+ * @returns {string}
+ */
+function prefixLine(line, stem, lang) {
+  if (lang == null) return line.replace(INLINE_COMMAND, `\`${stem}`);
+  if (SHELL_FENCES.has(lang)) return line.replace(SHELL_COMMAND, `$1${stem}`);
+  if (PROSE_FENCES.has(lang)) {
+    return line
+      .replace(INLINE_COMMAND, `\`${stem}`)
+      .replace(SHELL_COMMAND, `$1${stem}`);
+  }
+  return line;
+}
+
+/**
+ * Prefix every CLI command in doc text with `stem`, the invocation from
+ * {@link getCliInvocation}.
+ *
+ * Docs, including an integration's, are written with bare `astryx ...`
+ * commands; this rewrites them when they are shown. In prose, an inline code
+ * span that starts with `astryx`. In a shell code fence (no language, `bash`,
+ * `sh`, `shell`, `zsh`, `console`), each `astryx` that starts a command. In a
+ * `text` or `markdown` fence, both. Other fences, and plain words, are left
+ * alone. JSON output keeps the authored text.
+ *
+ * @param {string} text Markdown-style doc text, or the body of one code block.
+ * @param {string} stem e.g. `pnpm exec astryx`
+ * @param {string | null} [lang] the code block's language when `text` is one
+ *   block's body; omit for Markdown, whose fences are followed
+ * @returns {string}
+ */
+export function prefixCliCommands(text, stem, lang = null) {
+  if (stem === CLI_BIN) return String(text);
+  const blockLang = lang == null ? null : lang.toLowerCase();
+  /** @type {{marker: string, lang: string} | null} */
+  let fence = null;
+  return String(text)
+    .split('\n')
+    .map(line => {
+      if (blockLang != null) return prefixLine(line, stem, blockLang);
+      const marker = /^\s*(`{3,}|~{3,})\s*([\w-]*)/.exec(line);
+      if (marker) {
+        if (fence == null) {
+          fence = {marker: marker[1], lang: marker[2].toLowerCase()};
+        } else if (marker[1].startsWith(fence.marker)) {
+          fence = null;
+        }
+        return line;
+      }
+      return prefixLine(line, stem, fence?.lang ?? null);
+    })
+    .join('\n');
 }

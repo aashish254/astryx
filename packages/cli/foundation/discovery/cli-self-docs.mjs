@@ -25,6 +25,7 @@ import {
   oversizedDocSections,
 } from './docs-output-budget.mjs';
 import {routeSegment} from './docs-section-key.mjs';
+import {formatCliCommand} from '../env/package-manager.mjs';
 
 /** The directories, relative to the CLI root, that hold the CLI's own docs. */
 export const CLI_SELF_DOC_DIRS = [
@@ -475,13 +476,13 @@ export async function auditCliSelfDocs({
       else {
         misfiled.push({
           source,
-          message: `${source} has namespace "authoring", but \`astryx docs authoring\` does not list it`,
+          message: `${source} has namespace "authoring", but \`${formatCliCommand('docs authoring')}\` does not list it`,
         });
       }
     } else if (inAuthoring) {
       misfiled.push({
         source,
-        message: `${source} is read in \`astryx docs authoring\`, but its namespace is "${namespace}"`,
+        message: `${source} is read in \`${formatCliCommand('docs authoring')}\`, but its namespace is "${namespace}"`,
       });
     } else {
       treeDocs.push(doc);

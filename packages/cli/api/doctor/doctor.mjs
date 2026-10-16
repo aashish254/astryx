@@ -26,7 +26,8 @@ import * as path from 'node:path';
 import {MIN_NODE_VERSION, isNodeVersionSupported} from '../../foundation/env/node-version.mjs';
 import {AGENT_DOC_PATHS} from '../../foundation/agent-docs/agent-doc-state.mjs';
 import {CLI_ROOT, findCoreDir, findInstalledPackage} from '../../foundation/fs/paths.mjs';
-import {explainPackageManager, getCliInvocation} from '../../foundation/env/package-manager.mjs';
+import {explainPackageManager, formatCliCommand, getCliInvocation, guessCliInvocation} from '../../foundation/env/package-manager.mjs';
+import {chooseDeclaredCliCommand, declaredCliCommandsOf} from '../../foundation/env/cli-command.mjs';
 import {
   findConfigPath,
   Project,
@@ -331,7 +332,7 @@ export async function checkConfig(ctx) {
         label: 'astryx.config.mjs',
         status: 'fail',
         message: `astryx.config.mjs loads, but the CLI could not load the project from it: ${firstLine(ctx.projectError)}`,
-        fix: 'Fix what the message names. `astryx docs authoring config` lists every field astryx.config accepts.',
+        fix: `Fix what the message names. \`${formatCliCommand('docs authoring config', ctx.cwd)}\` lists every field astryx.config accepts.`,
       };
     }
     return {
@@ -476,7 +477,7 @@ function describeUnreadableManifests(failures) {
   return (
     ` ${failures.length} installed ${one ? 'dependency ships' : 'dependencies ship'} ` +
     `an astryx.integration.* manifest that could not be loaded, so ${one ? 'it contributes' : 'they contribute'} ` +
-    `nothing: ${listed}. Run \`astryx doctor integration validate <package>\` for details.`
+    `nothing: ${listed}. Run \`${formatCliCommand('doctor integration validate <package>')}\` for details.`
   );
 }
 
@@ -550,7 +551,7 @@ export function checkConfiguredIntegrations(ctx) {
         `${withdrawn.length} of ${configured.length} integration${plural} named in astryx.config could not be loaded, ` +
         `so ${withdrawn.length === 1 ? 'it contributes' : 'they contribute'} nothing: ${listed}.`,
       fix:
-        'Install each one, fix its astryx.integration.* manifest (`astryx doctor integration validate <package>` says what is wrong), ' +
+        `Install each one, fix its astryx.integration.* manifest (\`${formatCliCommand('doctor integration validate <package>', ctx.cwd)}\` says what is wrong), ` +
         'or remove it from `integrations` in astryx.config.',
     };
   }
@@ -748,7 +749,7 @@ export function checkIntegrationIssues(ctx) {
     label: 'Integration contributions',
     status: 'warn',
     message: `${issues.length} integration issue(s)${errors > 0 ? `, ${errors} of them errors` : ''}: ${details}`,
-    fix: 'Run `astryx doctor integration` for package-specific diagnostics and resolve cross-package precedence in astryx.config.',
+    fix: `Run \`${formatCliCommand('doctor integration', ctx.cwd)}\` for package-specific diagnostics and resolve cross-package precedence in astryx.config.`,
   };
 }
 
@@ -954,7 +955,7 @@ function surfaceProblems(surface) {
   const problems = [];
   if (surface.types === 0 && surface.untraced.length === 0) {
     problems.push(
-      '@astryxdesign/cli/authoring exports no types, so nothing was compared with `astryx docs authoring`',
+      `@astryxdesign/cli/authoring exports no types, so nothing was compared with \`${formatCliCommand('docs authoring')}\``,
     );
   }
   for (const {module, names, reason, source, key} of surface.unreadable) {
@@ -967,7 +968,7 @@ function surfaceProblems(surface) {
             ? `${source} does not load`
             : `${source} renders section "${key}", which the topic's index does not list`;
     problems.push(
-      `${nameTypes(names)} from ${module} ${names.length === 1 ? 'has' : 'have'} no doc in \`astryx docs authoring\`: ${why}`,
+      `${nameTypes(names)} from ${module} ${names.length === 1 ? 'has' : 'have'} no doc in \`${formatCliCommand('docs authoring')}\`: ${why}`,
     );
   }
   for (const {name, reason} of surface.untraced) {
@@ -1008,7 +1009,7 @@ export async function checkAuthoringDocs(_ctx, options = {}) {
     const audit = await auditAuthoringSelfDocs({root, sources});
     const problems = [
       ...audit.unreachable.map(
-        source => `${source} is not in \`astryx docs authoring\``,
+        source => `${source} is not in \`${formatCliCommand('docs authoring')}\``,
       ),
       ...audit.failed.map(
         ({source, error}) => `${source} failed to load: ${error}`,
@@ -1024,7 +1025,7 @@ export async function checkAuthoringDocs(_ctx, options = {}) {
         : {keys: options.topicKeys};
     const surface = [
       ...('error' in topic
-        ? [`\`astryx docs authoring\` could not be read: ${topic.error}`]
+        ? [`\`${formatCliCommand('docs authoring')}\` could not be read: ${topic.error}`]
         : []),
       ...surfaceProblems(
         await auditAuthoringSurface({root, sources, topicKeys: topic.keys}),
@@ -1048,7 +1049,7 @@ export async function checkAuthoringDocs(_ctx, options = {}) {
       id,
       label,
       status: 'pass',
-      message: `All ${audit.sections} authoring schemas are readable in \`astryx docs authoring\`.`,
+      message: `All ${audit.sections} authoring schemas are readable in \`${formatCliCommand('docs authoring')}\`.`,
     };
   } catch (err) {
     return {
@@ -1088,11 +1089,11 @@ export async function checkCliDocs(_ctx, options = {}) {
     const problems = [
       ...audit.missing.map(
         source =>
-          `${source} has no namespace, so no \`astryx docs\` topic reads it`,
+          `${source} has no namespace, so no \`${formatCliCommand('docs')}\` topic reads it`,
       ),
       ...audit.unknown.map(
         ({source, namespace}) =>
-          `${source} has namespace "${namespace}", which no \`astryx docs\` topic reads`,
+          `${source} has namespace "${namespace}", which no \`${formatCliCommand('docs')}\` topic reads`,
       ),
       ...audit.misfiled.map(({message}) => message),
       ...audit.failed.map(
@@ -1116,7 +1117,7 @@ export async function checkCliDocs(_ctx, options = {}) {
       id,
       label,
       status: 'pass',
-      message: `All ${audit.docs} CLI docs are readable: ${audit.tree} in the \`astryx docs cli\` tree and ${audit.authoring} in \`astryx docs authoring\`.`,
+      message: `All ${audit.docs} CLI docs are readable: ${audit.tree} in the \`${formatCliCommand('docs cli')}\` tree and ${audit.authoring} in \`${formatCliCommand('docs authoring')}\`.`,
     };
   } catch (err) {
     return {
@@ -1279,6 +1280,49 @@ export async function checkDocsProgressiveDisclosure(ctx) {
 }
 
 /**
+ * Check 11 — the command every printed command starts with, and a warning when
+ * loaded integrations declare different ones (their `cliCommand`). Then the
+ * picker uses neither, so commands fall back to the package-manager guess.
+ *
+ * @param {DoctorContext} ctx
+ * @returns {DoctorCheck}
+ */
+export function checkCliCommand(ctx) {
+  const id = 'cli-command';
+  const label = 'CLI command';
+  const {command, conflict, declared} = chooseDeclaredCliCommand(
+    declaredCliCommandsOf(ctx.integrations ?? []),
+  );
+  if (conflict) {
+    const claims = declared
+      .map(entry => `${entry.package} (\`${entry.command}\`)`)
+      .join(', ');
+    return {
+      id,
+      label,
+      status: 'warn',
+      message: `Loaded integrations declare different CLI commands: ${claims}. Neither is used, so printed commands start with \`${guessCliInvocation(ctx.cwd)}\`.`,
+      fix: 'Remove the integration that does not belong here, or have every package declare the same `cliCommand` in its astryx.integration manifest.',
+    };
+  }
+  if (command) {
+    const packages = declared.map(entry => entry.package).join(', ');
+    return {
+      id,
+      label,
+      status: 'pass',
+      message: `Printed commands start with \`${command}\`, the cliCommand of ${packages}.`,
+    };
+  }
+  return {
+    id,
+    label,
+    status: 'info',
+    message: `No loaded integration declares a cliCommand, so printed commands start with \`${getCliInvocation(ctx.cwd)}\`.`,
+  };
+}
+
+/**
  * Ordered list of synchronous check functions. Append here to add a check.
  * (checkConfig is async and is awaited separately by {@link runChecks}.)
  * @type {Array<(ctx: DoctorContext) => DoctorCheck>}
@@ -1294,6 +1338,7 @@ export const SYNC_CHECKS = [
   checkAgentDocs,
   checkPeerDeps,
   checkPackageManager,
+  checkCliCommand,
 ];
 
 /**

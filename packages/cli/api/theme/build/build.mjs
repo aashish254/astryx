@@ -58,7 +58,10 @@ import {isBuiltin} from 'node:module';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {parse} from '@babel/parser';
 import {createJiti} from 'jiti';
-import {getCliInvocation} from '../../../foundation/env/package-manager.mjs';
+import {
+  getCliInvocation,
+  formatCliCommand,
+} from '../../../foundation/env/package-manager.mjs';
 import {
   CLI_ROOT,
   findCoreDir,
@@ -375,8 +378,7 @@ function inAstryxRepository(cwd) {
  * @returns {string}
  */
 export function coreUnavailableMessage(cwd, importError) {
-  const why =
-    '`astryx theme build` generates CSS with @astryxdesign/core, the same code the runtime <Theme> uses';
+  const why = `\`${formatCliCommand('theme build')}\` generates CSS with @astryxdesign/core, the same code the runtime <Theme> uses`;
   const detail = importError ? `\n  Import error: ${importError.message}` : '';
   if (inAstryxRepository(cwd)) {
     return (
@@ -3121,7 +3123,7 @@ export function printCompactTrailer(trailers, {hint = false} = {}) {
       )
       .join(', ');
     logger.log(
-      `[note] Fonts named but not loaded: ${named}. Load them in your app (recipe: astryx docs typography).`,
+      `[note] Fonts named but not loaded: ${named}. Load them in your app (recipe: ${formatCliCommand('docs typography')}).`,
     );
   }
   if (hint) {

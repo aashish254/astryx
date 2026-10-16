@@ -255,7 +255,7 @@ describe('the docs tree, one level at a time', () => {
     const {status, stdout} = await runCli(['docs', 'cli/api/functions/search']);
     expect(status).toBe(0);
     expect(stdout).toMatch(/^## search\(\)/m);
-    expect(stdout).toContain('Read it with `astryx docs cli/commands/search`.');
+    expect(stdout).toMatch(/Read it with `.+ docs cli\/commands\/search`\./);
     expect(stdout).toMatch(/Up: .*docs cli\/api\/functions$/m);
   }, SLOW);
 

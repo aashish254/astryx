@@ -11,8 +11,11 @@ import {
   isCliOneOff,
   cliBinResolves,
   getCliInvocation,
+  guessCliInvocation,
   formatCliCommand,
+  prefixCliCommands,
 } from './package-manager.mjs';
+import {recordDeclaredCliCommands, runWithCliDoor} from './cli-command.mjs';
 
 let tmpDir;
 const ORIGINAL_ARGV1 = process.argv[1];
@@ -567,5 +570,130 @@ describe('formatCliCommand', () => {
     const dir = makeTmpDir();
     fs.writeFileSync(path.join(dir, 'package-lock.json'), '{}');
     expect(formatCliCommand('astryx component Button', dir)).toBe('npx @astryxdesign/cli component Button');
+  });
+});
+
+describe('the picker: declared cliCommand, then the door, then the guess', () => {
+  /** A pnpm project with the CLI installed: the guess is `pnpm exec astryx`. */
+  function pnpmProject() {
+    process.argv[1] = INSTALLED_ENTRY;
+    const dir = makeTmpDir();
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"app"}');
+    fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), '');
+    linkCliBin(dir);
+    return dir;
+  }
+
+  it('guesses when nothing is declared', () => {
+    const dir = pnpmProject();
+    recordDeclaredCliCommands(dir, [{name: '@acme/a'}]);
+    expect(getCliInvocation(dir)).toBe('pnpm exec astryx');
+  });
+
+  it("uses an integration's cliCommand over the guess", () => {
+    const dir = pnpmProject();
+    recordDeclaredCliCommands(dir, [
+      {name: '@acme/a', cliCommand: 'acme astryx'},
+      {name: '@acme/b', cliCommand: 'acme astryx'},
+    ]);
+    expect(getCliInvocation(dir)).toBe('acme astryx');
+    expect(formatCliCommand('astryx docs tokens', dir)).toBe(
+      'acme astryx docs tokens',
+    );
+    expect(guessCliInvocation(dir)).toBe('pnpm exec astryx');
+  });
+
+  it('falls back to the guess when integrations declare different commands', () => {
+    const dir = pnpmProject();
+    recordDeclaredCliCommands(dir, [
+      {name: '@acme/a', cliCommand: 'acme astryx'},
+      {name: '@acme/b', cliCommand: 'other astryx'},
+    ]);
+    expect(getCliInvocation(dir)).toBe('pnpm exec astryx');
+  });
+
+  it("puts a declared command ahead of a host's door", () => {
+    const dir = pnpmProject();
+    recordDeclaredCliCommands(dir, [
+      {name: '@acme/a', cliCommand: 'acme astryx'},
+    ]);
+    expect(runWithCliDoor('astryx', () => getCliInvocation(dir))).toBe(
+      'acme astryx',
+    );
+  });
+
+  it("uses a host's door when nothing is declared", () => {
+    const dir = pnpmProject();
+    recordDeclaredCliCommands(dir, []);
+    expect(runWithCliDoor('astryx', () => getCliInvocation(dir))).toBe(
+      'astryx',
+    );
+  });
+
+  it("guesses on a conflict even when a host set a door", () => {
+    const dir = pnpmProject();
+    recordDeclaredCliCommands(dir, [
+      {name: '@acme/a', cliCommand: 'acme astryx'},
+      {name: '@acme/b', cliCommand: 'other astryx'},
+    ]);
+    expect(runWithCliDoor('astryx', () => getCliInvocation(dir))).toBe(
+      'pnpm exec astryx',
+    );
+  });
+});
+
+describe('prefixCliCommands', () => {
+  /** @param {string} text @param {string | null} [lang] */
+  const shown = (text, lang) => prefixCliCommands(text, 'acme astryx', lang);
+
+  it('prefixes inline code spans that run the CLI', () => {
+    expect(
+      shown('Run `astryx docs theme`, then `astryx`. Not `astryx.config.ts`.'),
+    ).toBe(
+      'Run `acme astryx docs theme`, then `acme astryx`. Not `astryx.config.ts`.',
+    );
+  });
+
+  it('prefixes commands in shell fences and leaves code fences alone', () => {
+    const text = [
+      '```bash',
+      '# astryx in a comment stays',
+      'astryx doctor && astryx integration verify',
+      '$ astryx docs',
+      'npm install @astryxdesign/cli',
+      '```',
+      '```tsx',
+      'astryx docs',
+      '```',
+    ].join('\n');
+    expect(shown(text).split('\n')).toEqual([
+      '```bash',
+      '# astryx in a comment stays',
+      'acme astryx doctor && acme astryx integration verify',
+      '$ acme astryx docs',
+      'npm install @astryxdesign/cli',
+      '```',
+      '```tsx',
+      'astryx docs',
+      '```',
+    ]);
+  });
+
+  it("follows one code block's language", () => {
+    expect(shown('astryx docs', 'bash')).toBe('acme astryx docs');
+    expect(shown('1. Read `astryx docs cli`.', 'text')).toBe(
+      '1. Read `acme astryx docs cli`.',
+    );
+    expect(shown("const run = 'astryx docs';", 'ts')).toBe(
+      "const run = 'astryx docs';",
+    );
+  });
+
+  it('leaves plain prose alone', () => {
+    expect(shown('Astryx and astryx themes')).toBe('Astryx and astryx themes');
+  });
+
+  it('changes nothing when the stem is the bare bin', () => {
+    expect(prefixCliCommands('`astryx docs`', 'astryx')).toBe('`astryx docs`');
   });
 });

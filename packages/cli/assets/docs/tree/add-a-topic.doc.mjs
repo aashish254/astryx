@@ -27,7 +27,7 @@ export const docs = {
         {
           type: 'code',
           lang: 'bash',
-          code: 'npx astryx integration add doc deploying\n# Read it the way an app will\nnpx astryx docs deploying',
+          code: 'astryx integration add doc deploying\n# Read it the way an app will\nastryx docs deploying',
         },
         {
           type: 'code',
