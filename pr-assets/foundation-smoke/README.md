@@ -1,8 +1,11 @@
 # Foundation smoke-check evidence
 
 Base: `b4b905b63e9f3b10a3633c1979dc2bf0be486ce3`
-Implementation: `2dd6d6b501ecf9568b1f5dcf79e5b8566b7e8090`
+Sandbox guard run: `2dd6d6b501ecf9568b1f5dcf79e5b8566b7e8090`
+Final implementation: `f36275b8368d3876969ffddea6dc1e596f4240cc`
 Browser: Chromium `149.0.7827.55`.
+
+The final revision changes only Storybook metadata and its regression test. Its rebuilt Storybook guard passed again; the correct-foundation screenshot is byte-identical to the earlier capture. The real built story index now resolves the composition's published VStack root to `@astryxdesign/core`. The new owner regression failed on the old metadata and passed after rebuilding the corrected story.
 
 The production Sandbox and Storybook render the shared Button, TextInput, Card and Table composition. Chromium computed these labelled Button values on separate page loads:
 
@@ -50,7 +53,7 @@ node .github/scripts/foundation-smoke.js --base-path /sandbox --self-test
 - Storybook build and typecheck: pass.
 - Core typecheck: pass.
 - `pnpm lint:strict`: pass.
-- Guard, CI routing and Sandbox route tests: 63 passed in 4 files.
+- Guard, CI routing, built-story owner and Sandbox route tests: 64 passed in 4 files.
 - Full Sandbox typecheck: fails at unchanged `doc-preview/SectionRenderer.tsx:62` (`TS2345`). A separately installed and built clean worktree at the exact base commit produced the same error. No unrelated documentation renderer change is included.
 
 The PNGs are real-browser captures of the smoke composition, not synthetic screenshots. This asset-only branch is disposable after review.
