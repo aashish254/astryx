@@ -7,7 +7,7 @@
  * @output Chromium screenshots plus fail-closed sensor receipts, a
  *   state-visual matrix, and a rendered contrast-pair matrix
  * @position Browser evidence for the DropdownMenu component audit; it also
- *   observes the forced-colors focus highlight every menu row paints
+ *   observes the forced-colors focus outline every menu row paints
  *
  * Each frame drives an existing story into one state — closed, keyboard open,
  * pointer open, hovered and pressed rows, disabled, destructive, selectable,
@@ -15,7 +15,7 @@
  * what the page actually rendered: build, story, theme, mode, direction,
  * viewport and media, the focused element, geometry, and errors. The receipts
  * are evidence; the spec fails only when a frame could not be taken truthfully
- * or when the forced-colors focus highlight is missing.
+ * or when the forced-colors focus outline is missing.
  */
 
 import {createHash} from 'node:crypto';
@@ -229,24 +229,31 @@ const CASES: Case[] = [
     'Header and footer regions beside the menu element',
   ),
   c(
-    'forced-colors-focus',
-    'default',
+    'forced-colors-focus-icon-end-content',
+    'mode-parity',
     'keyboard-open',
-    'Forced colors: focused row paints the Highlight/HighlightText pair',
+    'Forced colors: focused icon/end-content row has a Highlight outline',
     {forcedColors: 'after'},
   ),
   c(
-    'forced-colors-focus-dark',
-    'default',
+    'forced-colors-focus-icon-end-content-dark',
+    'mode-parity',
     'keyboard-open',
-    'Forced colors: focused row paints the Highlight/HighlightText pair',
+    'Forced colors: focused icon/end-content row has a Highlight outline',
     {forcedColors: 'after', mode: 'dark'},
   ),
   c(
+    'forced-colors-focus-destructive',
+    'mode-parity',
+    'keyboard-last-row',
+    'Forced colors: focused destructive icon row has a Highlight outline',
+    {forcedColors: 'after'},
+  ),
+  c(
     'forced-colors-focus-before-control',
-    'default',
+    'mode-parity',
     'keyboard-open',
-    'Helper-isolated control: the overlay focus background, as before the fix',
+    'Helper-isolated control: forced Canvas focus paint with no outline',
     {forcedColors: 'before-control'},
   ),
 ];
@@ -409,58 +416,23 @@ async function drive(page: Page, scenario: Case) {
   }
 }
 
-/**
- * The share of the focused row's interior pixels (inset past its rounded
- * corners) that match the forced-colors Highlight color. Label text covers
- * well under half a row, so a painted highlight reads above 0.5 and an
- * unpainted row reads near 0.
- */
-async function highlightFill(page: Page) {
-  const box = await page.locator(':focus').boundingBox();
-  if (box == null) {
-    throw new Error('focused row has no box');
-  }
-  const inset = 4;
-  const clip = {
-    x: Math.ceil(box.x) + inset,
-    y: Math.ceil(box.y) + inset,
-    width: Math.floor(box.width) - inset * 2,
-    height: Math.floor(box.height) - inset * 2,
-  };
-  const png = await page.screenshot({clip, scale: 'css'});
-  return page.evaluate(async b64 => {
+/** The computed system-color focus indicator on the active menu row. */
+async function forcedColorsFocusIndicator(page: Page) {
+  return page.locator(':focus').evaluate(node => {
     const probe = document.createElement('span');
     probe.style.color = 'Highlight';
     document.body.append(probe);
-    const highlight = getComputedStyle(probe).color;
+    const expectedHighlight = getComputedStyle(probe).color;
     probe.remove();
-    const [hr, hg, hb] = (highlight.match(/[\d.]+/g) ?? []).map(Number);
-    const image = new Image();
-    image.src = `data:image/png;base64,${b64}`;
-    await image.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const context = canvas.getContext('2d');
-    if (context == null) {
-      throw new Error('no 2d context');
-    }
-    context.drawImage(image, 0, 0);
-    const data = context.getImageData(0, 0, image.width, image.height).data;
-    let total = 0;
-    let matching = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const distance =
-        Math.abs((data[i] ?? 0) - (hr ?? 0)) +
-        Math.abs((data[i + 1] ?? 0) - (hg ?? 0)) +
-        Math.abs((data[i + 2] ?? 0) - (hb ?? 0));
-      total += 1;
-      if (distance <= 30) {
-        matching += 1;
-      }
-    }
-    return {highlight, total, matching, ratio: matching / total};
-  }, png.toString('base64'));
+    const style = getComputedStyle(node);
+    return {
+      expectedHighlight,
+      color: style.outlineColor,
+      style: style.outlineStyle,
+      width: Number.parseFloat(style.outlineWidth),
+      offset: style.outlineOffset,
+    };
+  });
 }
 
 type Observed = {
@@ -513,11 +485,18 @@ function assertClaimedState(
     expect(observed.triggerExpanded).toBe('false');
     return;
   }
-  if (
-    state.startsWith('keyboard-open') ||
-    state.startsWith('forced-colors-focus') ||
-    state === 'popover-narrow'
-  ) {
+  if (state.startsWith('forced-colors-focus')) {
+    expectAnchored();
+    expect(observed.triggerExpanded).toBe('true');
+    const expectedIndex =
+      scenario.drive === 'keyboard-last-row' ? rows.length - 1 : 0;
+    expect(observed.focusedRowIndex, `${state}: expected row focused`).toBe(
+      expectedIndex,
+    );
+    expect(focusedRow?.disabled).toBe(false);
+    return;
+  }
+  if (state.startsWith('keyboard-open') || state === 'popover-narrow') {
     expectAnchored();
     expect(observed.triggerExpanded).toBe('true');
     expect(observed.focusedRowIndex, `${state}: first row focused`).toBe(0);
@@ -644,13 +623,12 @@ async function capture(page: Page, scenario: Case) {
       scenario.mode,
     );
     if (scenario.forcedColors === 'before-control') {
-      // Helper-isolated control, not a base build: put back the focus paint
-      // the rows had before the fix (a translucent overlay and ordinary
-      // text, both forced by the browser), leaving the rest of the head
+      // Helper-isolated control, not a base build: restore the forced Canvas
+      // focus paint and remove the head outline, leaving the rest of the head
       // build in place.
       await page.addStyleTag({
         content:
-          '[role^="menuitem"]:focus { background-color: rgb(0 0 0 / 0.06) !important; color: rgb(0 0 0) !important; }',
+          '[role^="menuitem"]:focus { background-color: rgb(0 0 0 / 0.06) !important; color: rgb(0 0 0) !important; outline: none !important; }',
       });
     }
     await nextFrames(page);
@@ -927,8 +905,10 @@ async function capture(page: Page, scenario: Case) {
       }),
     }));
     const focused = await focusedSummary(page);
-    const band =
-      scenario.forcedColors != null ? await highlightFill(page) : null;
+    const focusIndicator =
+      scenario.forcedColors != null
+        ? await forcedColorsFocusIndicator(page)
+        : null;
 
     // Fail closed when the frame is not what it claims to be.
     expect(environment.theme).toBe(scenario.theme);
@@ -964,11 +944,14 @@ async function capture(page: Page, scenario: Case) {
     }
     assertClaimedState(scenario, observed, box);
     if (scenario.forcedColors === 'after') {
-      expect(observed.focusedRowBackground).toBe(band?.highlight);
-      expect(band?.ratio ?? 0).toBeGreaterThan(0.5);
+      expect(focusIndicator?.style).toBe('solid');
+      expect(focusIndicator?.width ?? 0).toBeGreaterThanOrEqual(2);
+      expect(focusIndicator?.offset).toBe('-2px');
+      expect(focusIndicator?.color).toBe(focusIndicator?.expectedHighlight);
     }
     if (scenario.forcedColors === 'before-control') {
-      expect(band?.ratio ?? 1).toBeLessThan(0.05);
+      expect(focusIndicator?.style).toBe('none');
+      expect(focusIndicator?.width ?? 1).toBe(0);
     }
 
     const file = `DropdownMenu__${scenario.state}.png`;
@@ -1001,22 +984,6 @@ async function capture(page: Page, scenario: Case) {
         threshold: 4.5,
         passed: (value?.contrastRatio ?? 0) >= 4.5,
       }));
-    if (band != null) {
-      contrastRows.push({
-        screenshot: file,
-        theme: scenario.theme,
-        mode: scenario.mode,
-        direction: scenario.direction,
-        forcedColors: scenario.forcedColors ?? null,
-        part: 'forced-colors focused row fill (Highlight pixels / interior pixels)',
-        meaningful: true,
-        foreground: band.highlight,
-        renderedBackdrop: 'Canvas',
-        ratio: Number(band.ratio.toFixed(3)),
-        threshold: 0.5,
-        passed: band.ratio > 0.5,
-      });
-    }
     const receipt = {
       expected: {
         build: checkoutSha,
@@ -1035,7 +1002,7 @@ async function capture(page: Page, scenario: Case) {
         ...observed,
         ...environment,
         focused,
-        highlightFill: band,
+        forcedColorsFocusIndicator: focusIndicator,
         pageErrors: pageErrors.length,
         geometry: box,
         settledRender: {initial: firstBox, final: box, maxDelta: geometryDelta},

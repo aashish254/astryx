@@ -27,6 +27,7 @@ import {renderIconSlot, type IconType} from '../Icon';
 import {useIndicator} from '../Indicator';
 import {Item} from '../Item';
 import {useDropdownMenuContext} from './DropdownMenuContext';
+import {focusOutlineStyles} from '../utils/focusOutline.stylex';
 import {focusMenuItemOnHover} from './menuItemHover';
 import {colorVars, spacingVars} from '../theme/tokens.stylex';
 import {mergeProps, themeProps} from '../utils';
@@ -37,28 +38,19 @@ const styles = stylex.create({
   root: {
     width: '100%',
     borderRadius: `max(0px, calc(var(--_dropdown-menu-radius, ${spacingVars['--spacing-2']}) - var(--_dropdown-menu-padding, ${spacingVars['--spacing-1']})))`,
-    color: {
-      default: colorVars['--color-text-primary'],
-      ':focus': {
-        default: null,
-        '@media (forced-colors: active)': 'HighlightText',
-      },
-    },
+    color: colorVars['--color-text-primary'],
     backgroundColor: {
       default: 'transparent',
-      // Forced colors replace the overlay with the page color, which would
-      // leave the focused row identical to its neighbours (WCAG 2.4.7); the
-      // system highlight pair marks it instead, as a native menu does.
-      ':focus': {
-        default: colorVars['--color-overlay-hover'],
-        '@media (forced-colors: active)': 'Highlight',
-      },
+      ':focus': colorVars['--color-overlay-hover'],
+      // The overlay is forced to Canvas in high-contrast modes. Keep the
+      // row's content under user-agent control and mark focus with a system
+      // outline instead, so text, icons, and markers stay perceptible.
     },
     cursor: {
       default: 'pointer',
       ':is(:disabled,[aria-disabled="true"])': 'default',
     },
-    outline: 'none',
+    outlineOffset: '-2px',
   },
   disabled: {
     opacity: 0.5,
@@ -207,7 +199,12 @@ export function DropdownMenuRadioItem({
       endContent={endContent}
       onClick={handleClick}
       isDisabled={isDisabled}
-      xstyle={[styles.root, isDisabled && styles.disabled, xstyle]}
+      xstyle={[
+        focusOutlineStyles.focusVisible,
+        styles.root,
+        isDisabled && styles.disabled,
+        xstyle,
+      ]}
       {...mergeProps(themeProps('dropdown-menu-item', {size: menuSize}), {
         className,
         style,

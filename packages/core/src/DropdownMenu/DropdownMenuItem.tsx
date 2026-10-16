@@ -47,6 +47,7 @@ import {
 import {composeEventHandlers, mergeProps} from '../utils';
 import type {BaseProps} from '../BaseProps';
 import {useDropdownMenuContext} from './DropdownMenuContext';
+import {focusOutlineStyles} from '../utils/focusOutline.stylex';
 import {focusMenuItemOnHover} from './menuItemHover';
 import {isModifiedClick} from './menuItemRoles';
 import {themeProps} from '../utils/themeProps';
@@ -61,31 +62,20 @@ const menuItemStyles = stylex.create({
     borderRadius: `max(0px, calc(var(--_dropdown-menu-radius, ${spacingVars['--spacing-2']}) - var(--_dropdown-menu-padding, ${spacingVars['--spacing-1']})))`,
     fontFamily: typographyVars['--font-family-body'],
     fontSize: typeScaleVars['--text-label-size'],
-    color: {
-      default: colorVars['--color-text-primary'],
-      ':focus': {
-        default: null,
-        '@media (forced-colors: active)': 'HighlightText',
-      },
-    },
+    color: colorVars['--color-text-primary'],
     backgroundColor: {
       default: 'transparent',
-      // Forced colors replace the overlay with the page color, which would
-      // leave the focused row identical to its neighbours (WCAG 2.4.7); the
-      // system highlight pair marks it instead, as a native menu does.
-      ':focus': {
-        default: colorVars['--color-overlay-hover'],
-        '@media (forced-colors: active)': 'Highlight',
-      },
+      ':focus': colorVars['--color-overlay-hover'],
+      // The overlay is forced to Canvas in high-contrast modes. Keep the
+      // row's content under user-agent control and mark focus with a system
+      // outline instead, so text, icons, and end content stay perceptible.
       // The pressed look only where hover exists. Under a finger the row a
       // press BEGAN on would otherwise stay painted while the highlight (focus)
       // moves to the row under the finger — two rows lit.
       '@media (hover: hover)': {
         default: null,
-        ':active:where(:not(:disabled,[aria-disabled="true"]))': {
-          default: colorVars['--color-overlay-pressed'],
-          '@media (forced-colors: active)': 'Highlight',
-        },
+        ':active:where(:not(:disabled,[aria-disabled="true"]))':
+          colorVars['--color-overlay-pressed'],
       },
     },
     borderWidth: 0,
@@ -95,7 +85,7 @@ const menuItemStyles = stylex.create({
       ':is(:disabled,[aria-disabled="true"])': 'default',
     },
     textAlign: 'start',
-    outline: 'none',
+    outlineOffset: '-2px',
   },
   disabled: {
     opacity: 0.5,
@@ -106,14 +96,7 @@ const menuItemStyles = stylex.create({
     // neutral overlay from `root` so the hover state matches every other menu
     // item. The root color covers the label/description via the Item custom
     // properties (and any bare text). Semantic error tokens keep it theme-aware.
-    // The focused row keeps the forced-colors highlight pair from `root`.
-    color: {
-      default: colorVars['--color-error'],
-      ':focus': {
-        default: null,
-        '@media (forced-colors: active)': 'HighlightText',
-      },
-    },
+    color: colorVars['--color-error'],
     '--_item-label-color': colorVars['--color-error'],
     '--_item-description-color': colorVars['--color-error'],
   },
@@ -317,6 +300,7 @@ export function DropdownMenuItem({
       draggable={href != null ? false : undefined}
       isDisabled={isDisabled}
       xstyle={[
+        focusOutlineStyles.focusVisible,
         menuItemStyles.root,
         itemSizeStyles[menuSize],
         isDestructive && menuItemStyles.destructive,

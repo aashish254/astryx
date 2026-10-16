@@ -13,8 +13,9 @@
  * drive — with a translucent overlay background. Forced colors replace that
  * background with the page color, so a focused row would look like its
  * neighbours and a keyboard user in a high-contrast mode could not tell which
- * row Enter will activate (WCAG 2.4.7). The focused row paints the system
- * highlight pair instead, as a native menu does. jsdom cannot render forced
+ * row Enter will activate (WCAG 2.4.7). The focused row receives an inset
+ * system-color outline while its content remains under user-agent control, so
+ * labels, icons, and end content stay perceptible. jsdom cannot render forced
  * colors, so these assert the compiled rule each focusable row carries; the
  * Chromium spec observes the rendered result.
  */
@@ -22,7 +23,7 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {getForcedColorsRules} from '../__tests__/forcedColors';
+import {getAllInjectedCss} from '../__tests__/forcedColors';
 import {DropdownMenu} from './DropdownMenu';
 import {DropdownMenuItem} from './DropdownMenuItem';
 import {DropdownMenuCheckboxItem} from './DropdownMenuCheckboxItem';
@@ -60,11 +61,14 @@ beforeEach(() => {
  * colors, joined into one string.
  */
 function forcedColorsFocusDeclarations(row: HTMLElement): string {
-  const css = getForcedColorsRules();
+  const css = getAllInjectedCss();
   const declarations: string[] = [];
   for (const className of Array.from(row.classList)) {
     const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\.${escaped}:focus[^{,]*\\{([^}]*)\\}`, 'g');
+    const pattern = new RegExp(
+      `\\.${escaped}:focus-visible[^{,]*\\{([^}]*)\\}`,
+      'g',
+    );
     for (const match of css.matchAll(pattern)) {
       declarations.push(match[1] ?? '');
     }
@@ -72,10 +76,13 @@ function forcedColorsFocusDeclarations(row: HTMLElement): string {
   return declarations.join(' ');
 }
 
-function expectSystemHighlightOnFocus(row: HTMLElement) {
+function expectSystemFocusOutline(row: HTMLElement) {
   const declarations = forcedColorsFocusDeclarations(row);
-  expect(declarations).toContain('background-color: highlight');
-  expect(declarations).toContain('color: highlighttext');
+  expect(declarations).toContain('outline-width: var(--focus-outline-width)');
+  expect(declarations).toContain('outline-style: var(--focus-outline-style)');
+  expect(declarations).toContain('outline-color: var(--focus-outline-color)');
+  expect(declarations).not.toContain('background-color: highlight');
+  expect(declarations).not.toContain('color: highlighttext');
 }
 
 async function openMenu() {
@@ -84,29 +91,29 @@ async function openMenu() {
 }
 
 describe('forced colors: a focused menu row keeps a visible indicator (WCAG 2.4.7)', () => {
-  it('an action row paints the system highlight on focus', async () => {
+  it('an action row paints the outline on focus', async () => {
     render(
       <DropdownMenu button={{label: 'Actions'}}>
         <DropdownMenuItem label="Edit" onClick={() => {}} />
       </DropdownMenu>,
     );
     await openMenu();
-    expectSystemHighlightOnFocus(
+    expectSystemFocusOutline(
       screen.getByRole('menuitem', {name: 'Edit', hidden: true}),
     );
   });
 
-  it('a data-mode row paints the same highlight', async () => {
+  it('a data-mode row paints the same outline', async () => {
     render(
       <DropdownMenu button={{label: 'Actions'}} items={[{label: 'Edit'}]} />,
     );
     await openMenu();
-    expectSystemHighlightOnFocus(
+    expectSystemFocusOutline(
       screen.getByRole('menuitem', {name: 'Edit', hidden: true}),
     );
   });
 
-  it('a destructive row keeps the highlight text on focus', async () => {
+  it('a destructive row keeps a visible outline without forcing its content colors', async () => {
     render(
       <DropdownMenu button={{label: 'Actions'}}>
         <DropdownMenuItem
@@ -117,19 +124,19 @@ describe('forced colors: a focused menu row keeps a visible indicator (WCAG 2.4.
       </DropdownMenu>,
     );
     await openMenu();
-    expectSystemHighlightOnFocus(
+    expectSystemFocusOutline(
       screen.getByRole('menuitem', {name: 'Delete', hidden: true}),
     );
   });
 
-  it('a checkbox row paints the system highlight on focus', async () => {
+  it('a checkbox row paints the outline on focus', async () => {
     render(
       <DropdownMenu button={{label: 'Actions'}}>
         <DropdownMenuCheckboxItem label="Show archived" value={false} />
       </DropdownMenu>,
     );
     await openMenu();
-    expectSystemHighlightOnFocus(
+    expectSystemFocusOutline(
       screen.getByRole('menuitemcheckbox', {
         name: /Show archived/,
         hidden: true,
@@ -137,7 +144,7 @@ describe('forced colors: a focused menu row keeps a visible indicator (WCAG 2.4.
     );
   });
 
-  it('a radio row paints the system highlight on focus', async () => {
+  it('a radio row paints the outline on focus', async () => {
     render(
       <DropdownMenu button={{label: 'Actions'}}>
         <DropdownMenuRadioGroup
@@ -149,12 +156,12 @@ describe('forced colors: a focused menu row keeps a visible indicator (WCAG 2.4.
       </DropdownMenu>,
     );
     await openMenu();
-    expectSystemHighlightOnFocus(
+    expectSystemFocusOutline(
       screen.getByRole('menuitemradio', {name: /Newest/, hidden: true}),
     );
   });
 
-  it('a sub-menu row paints the system highlight on focus', async () => {
+  it('a sub-menu row paints the outline on focus', async () => {
     render(
       <DropdownMenu button={{label: 'Actions'}}>
         <DropdownMenuSubMenu label="Share" presentation="flyout">
@@ -163,7 +170,7 @@ describe('forced colors: a focused menu row keeps a visible indicator (WCAG 2.4.
       </DropdownMenu>,
     );
     await openMenu();
-    expectSystemHighlightOnFocus(
+    expectSystemFocusOutline(
       screen.getByRole('menuitem', {name: /Share/, hidden: true}),
     );
   });
