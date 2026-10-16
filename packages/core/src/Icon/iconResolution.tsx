@@ -390,7 +390,10 @@ export function resolveIconWithContext(
         axis: name,
         value: inspection.requested,
         provenance: inspection.provenance,
-        message: `Supplied artwork does not support ${name}; using its safe default.`,
+        message:
+          typeof icon !== 'string' && !adapter
+            ? `Direct icon component does not support ${name}; use createIconAdapter() to translate supported library props, or omit the request to keep the library default.`
+            : `Supplied artwork does not support ${name}; using its safe default.`,
       });
     }
   }

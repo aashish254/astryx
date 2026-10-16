@@ -186,7 +186,37 @@ export const brandTheme = defineTheme({
       content: [
         {
           type: 'prose',
-          text: 'Use createIconAdapter once when a direct library export should follow theme presentation. Its local contract narrows each request, and propNames declares the primitive library props the mapper may return (appearance and weight are the defaults). Ordinary direct SVG components remain fixed. With no supported intent the wrapped component uses its own default without calling the mapper. Keep the contract, mapper, component and adapted export in an importable library module; compile it alongside the theme package. Functions stay imports, not generated function text.',
+          text: 'Use an adapter only for a directly imported library icon that should follow Astryx theme appearance or weight. Semantic names and registered adaptive artwork already use the theme registry; a direct icon meant to stay fixed needs no adapter. Define one adapter in the library export module and import that adapted export at product callsites. The adapter narrows each request to its local contract, while propNames declares the primitive drawing props its mapper may return (appearance and weight are the defaults). If the library has no equivalent property, omit that axis and let its default render. Keep the contract, mapper, component and adapted export in an importable library module; compile it alongside the theme package. Functions stay imports, not generated function text.',
+        },
+        {
+          type: 'table',
+          headers: [
+            'Icon source',
+            'Should it follow theme appearance or weight?',
+            'Action',
+          ],
+          rows: [
+            [
+              'Semantic name or registered adaptive artwork',
+              'Yes',
+              'No adapter. The theme registry already handles it.',
+            ],
+            [
+              'Directly imported library icon',
+              'No',
+              'Pass it directly. It stays fixed and uses the library defaults.',
+            ],
+            [
+              'Directly imported library icon',
+              'Yes, and the library exposes equivalent primitive properties',
+              'Create one adapter in the library export module.',
+            ],
+            [
+              'Directly imported library icon',
+              'Yes, but the library has no equivalent property or artwork',
+              'Do not guess or modify the SVG. Leave that axis unsupported and use the library default.',
+            ],
+          ],
         },
         {
           type: 'code',
@@ -228,7 +258,7 @@ const brandTheme = defineTheme({
         },
         {
           type: 'prose',
-          text: 'ProductIconImpl must support optional primitive glyphStyle and thickness props as well as SVGProps. The .js imports refer to the compiled modules. A mapper cannot change source selection, color, accessibility, events, refs, styles or children. Unsupported explicit appearance or weight warns once in development; unsupported theme choices silently use the library default. Invalid mapping results safely render that default. Missing size support is normal fallback, not a warning. Consumer SVG, ref, event and styling props retain their normal precedence.',
+          text: 'ProductIconImpl must support optional primitive glyphStyle and thickness props as well as SVGProps. The .js imports refer to the compiled modules. An adapter translates supported theme intent; it does not restructure the component or edit its SVG. For example, an Astryx duotone appearance maps only when the library exposes an equivalent variant such as weight="duotone"; the library still owns how the two tones are colored. If the library instead requires primaryColor and secondaryColor props, this adapter receives no theme color axis and must not invent those values. A mapper cannot change source selection, color, accessibility, events, refs, styles or children. Unsupported explicit appearance or weight warns once in development and points to createIconAdapter guidance; unsupported theme choices silently use the library default. Invalid mapping results safely render that default. Missing size support is normal fallback, not a warning. Consumer SVG, ref, event and styling props retain their normal precedence.',
         },
       ],
     },

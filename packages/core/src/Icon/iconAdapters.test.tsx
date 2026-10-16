@@ -242,6 +242,37 @@ describe('adapter intent and source-local dispatch', () => {
     rerender(<Adapted data-testid="icon" />);
     expect(mapper).not.toHaveBeenCalled();
   });
+  it('points explicit ordinary-direct presentation to adapter guidance while keeping theme fallback quiet', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const theme = defineTheme({
+      name: 'ordinary-direct-guidance',
+      iconCapabilities: {
+        contract: wide,
+        presentation: {default: {appearance: 'duotone'}},
+      },
+    });
+    const {rerender} = render(
+      <ThemeContext value={{theme, mode: 'light'}}>
+        <Icon icon={Library} data-testid="icon" />
+      </ThemeContext>,
+    );
+    expect(screen.getByTestId('icon')).toHaveAttribute(
+      'data-variant',
+      'outline',
+    );
+    expect(warning).not.toHaveBeenCalled();
+    rerender(
+      <ThemeContext value={{theme, mode: 'light'}}>
+        <Icon icon={Library} appearance="fill" data-testid="icon" />
+      </ThemeContext>,
+    );
+    expect(screen.getByTestId('icon')).toHaveAttribute(
+      'data-variant',
+      'outline',
+    );
+    expect(warning).toHaveBeenCalledOnce();
+    expect(warning.mock.calls[0]?.[0]).toContain('createIconAdapter()');
+  });
   it('maps supported explicit size-only intent once and retains ordinary physical sizing', () => {
     const {Adapted, mapper} = fixture();
     render(<Icon icon={Adapted} size="md" data-testid="icon" />);

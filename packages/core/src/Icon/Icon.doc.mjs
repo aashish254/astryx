@@ -106,7 +106,7 @@ export const docs = {
       {
         guidance: true,
         description:
-          'Adapt a library export once with createIconAdapter when it should follow theme appearance or weight. Only declared primitive library props are mapped; without supported intent its own default renders. Ordinary direct SVG components remain fixed.',
+          'Use createIconAdapter only for a directly imported library icon that should follow Astryx theme appearance or weight. Semantic icon names already use the theme registry, and a direct icon that should stay fixed needs no adapter. Configure the adapter once in the library export module, not at each callsite. Only adapted icons receive translated library drawing props; unsupported requests render the library default.',
       },
       {
         guidance: true,
@@ -222,7 +222,7 @@ export const docsZh = {
       {
         guidance: true,
         description:
-          'Adapt a library export once with createIconAdapter when it should follow theme appearance or weight. Only declared primitive library props are mapped; without supported intent its own default renders. Ordinary direct SVG components remain fixed.',
+          '仅当直接导入的图标库组件需要跟随 Astryx 主题的外观或字重时，才使用 createIconAdapter。语义图标名称已经使用主题注册表；应保持固定的直接图标不需要适配器。在图标库导出模块中配置一次，而不是在每个调用点配置。只有适配后的图标接收映射后的绘制属性；不支持的请求继续使用图标库默认值。',
       },
       {
         guidance: true,
@@ -290,7 +290,7 @@ export const docsDense = {
       {
         guidance: true,
         description:
-          'Adapt a library export once with createIconAdapter when it should follow theme appearance or weight. Only declared primitive library props are mapped; without supported intent its own default renders. Ordinary direct SVG components remain fixed.',
+          'Use createIconAdapter only for a directly imported library icon that should follow Astryx theme appearance or weight. Semantic icon names already use the theme registry, and a direct icon that should stay fixed needs no adapter. Configure the adapter once in the library export module, not at each callsite. Only adapted icons receive translated library drawing props; unsupported requests render the library default.',
       },
       {
         guidance: true,
