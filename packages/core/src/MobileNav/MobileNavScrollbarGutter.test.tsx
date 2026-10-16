@@ -3,19 +3,19 @@
 /**
  * @file MobileNavScrollbarGutter.test.tsx
  * @input Uses vitest, @testing-library/react, MobileNav, a stubbed viewport
- * @output Unit tests for the scrollbar gutter MobileNav reserves while open
+ * @output Unit tests for MobileNav's shared background viewport through its exit
  * @position Testing; guards MobileNav.tsx against the open-drawer page shift
  *
  * MobileNav clips the document to lock background scroll, which hides a
  * classic scrollbar and widens the layout viewport by its width — the page
  * behind the drawer jumps sideways. The clip has to be paired with holding
- * that gutter open.
+ * that space, without a native gutter clipping modal paint.
  *
  * SYNC: When MobileNav.tsx changes, update tests to match new behavior
  */
 
-import {describe, it, expect, beforeAll, afterEach} from 'vitest';
-import {render, cleanup} from '@testing-library/react';
+import {describe, it, expect, beforeAll, afterEach, vi} from 'vitest';
+import {render, cleanup, act} from '@testing-library/react';
 import {MobileNav} from './MobileNav';
 
 beforeAll(() => {
@@ -34,6 +34,10 @@ beforeAll(() => {
 
 /** jsdom does no layout, so both halves of the measurement are stubbed. */
 function stubViewport(innerWidth: number, clientWidth: number) {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+    new DOMRect(0, 0, clientWidth, 0),
+  );
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   Object.defineProperty(window, 'innerWidth', {
     value: innerWidth,
     configurable: true,
@@ -45,11 +49,13 @@ function stubViewport(innerWidth: number, clientWidth: number) {
   });
 }
 
-const rootGutter = () => document.documentElement.style.scrollbarGutter;
+const rootGutter = () => document.documentElement.style.right;
 
 describe('MobileNav scrollbar gutter', () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     document.documentElement.style.cssText = '';
     // @ts-expect-error -- drop the viewport stub so jsdom's own value comes back
     delete document.documentElement.clientWidth;
@@ -65,7 +71,7 @@ describe('MobileNav scrollbar gutter', () => {
     );
 
     expect(document.documentElement.style.overflow).toBe('clip');
-    expect(rootGutter()).toBe('stable');
+    expect(rootGutter()).toBe('15px');
 
     view.unmount();
 
@@ -73,7 +79,8 @@ describe('MobileNav scrollbar gutter', () => {
     expect(rootGutter()).toBe('');
   });
 
-  it('gives the gutter back when the drawer closes', () => {
+  it('gives the gutter back after the visible drawer exit', () => {
+    vi.useFakeTimers();
     stubViewport(1024, 1009);
 
     const view = render(
@@ -82,7 +89,7 @@ describe('MobileNav scrollbar gutter', () => {
       </MobileNav>,
     );
 
-    expect(rootGutter()).toBe('stable');
+    expect(rootGutter()).toBe('15px');
 
     view.rerender(
       <MobileNav isOpen={false} onOpenChange={() => {}}>
@@ -90,7 +97,12 @@ describe('MobileNav scrollbar gutter', () => {
       </MobileNav>,
     );
 
+    expect(rootGutter()).toBe('15px');
+    act(() => {
+      vi.runAllTimers();
+    });
     expect(rootGutter()).toBe('');
+    vi.useRealTimers();
   });
 
   it('holds nothing when the scrollbar is an overlay one', () => {

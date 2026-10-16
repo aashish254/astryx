@@ -2,119 +2,209 @@
 
 /**
  * @file scrollbarGutter.ts
- * @input The element a scroll lock pins, plus live layout measurements
- * @output Exports holdScrollbarGutter and the ScrollbarGutterHold it returns
- * @position Internal hook utility; used by useScrollLock and MobileNav so that
- *   locking background scroll does not resize the layout viewport.
+ * @input The element being pinned and its document's pre-lock viewport geometry
+ * @output Reference-counted holds for the background layout viewport
+ * @position Shared scroll-lock geometry; native top-layer surfaces remain in the
+ *   full window, while ordinary fixed and in-flow page content keep their width
  *
- * Locking scroll hides the document's scrollbar. Where that scrollbar is a
- * classic (space-taking) one — Windows/Linux desktop, and macOS set to
- * "Always" show scroll bars — hiding it widens the layout viewport by the
- * scrollbar's width and the whole page jumps sideways behind the overlay.
+ * A native stable root gutter clips PAINT, including the top layer. Enlarging a
+ * dialog's rectangle over that gutter does not paint its pixels there. Instead,
+ * while the body is pinned, a viewport-height layout-contained root reproduces
+ * the old fixed containing block without reserving a native scrollbar gutter.
+ * Top-layer elements escape this containing block by browser definition.
  *
- * The fix is `scrollbar-gutter: stable`, which holds the gutter open once the
- * scrollbar goes away. Being a real layout change it holds `position: fixed`
- * chrome (sticky headers, toast viewports) as well as in-flow content, which
- * padding fundamentally cannot: fixed elements resolve against the viewport,
- * not against the padded element.
+ * Only a space-taking scrollbar activates this temporary layout boundary.
+ * Overlay-scrollbar and non-scrolling pages retain their original root styles.
+ * The measured physical edges also handle left and both-edge reservations.
  *
- * Padding is kept only as a fallback for engines without `scrollbar-gutter`
- * (Safari shipped it in 18.2), and it is applied by measuring whether the
- * element actually moved rather than by assuming it did.
+ * SYNC: When modified, update scrollbarGutter tests and ScrollLock stories.
  */
 
-const NOOP: ScrollbarGutterHold = {
-  settle() {},
-  release() {},
-};
-
 export interface ScrollbarGutterHold {
-  /**
-   * Call once the lock's own styles are applied: measures whether the element
-   * grew anyway and, only then, pads the difference away.
-   */
+  /** Whether this hold recreates a background viewport for classic scrollbars. */
+  readonly hasReservation: boolean;
+  /** Call once, immediately after pinning the body. */
   settle(): void;
-  /** Call on unlock: restores everything this hold changed. */
+  /** Release after undoing the pin. The last owner restores the root. */
   release(): void;
 }
 
-/**
- * Keeps `element`'s content box the width it is right now, across a scroll
- * lock that is about to hide the document's scrollbar.
- *
- * Call it *before* applying the lock's styles, then {@link
- * ScrollbarGutterHold.settle} immediately after, and {@link
- * ScrollbarGutterHold.release} on unlock:
- *
- * ```
- * const hold = holdScrollbarGutter(document.body);
- * body.style.position = 'fixed';
- * hold.settle();
- * ```
- *
- * Overlay scrollbars (mobile, default macOS) take no layout space, so there is
- * nothing to hold and nothing is touched.
- */
-export function holdScrollbarGutter(element: HTMLElement): ScrollbarGutterHold {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return NOOP;
+const NOOP: ScrollbarGutterHold = {
+  hasReservation: false,
+  settle() {},
+  release() {},
+};
+interface RootHold {
+  hasReservation: boolean;
+  count: number;
+  settle(): void;
+  restore(): void;
+}
+const holds = new WeakMap<Document, RootHold>();
+
+/** A manual popover measures the actual viewport, independent of page transforms. */
+function viewportRect(doc: Document): DOMRect {
+  const probe = doc.createElement('div');
+  Object.assign(probe.style, {
+    all: 'initial',
+    position: 'fixed',
+    inset: '0',
+    margin: '0',
+    padding: '0',
+    border: '0',
+    width: 'auto',
+    height: '0',
+    maxWidth: 'none',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+  });
+  const topLayer = typeof probe.showPopover === 'function';
+  if (topLayer) {
+    probe.popover = 'manual';
   }
-
-  const root = document.documentElement;
-  const viewportWidth = root.clientWidth;
-
-  // 0 means "no layout to measure" (jsdom, and any non-visual environment),
-  // not "the scrollbar is as wide as the window".
-  if (viewportWidth === 0) {
-    return NOOP;
+  doc.body.append(probe);
+  try {
+    if (topLayer) {
+      probe.showPopover();
+    }
+    return probe.getBoundingClientRect();
+  } finally {
+    probe.remove();
   }
+}
 
-  const previousGutter = root.style.scrollbarGutter;
-  const previousPadding = element.style.paddingRight;
-  const widthBefore = element.getBoundingClientRect().width;
-
-  let heldGutter = false;
-  let padded = false;
+function acquireRoot(doc: Document, view: Window): RootHold {
+  const existing = holds.get(doc);
+  if (existing) {
+    existing.count += 1;
+    return existing;
+  }
+  const root = doc.documentElement;
+  const computed = view.getComputedStyle(root);
+  const hasReservation =
+    view.innerWidth > root.clientWidth ||
+    computed.getPropertyValue('scrollbar-gutter').includes('stable');
+  const rect = hasReservation ? viewportRect(doc) : null;
+  // Zero means no layout engine (for example jsdom), not a window-wide gutter.
+  const left = rect && rect.width > 0 ? Math.max(0, rect.left) : 0;
+  const right =
+    rect && rect.width > 0 ? Math.max(0, view.innerWidth - rect.right) : 0;
+  const border = {
+    left: Number.parseFloat(computed.borderLeftWidth) || 0,
+    right: Number.parseFloat(computed.borderRightWidth) || 0,
+    top: Number.parseFloat(computed.borderTopWidth) || 0,
+    bottom: Number.parseFloat(computed.borderBottomWidth) || 0,
+  };
+  const saved = new Map<string, {value: string; priority: string}>();
   let settled = false;
-
-  // Only when a space-taking scrollbar is actually there. Holding the gutter
-  // open on a page that never had one would carve out 15px that was never
-  // reserved — the same shift, in the other direction.
-  if (window.innerWidth > viewportWidth) {
-    root.style.scrollbarGutter = 'stable';
-    heldGutter = true;
-  }
-
-  return {
+  const set = (name: string, value: string) => {
+    saved.set(name, {
+      value: root.style.getPropertyValue(name),
+      priority: root.style.getPropertyPriority(name),
+    });
+    root.style.setProperty(name, value, 'important');
+  };
+  const hold: RootHold = {
+    hasReservation: left + right > 0,
+    count: 1,
     settle() {
-      if (settled) {
+      if (settled || left + right === 0) {
         return;
       }
       settled = true;
-
-      // What the lock actually did to this element, rather than what we
-      // assumed it would do. 0 on any engine where the gutter held — and on a
-      // page that already sets `scrollbar-gutter: stable` itself, where the
-      // scrollbar was never taking the space back.
-      const grew = element.getBoundingClientRect().width - widthBefore;
-      if (grew <= 0) {
+      const contain = computed.contain;
+      set('scrollbar-gutter', 'auto');
+      set(
+        'contain',
+        !contain || contain === 'none'
+          ? 'layout'
+          : /\b(layout|content|strict)\b/.test(contain)
+            ? contain
+            : `${contain} layout`,
+      );
+      set('box-sizing', 'border-box');
+      // A fixed descendant uses the root's padding box. Offset its border box
+      // so that padding box is exactly the old viewport, even with root borders.
+      set('position', 'fixed');
+      set('top', `${-border.top}px`);
+      set('left', `${left - border.left}px`);
+      set('right', `${right - border.right}px`);
+      set('width', 'auto');
+      set('min-width', '0');
+      set('max-width', 'none');
+      set(
+        'height',
+        border.top + border.bottom === 0
+          ? '100dvh'
+          : `calc(100dvh + ${border.top + border.bottom}px)`,
+      );
+      set('min-height', '0');
+      set('max-height', 'none');
+      // Snapshot all four before writing the shorthand; a shorthand write can
+      // otherwise erase independently authored longhands and priorities.
+      for (const name of [
+        'margin-top',
+        'margin-right',
+        'margin-bottom',
+        'margin-left',
+      ]) {
+        saved.set(name, {
+          value: root.style.getPropertyValue(name),
+          priority: root.style.getPropertyPriority(name),
+        });
+      }
+      set('margin', '0');
+    },
+    restore() {
+      hold.count -= 1;
+      if (hold.count > 0) {
         return;
       }
-
-      const existing =
-        Number.parseFloat(window.getComputedStyle(element).paddingRight) || 0;
-      element.style.paddingRight = `${existing + grew}px`;
-      padded = true;
-    },
-
-    release() {
-      if (padded) {
-        element.style.paddingRight = previousPadding;
-        padded = false;
+      // Clear the shorthand first, then restore it and any originally authored
+      // sides. Removing it after restoring the sides would erase those sides.
+      const margin = saved.get('margin');
+      if (margin) {
+        root.style.removeProperty('margin');
+        if (margin.value) {
+          root.style.setProperty('margin', margin.value, margin.priority);
+        }
       }
-      if (heldGutter) {
-        root.style.scrollbarGutter = previousGutter;
-        heldGutter = false;
+      for (const [name, previous] of saved) {
+        if (name === 'margin') {
+          continue;
+        }
+        if (previous.value) {
+          root.style.setProperty(name, previous.value, previous.priority);
+        } else {
+          root.style.removeProperty(name);
+        }
+      }
+      holds.delete(doc);
+    },
+  };
+  holds.set(doc, hold);
+  return hold;
+}
+
+/** Acquire before pinning, settle synchronously after pinning, then release once. */
+export function holdScrollbarGutter(element: HTMLElement): ScrollbarGutterHold {
+  const doc = element.ownerDocument;
+  if (!doc.defaultView || doc.documentElement.clientWidth === 0) {
+    return NOOP;
+  }
+  const hold = acquireRoot(doc, doc.defaultView);
+  let released = false;
+  return {
+    hasReservation: hold.hasReservation,
+    settle() {
+      if (!released) {
+        hold.settle();
+      }
+    },
+    release() {
+      if (!released) {
+        released = true;
+        hold.restore();
       }
     },
   };

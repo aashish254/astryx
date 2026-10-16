@@ -4,8 +4,8 @@
 
 /**
  * @file index.ts
- * @input Imports hooks from individual files
- * @output Exports all hooks
+ * @input Imports hooks, including the shared modal scroll-lock lifecycle
+ * @output Exports all hooks; viewport compensation stays implementation-owned
  * @position Hook entry point; re-exported by /packages/core/src/index.ts
  *
  * SYNC: When modified, update this header

@@ -3,7 +3,7 @@
 /**
  * @file Drawer.test.tsx
  * @input Uses vitest, @testing-library/react, Drawer component
- * @output Unit tests for Drawer component behavior
+ * @output Unit tests for Drawer behavior and full-window mobile sizing inputs
  * @position Lab testing; validates Drawer.tsx implementation
  *
  * SYNC: When Drawer.tsx changes, update tests to match new behavior
@@ -95,6 +95,31 @@ describe('Drawer', () => {
       expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalled();
       expect(HTMLDialogElement.prototype.show).not.toHaveBeenCalled();
       expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
+    });
+
+    it('retains the body lock until the modal exit finishes', () => {
+      const scrollTo = vi
+        .spyOn(window, 'scrollTo')
+        .mockImplementation(() => {});
+      const {rerender} = render(
+        <Drawer isOpen onOpenChange={() => {}} label="Exiting drawer">
+          Content
+        </Drawer>,
+      );
+      const dialog = screen.getByRole('dialog');
+      rerender(
+        <Drawer isOpen={false} onOpenChange={() => {}} label="Exiting drawer">
+          Content
+        </Drawer>,
+      );
+      expect(document.body.style.position).toBe('fixed');
+      expect(dialog).toHaveAttribute('open');
+      act(() => {
+        fireEvent.transitionEnd(dialog, {propertyName: 'transform'});
+      });
+      expect(document.body.style.position).toBe('');
+      expect(dialog).not.toHaveAttribute('open');
+      scrollTo.mockRestore();
     });
 
     it('opens with showPopover() and no aria-modal when hasScrim is false', () => {

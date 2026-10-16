@@ -3,17 +3,23 @@
 /**
  * @file useScrollLock.test.ts
  * @input Uses vitest, @testing-library/react, useScrollLock hook
- * @output Unit tests for single and concurrent useScrollLock instances
+ * @output Unit tests for pre-paint, single, and concurrent useScrollLock instances
  * @position Testing; validates useScrollLock.ts implementation
  *
  * SYNC: When useScrollLock.ts changes, update tests to match new behavior
  */
 
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {useLayoutEffect} from 'react';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, renderHook} from '@testing-library/react';
 import {useScrollLock} from './useScrollLock';
 
 describe('useScrollLock', () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, 0, document.documentElement.clientWidth, 0),
+    );
+  });
   afterEach(() => {
     cleanup();
     document.body.style.cssText = '';
@@ -41,6 +47,18 @@ describe('useScrollLock', () => {
     expect(document.body.style.overflow).toBe('auto');
     expect(document.body.style.position).toBe('relative');
     expect(window.scrollTo).toHaveBeenCalledWith(120, 480);
+  });
+
+  it('pins before subsequent layout effects can observe a widened page', () => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const observe = vi.fn();
+    renderHook(() => {
+      useScrollLock(true);
+      useLayoutEffect(() => {
+        observe(document.body.style.position);
+      }, []);
+    });
+    expect(observe).toHaveBeenCalledWith('fixed');
   });
 
   it('leaves the body alone and never scrolls when it is not locked', () => {
@@ -193,7 +211,7 @@ describe('useScrollLock', () => {
 
     const lock = renderHook(() => useScrollLock(true));
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.documentElement.style.right).toBe('15px');
 
     lock.unmount();
 
@@ -235,11 +253,11 @@ describe('useScrollLock', () => {
     const first = renderHook(() => useScrollLock(true));
     const second = renderHook(() => useScrollLock(true));
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.documentElement.style.right).toBe('15px');
 
     first.unmount();
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.documentElement.style.right).toBe('15px');
 
     second.unmount();
 
