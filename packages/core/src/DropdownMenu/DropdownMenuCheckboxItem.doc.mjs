@@ -1,5 +1,27 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+/** @type {import('@astryxdesign/cli/authoring').ComponentAnatomyElement[]} */
+const anatomy = [
+  {
+    name: 'Checkable row',
+    required: true,
+    description:
+      'The menuitemcheckbox root that owns the accessible name, checked state, focus, and activation.',
+  },
+  {
+    name: 'Label/content',
+    required: true,
+    description:
+      'Caller content laid out by Item: the required label plus optional description, icon, and end content.',
+  },
+  {
+    name: 'Checkbox marker',
+    required: true,
+    description:
+      'Decorative shared Indicator chrome that visualizes checked and disabled state without adding a second control.',
+  },
+];
+
 /** @type {import('@astryxdesign/cli/authoring').ComponentDoc} */
 
 export const docs = {
@@ -9,6 +31,11 @@ export const docs = {
   isHiddenFromOverview: true,
   description:
     'A checkable menu item (role="menuitemcheckbox") that toggles an independent boolean. Use for on/off options inside a DropdownMenu; for a one-of-N choice use DropdownMenuRadioGroup.',
+  usage: {
+    anatomy,
+    description:
+      'An independently checkable option inside DropdownMenu. The row owns menuitemcheckbox semantics while the shared Indicator supplies decorative checkbox paint.',
+  },
   props: [
     {
       name: 'label',
@@ -65,6 +92,14 @@ export const docs = {
         'Content to render after the label and description, such as a keyboard shortcut hint or badge.',
     },
   ],
+  theming: {
+    targets: [
+      {
+        className: 'astryx-dropdown-menu-item',
+        visualProps: ['size'],
+      },
+    ],
+  },
 };
 
 export const docsZh = {
