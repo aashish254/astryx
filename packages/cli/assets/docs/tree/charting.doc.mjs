@@ -418,7 +418,9 @@ JSON.stringify(exportConfig);`,
         {
           type: 'code',
           lang: 'tsx',
-          code: `import {useLayoutEffect, useState} from 'react';
+          code: `'use client';
+
+import {useLayoutEffect, useState} from 'react';
 import {useTheme} from '@astryxdesign/core/theme';
 import {dataVars} from '@astryxdesign/core/theme/dataTokens.stylex';
 import {
