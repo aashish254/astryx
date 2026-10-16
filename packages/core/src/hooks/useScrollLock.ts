@@ -41,9 +41,13 @@ let originalBodyState: ScrollLockSnapshot | null = null;
  * does not prevent body scroll behind modals. Restores scroll position
  * on unlock.
  *
- * Pinning also hides the document's scrollbar, so the gutter that scrollbar
- * occupied is held open for the duration of the lock — without it the page
- * reflows sideways by ~15px the moment an overlay opens.
+ * Pinning also hides the document's scrollbar. Where that scrollbar takes
+ * layout space (desktop), the body is padded by the width it grew so the page
+ * does not reflow sideways, and the width is published on `<html>` as
+ * `--astryx-scrollbar-gutter` so `position: fixed` chrome anchored to the
+ * window's right edge can stay still too — see scrollbarGutter.ts. The
+ * viewport itself keeps the full window width, so a modal surface and its
+ * scrim reach the window edge.
  *
  * @example
  * ```

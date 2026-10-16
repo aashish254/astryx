@@ -381,6 +381,32 @@ describe('Drawer', () => {
       }
     });
 
+    it('keeps the page scroll-locked through the slide-out, like the native host', () => {
+      // The lock compensates for the document scrollbar it hides. Giving the
+      // scrollbar back while the panel is still painting would shift an
+      // end-anchored panel sideways by its width mid-exit, so the lock lasts
+      // exactly as long as the panel is presented.
+      vi.useFakeTimers();
+      try {
+        render(<Harness />);
+        fireEvent.click(screen.getByRole('button', {name: 'Open inspector'}));
+        const dialog = screen.getByRole('dialog', {hidden: true});
+        expect(document.body.style.position).toBe('fixed');
+
+        fireEvent.click(screen.getByRole('button', {name: 'Close inspector'}));
+        expect(dialog).toHaveAttribute('open');
+        expect(document.body.style.position).toBe('fixed');
+
+        act(() => {
+          fireEvent.transitionEnd(dialog, {propertyName: 'transform'});
+        });
+        expect(dialog).not.toHaveAttribute('open');
+        expect(document.body.style.position).toBe('');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('keeps sliding while a transitionend for another property arrives', () => {
       vi.useFakeTimers();
       try {

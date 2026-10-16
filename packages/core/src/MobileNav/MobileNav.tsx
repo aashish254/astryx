@@ -490,7 +490,8 @@ export function MobileNav({
   const triggerElementRef = useRef<HTMLElement | null>(null);
   const gutterRef = useRef<ScrollbarGutterHold | null>(null);
 
-  // Gives back the gutter held open in place of the hidden scrollbar.
+  // Undoes the compensation for the hidden scrollbar: the root padding that
+  // kept the page still and the published --astryx-scrollbar-gutter.
   const releaseGutter = useCallback(() => {
     if (gutterRef.current) {
       gutterRef.current.release();
@@ -540,7 +541,9 @@ export function MobileNav({
 
     if (isOpen) {
       // Taken first: every mutation below is one that can hide the scrollbar,
-      // and the gutter has to be measured while it is still there.
+      // and the scrollbar has to be measured while it is still there. The
+      // root is what grows when the clip below hides it, so the root is what
+      // the hold pads; the body inside keeps its width.
       gutterRef.current ??= holdScrollbarGutter(document.documentElement);
 
       if (!dialog.open) {

@@ -5,13 +5,16 @@
 /**
  * @file ToastViewport.tsx
  * @input Uses React state/effects, ToastContext, content-provider boundary, useAnnounce, viewport tokens,
- *   shared layer text reset, the active modal outlet, and placement-derived motion variables
+ *   shared layer text reset, the active modal outlet, the scroll lock's published
+ *   scrollbar width, and placement-derived motion variables
  * @output Exports the ToastViewport provider, stack, live announcement dispatch,
  *   focus handoff, safe-area-aware edge gutters, modal rehosting, and motion context
  * @position Core provider/imperative viewport for useToast()
  *
  * SYNC: When placement, stacking, hosting, focus, announcement, or safe-area
  *   behavior changes, update ToastViewport.test.tsx, Toast.doc.mjs, and Toast.stories.tsx.
+ *   The right-edge padding reads `--astryx-scrollbar-gutter`; keep it in step with
+ *   /packages/core/src/hooks/scrollbarGutter.ts.
  */
 
 import {
@@ -50,6 +53,16 @@ const SAFE_AREA_BLOCK_START = `max(${spacingVars['--spacing-4']}, env(safe-area-
 const SAFE_AREA_BLOCK_END = `max(${spacingVars['--spacing-4']}, env(safe-area-inset-bottom, 0px))`;
 const TOAST_EDGE_DRIFT = spacingVars['--spacing-2'];
 const TOAST_EDGE_DRIFT_NEGATIVE = `calc(-1 * ${TOAST_EDGE_DRIFT})`;
+// While a scroll lock hides a space-taking document scrollbar, the viewport
+// widens by its width and this fixed, edge-spanning box widens with it. The
+// lock publishes that width (scrollbarGutter.ts); padding the physical right
+// side by it keeps a toast aligned to that edge exactly where it was. The
+// scrollbar sits at the window's right edge in both directions, so the
+// property goes on the right-hand padding in either one. The name is spelled
+// out (SCROLLBAR_GUTTER_PROPERTY in scrollbarGutter.ts) because StyleX needs a
+// literal it can evaluate.
+const SCROLLBAR_GUTTER = 'var(--astryx-scrollbar-gutter, 0px)';
+const SAFE_AREA_RIGHT_WITH_GUTTER = `calc(${SAFE_AREA_INLINE_END} + ${SCROLLBAR_GUTTER})`;
 
 const styles = stylex.create({
   rootOutlet: {
@@ -65,10 +78,10 @@ const styles = stylex.create({
     paddingBlockEnd: SAFE_AREA_BLOCK_END,
     paddingInlineStart: {
       default: SAFE_AREA_INLINE_START,
-      ':is([dir="rtl"] *)': SAFE_AREA_INLINE_END,
+      ':is([dir="rtl"] *)': SAFE_AREA_RIGHT_WITH_GUTTER,
     },
     paddingInlineEnd: {
-      default: SAFE_AREA_INLINE_END,
+      default: SAFE_AREA_RIGHT_WITH_GUTTER,
       ':is([dir="rtl"] *)': SAFE_AREA_INLINE_START,
     },
     pointerEvents: 'none',

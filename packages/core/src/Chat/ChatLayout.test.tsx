@@ -186,6 +186,49 @@ describe('ChatLayout — self-scroll layout contract (#2573)', () => {
     );
     expect(dock).toHaveStyle({position: 'fixed'});
   });
+
+  it("fixed dock pads the window's right edge by the scrollbar a scroll lock hides", () => {
+    // The fixed dock spans the viewport. A scroll lock that hides a
+    // space-taking document scrollbar lets the viewport grow by its width
+    // and publishes it on <html> as --astryx-scrollbar-gutter
+    // (hooks/scrollbarGutter.ts); padding the physical right side by it
+    // keeps the composer where it was. The sticky dock sits in the page
+    // flow, which the lock already holds, so it takes no padding.
+    // jsdom reports the declaration with StyleX's whitespace-free spelling.
+    const gutterTerm = 'var(--astryx-scrollbar-gutter,0px)';
+    const scrollRef = {current: document.documentElement};
+    const renderWithDirection = (direction: 'ltr' | 'rtl') =>
+      render(
+        <div dir={direction}>
+          <ChatLayout
+            composer={<div>composer</div>}
+            data-testid="layout"
+            scrollRef={scrollRef}>
+            <div>msg</div>
+          </ChatLayout>
+        </div>,
+      );
+
+    const ltr = renderWithDirection('ltr');
+    let dock = screen.getByTestId('layout').lastElementChild as HTMLElement;
+    expect(getComputedStyle(dock).paddingInlineEnd).toBe(gutterTerm);
+    expect(getComputedStyle(dock).paddingInlineStart).not.toContain('var(');
+    ltr.unmount();
+
+    const rtl = renderWithDirection('rtl');
+    dock = screen.getByTestId('layout').lastElementChild as HTMLElement;
+    expect(getComputedStyle(dock).paddingInlineStart).toBe(gutterTerm);
+    expect(getComputedStyle(dock).paddingInlineEnd).not.toContain('var(');
+    rtl.unmount();
+
+    render(
+      <ChatLayout composer={<div>composer</div>} data-testid="layout">
+        <div>msg</div>
+      </ChatLayout>,
+    );
+    dock = screen.getByTestId('layout').lastElementChild as HTMLElement;
+    expect(getComputedStyle(dock).paddingInlineEnd).not.toBe(gutterTerm);
+  });
 });
 
 // ---------------------------------------------------------------------------

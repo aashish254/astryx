@@ -12,6 +12,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, renderHook} from '@testing-library/react';
 import {useScrollLock} from './useScrollLock';
+import {SCROLLBAR_GUTTER_PROPERTY} from './scrollbarGutter';
 
 describe('useScrollLock', () => {
   afterEach(() => {
@@ -20,6 +21,8 @@ describe('useScrollLock', () => {
     document.documentElement.style.cssText = '';
     // @ts-expect-error -- drop the viewport stub so jsdom's own value comes back
     delete document.documentElement.clientWidth;
+    // @ts-expect-error -- restore the prototype's implementation
+    delete document.body.getBoundingClientRect;
     vi.restoreAllMocks();
   });
 
@@ -176,10 +179,13 @@ describe('useScrollLock', () => {
     expect(document.body.style.right).toBe('');
   });
 
-  it('holds the page still across the scrollbar it hides', () => {
-    // A 1024px window over a 1009px layout viewport = a 15px classic
-    // scrollbar. Pinning the body hides it, which would widen the page by
-    // those 15px and reflow everything sideways.
+  /**
+   * jsdom does no layout, so both halves of the measurement are stubbed: the
+   * viewport (a 1024px window over a 1009px layout viewport = a 15px classic
+   * scrollbar) and the body's own box, which grows by those 15px once the
+   * pinned body spans the viewport the hidden scrollbar gave back.
+   */
+  function stubClassicScrollbar() {
     Object.defineProperty(window, 'innerWidth', {
       value: 1024,
       configurable: true,
@@ -189,15 +195,42 @@ describe('useScrollLock', () => {
       value: 1009,
       configurable: true,
     });
+    document.body.getBoundingClientRect = () =>
+      ({
+        width: document.body.style.position === 'fixed' ? 1024 : 1009,
+      }) as DOMRect;
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  }
+
+  const published = () =>
+    document.documentElement.style.getPropertyValue(SCROLLBAR_GUTTER_PROPERTY);
+
+  it('holds the page still across the scrollbar it hides', () => {
+    stubClassicScrollbar();
 
     const lock = renderHook(() => useScrollLock(true));
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    // The body is padded by the width it grew, and the width is published
+    // for position: fixed chrome, which padding cannot hold.
+    expect(document.body.style.paddingRight).toBe('15px');
+    expect(published()).toBe('15px');
 
     lock.unmount();
 
+    expect(document.body.style.paddingRight).toBe('');
+    expect(published()).toBe('');
+  });
+
+  it('lets the viewport keep the full window width, so overlays reach its edge', () => {
+    stubClassicScrollbar();
+
+    const lock = renderHook(() => useScrollLock(true));
+
+    // Reserving the gutter on the viewport would clip the modal surface and
+    // its ::backdrop a scrollbar's width short of the window.
     expect(document.documentElement.style.scrollbarGutter).toBe('');
+
+    lock.unmount();
   });
 
   it('leaves the page alone when the scrollbar is an overlay one', () => {
@@ -216,33 +249,28 @@ describe('useScrollLock', () => {
 
     expect(document.documentElement.style.scrollbarGutter).toBe('');
     expect(document.body.style.paddingRight).toBe('');
+    expect(published()).toBe('');
 
     lock.unmount();
   });
 
-  it('holds the gutter for the outermost overlay only, and gives it back once', () => {
-    Object.defineProperty(window, 'innerWidth', {
-      value: 1024,
-      configurable: true,
-      writable: true,
-    });
-    Object.defineProperty(document.documentElement, 'clientWidth', {
-      value: 1009,
-      configurable: true,
-    });
-    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  it('compensates for the outermost overlay only, and gives it back once', () => {
+    stubClassicScrollbar();
 
     const first = renderHook(() => useScrollLock(true));
     const second = renderHook(() => useScrollLock(true));
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.body.style.paddingRight).toBe('15px');
+    expect(published()).toBe('15px');
 
     first.unmount();
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.body.style.paddingRight).toBe('15px');
+    expect(published()).toBe('15px');
 
     second.unmount();
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('');
+    expect(document.body.style.paddingRight).toBe('');
+    expect(published()).toBe('');
   });
 });

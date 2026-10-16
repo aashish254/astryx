@@ -497,8 +497,12 @@ export function Drawer({
     getContainer: () => dialogRef.current,
   });
 
-  // Lock body scroll while a modal drawer is open (iOS Safari workaround).
-  useScrollLock(isOpen && hasScrim);
+  // Lock body scroll while a modal drawer is presented (iOS Safari
+  // workaround). Held through the slide-out, like the native host: the lock
+  // compensates for the document scrollbar it hides, and releasing it while
+  // the panel is still painting would bring the scrollbar back under it and
+  // shift an end-anchored panel sideways by the scrollbar's width mid-exit.
+  useScrollLock(isRendered && hasScrim);
 
   // A modal dialog's native cancel event is a platform close request (for
   // example Android Back). Keep controlled state authoritative and apply the

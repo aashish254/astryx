@@ -871,6 +871,53 @@ describe('Toast native motion contract', () => {
     expect(toastSource).not.toContain('transformOrigin');
   });
 
+  it("pads the window's right edge by the scrollbar a scroll lock hides, in both directions", () => {
+    // A scroll lock that hides a space-taking document scrollbar lets the
+    // viewport grow by its width and publishes that width on <html> as
+    // --astryx-scrollbar-gutter (hooks/scrollbarGutter.ts). The viewport
+    // spans the inline axis, so a toast aligned to the window's right edge
+    // would move with it; the right-hand padding takes the width up instead.
+    // The scrollbar sits at the window's right edge in both directions, so
+    // the term goes on the inline-end padding in LTR and the inline-start
+    // padding in RTL.
+    const gutterTerm = 'var(--astryx-scrollbar-gutter, 0px)';
+    const renderWithDirection = (direction: 'ltr' | 'rtl') =>
+      render(
+        <div dir={direction}>
+          <ToastViewport isTopLayer={false}>
+            <ShowToastButton options={INFO_A} />
+          </ToastViewport>
+        </div>,
+      );
+
+    renderWithDirection('ltr');
+    act(() => {
+      fireEvent.click(screen.getByText('Trigger'));
+    });
+    let style = getComputedStyle(
+      screen.getByRole('region', {name: 'Notifications'}),
+    );
+    expect(normalizeCssFunction(style.paddingInlineEnd)).toContain(gutterTerm);
+    expect(normalizeCssFunction(style.paddingInlineStart)).not.toContain(
+      gutterTerm,
+    );
+
+    cleanup();
+    renderWithDirection('rtl');
+    act(() => {
+      fireEvent.click(screen.getByText('Trigger'));
+    });
+    style = getComputedStyle(
+      screen.getByRole('region', {name: 'Notifications'}),
+    );
+    expect(normalizeCssFunction(style.paddingInlineStart)).toContain(
+      gutterTerm,
+    );
+    expect(normalizeCssFunction(style.paddingInlineEnd)).not.toContain(
+      gutterTerm,
+    );
+  });
+
   it('uses an 8px inter-Toast gap without adding space at the viewport edge', () => {
     renderViewport(
       <>
@@ -889,9 +936,14 @@ describe('Toast native motion contract', () => {
       'var(--spacing-2)',
     );
     expect(getComputedStyle(wrappers[1]).paddingBottom).toBe('0px');
+    // The edge padding is the safe-area token plus the width of a document
+    // scrollbar a scroll lock has hidden — `--astryx-scrollbar-gutter`, unset
+    // (0px) outside a lock — so no space is added at the edge here.
     expect(
       normalizeCssFunction(getComputedStyle(viewport).paddingInlineEnd),
-    ).toBe('max(var(--spacing-4), env(safe-area-inset-right, 0px))');
+    ).toBe(
+      'calc(max(var(--spacing-4), env(safe-area-inset-right, 0px)) + var(--astryx-scrollbar-gutter, 0px))',
+    );
 
     cleanup();
     render(

@@ -8,8 +8,8 @@
  *
  * MobileNav clips the document to lock background scroll, which hides a
  * classic scrollbar and widens the layout viewport by its width — the page
- * behind the drawer jumps sideways. The clip has to be paired with holding
- * that gutter open.
+ * behind the drawer jumps sideways. The clip has to be paired with padding
+ * the root by that width, and publishing it for position: fixed chrome.
  *
  * SYNC: When MobileNav.tsx changes, update tests to match new behavior
  */
@@ -17,6 +17,7 @@
 import {describe, it, expect, beforeAll, afterEach} from 'vitest';
 import {render, cleanup} from '@testing-library/react';
 import {MobileNav} from './MobileNav';
+import {SCROLLBAR_GUTTER_PROPERTY} from '../hooks/scrollbarGutter';
 
 beforeAll(() => {
   // jsdom doesn't implement showModal/close on <dialog>
@@ -32,7 +33,11 @@ beforeAll(() => {
     };
 });
 
-/** jsdom does no layout, so both halves of the measurement are stubbed. */
+/**
+ * jsdom does no layout, so both halves of the measurement are stubbed: the
+ * viewport (`innerWidth` vs `documentElement.clientWidth`) and the root's
+ * own box, which widens by the scrollbar's width once the clip hides it.
+ */
 function stubViewport(innerWidth: number, clientWidth: number) {
   Object.defineProperty(window, 'innerWidth', {
     value: innerWidth,
@@ -43,9 +48,18 @@ function stubViewport(innerWidth: number, clientWidth: number) {
     value: clientWidth,
     configurable: true,
   });
+  document.documentElement.getBoundingClientRect = () =>
+    ({
+      width:
+        document.documentElement.style.overflow === 'clip'
+          ? innerWidth
+          : clientWidth,
+    }) as DOMRect;
 }
 
-const rootGutter = () => document.documentElement.style.scrollbarGutter;
+const rootPadding = () => document.documentElement.style.paddingRight;
+const published = () =>
+  document.documentElement.style.getPropertyValue(SCROLLBAR_GUTTER_PROPERTY);
 
 describe('MobileNav scrollbar gutter', () => {
   afterEach(() => {
@@ -53,9 +67,11 @@ describe('MobileNav scrollbar gutter', () => {
     document.documentElement.style.cssText = '';
     // @ts-expect-error -- drop the viewport stub so jsdom's own value comes back
     delete document.documentElement.clientWidth;
+    // @ts-expect-error -- restore the prototype's implementation
+    delete document.documentElement.getBoundingClientRect;
   });
 
-  it('holds the gutter open while the drawer is open', () => {
+  it('pads the root by the hidden scrollbar while the drawer is open', () => {
     stubViewport(1024, 1009);
 
     const view = render(
@@ -65,15 +81,20 @@ describe('MobileNav scrollbar gutter', () => {
     );
 
     expect(document.documentElement.style.overflow).toBe('clip');
-    expect(rootGutter()).toBe('stable');
+    expect(rootPadding()).toBe('15px');
+    expect(published()).toBe('15px');
+    // The viewport itself is never held at its pre-lock width: that would
+    // clip the drawer's scrim a scrollbar's width short of the window.
+    expect(document.documentElement.style.scrollbarGutter).toBe('');
 
     view.unmount();
 
     expect(document.documentElement.style.overflow).toBe('');
-    expect(rootGutter()).toBe('');
+    expect(rootPadding()).toBe('');
+    expect(published()).toBe('');
   });
 
-  it('gives the gutter back when the drawer closes', () => {
+  it('gives the compensation back when the drawer closes', () => {
     stubViewport(1024, 1009);
 
     const view = render(
@@ -82,7 +103,7 @@ describe('MobileNav scrollbar gutter', () => {
       </MobileNav>,
     );
 
-    expect(rootGutter()).toBe('stable');
+    expect(rootPadding()).toBe('15px');
 
     view.rerender(
       <MobileNav isOpen={false} onOpenChange={() => {}}>
@@ -90,7 +111,8 @@ describe('MobileNav scrollbar gutter', () => {
       </MobileNav>,
     );
 
-    expect(rootGutter()).toBe('');
+    expect(rootPadding()).toBe('');
+    expect(published()).toBe('');
   });
 
   it('holds nothing when the scrollbar is an overlay one', () => {
@@ -103,7 +125,7 @@ describe('MobileNav scrollbar gutter', () => {
     );
 
     expect(document.documentElement.style.overflow).toBe('clip');
-    expect(rootGutter()).toBe('');
-    expect(document.documentElement.style.paddingRight).toBe('');
+    expect(rootPadding()).toBe('');
+    expect(published()).toBe('');
   });
 });

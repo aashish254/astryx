@@ -4,7 +4,7 @@
 
 /**
  * @file ChatLayout.tsx
- * @input Uses React, StyleX, theme tokens, useChatStreamScroll, useChatNewMessages
+ * @input Uses React, StyleX, theme tokens, the scroll lock's published scrollbar width, useChatStreamScroll, useChatNewMessages
  * @output Exports ChatLayout component and ChatLayoutProps
  * @position Layout shell for full chat interfaces — messages in page flow, composer fixed to bottom
  *
@@ -102,6 +102,11 @@ export interface ChatLayoutProps extends BaseProps<HTMLDivElement> {
 // Styles
 // =============================================================================
 
+// Width of the document scrollbar a scroll lock has hidden, 0px otherwise.
+// Published by hooks/scrollbarGutter.ts (SCROLLBAR_GUTTER_PROPERTY); the name
+// is spelled out because StyleX needs a literal it can evaluate.
+const SCROLLBAR_GUTTER = 'var(--astryx-scrollbar-gutter, 0px)';
+
 const styles = stylex.create({
   root: {
     position: 'relative',
@@ -164,6 +169,19 @@ const styles = stylex.create({
   },
   dockContainerFixed: {
     position: 'fixed',
+    // While a scroll lock hides a space-taking document scrollbar, the
+    // viewport widens by its width and this edge-spanning box widens with
+    // it. The lock publishes that width (hooks/scrollbarGutter.ts); padding
+    // the physical right side by it keeps the composer where it was. The
+    // scrollbar sits at the window's right edge in both directions.
+    paddingInlineStart: {
+      default: 0,
+      ':is([dir="rtl"] *)': SCROLLBAR_GUTTER,
+    },
+    paddingInlineEnd: {
+      default: SCROLLBAR_GUTTER,
+      ':is([dir="rtl"] *)': 0,
+    },
   },
   dockContainerSticky: {
     position: 'sticky',
