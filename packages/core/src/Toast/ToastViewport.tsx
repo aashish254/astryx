@@ -5,7 +5,8 @@
 /**
  * @file ToastViewport.tsx
  * @input Uses React state/effects, ToastContext, content-provider boundary, useAnnounce, viewport tokens,
- *   shared layer text reset, the active modal outlet, and placement-derived motion variables
+ *   shared layer text reset, the active modal outlet, background scroll-lock edges,
+ *   and placement-derived motion variables
  * @output Exports the ToastViewport provider, stack, live announcement dispatch,
  *   focus handoff, safe-area-aware edge gutters, modal rehosting, and motion context
  * @position Core provider/imperative viewport for useToast()
@@ -91,6 +92,16 @@ const styles = stylex.create({
     borderStyle: 'none',
     backgroundColor: 'transparent',
     overflow: 'visible',
+  },
+  // A global toast remains page chrome even when promoted above a modal.
+  // Unlike normal fixed chrome it escapes root layout containment, so keep
+  // the same physical background edges explicitly. These are not layer insets.
+  // SYNC: hooks/scrollbarGutter.ts owns these private, temporary measurements.
+  lockedBackground: {
+    // eslint-disable-next-line @astryx/no-physical-properties -- a platform scrollbar stays physical when toast direction changes
+    marginLeft: 'var(--_astryx-scroll-lock-left, 0px)',
+    // eslint-disable-next-line @astryx/no-physical-properties -- a platform scrollbar stays physical when toast direction changes
+    marginRight: 'var(--_astryx-scroll-lock-right, 0px)',
   },
   // The viewport sits at the inset the app declared on LayerProvider for a
   // bar floating over that edge (spec:AST-059 FR6); unset, each reads 0px.
@@ -686,6 +697,7 @@ export function ToastViewport({
           layerTextReset.reset,
           layerStructureReset.reset,
           styles.viewport,
+          isTopLayer && styles.lockedBackground,
           styles.viewportInlineSpan,
           posStyle,
         ),

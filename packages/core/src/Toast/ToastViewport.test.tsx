@@ -3,7 +3,7 @@
 /**
  * @file ToastViewport.test.tsx
  * @input Uses vitest, @testing-library/react, ToastViewport + useToast
- * @output Unit tests for toast keyboard reach, focus management, and
+ * @output Unit tests for toast background geometry, keyboard reach, focus management, and
  *   screen-reader announcements
  * @position Testing; validates ToastViewport.tsx + Toast.tsx focus behavior and
  *   the announce-at-dispatch flow through the singleton live regions
@@ -226,6 +226,29 @@ describe('Toast responsive layout', () => {
       'var(--astryx-layer-inset-inline-end,0px)',
     );
   });
+
+  it.each([true, false])(
+    'only top-layer viewports opt into the physical background reservation (%s)',
+    isTopLayer => {
+      render(
+        <ToastViewport isTopLayer={isTopLayer}>
+          <ShowToastButton options={INFO_A} />
+        </ToastViewport>,
+      );
+      act(() => {
+        fireEvent.click(screen.getByText('Trigger'));
+      });
+      const style = getComputedStyle(
+        screen.getByRole('region', {name: 'Notifications'}),
+      );
+      expect(style.marginLeft).toBe(
+        isTopLayer ? 'var(--_astryx-scroll-lock-left,0px)' : '0px',
+      );
+      expect(style.marginRight).toBe(
+        isTopLayer ? 'var(--_astryx-scroll-lock-right,0px)' : '0px',
+      );
+    },
+  );
 
   it('preserves custom start and end insets in LTR and RTL without forcing full width', () => {
     const renderWithDirection = (direction: 'ltr' | 'rtl') =>

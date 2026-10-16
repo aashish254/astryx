@@ -4,7 +4,7 @@
 
 /**
  * @file MobileNav.tsx
- * @input Uses React, useEffect, useRef, useCallback, ReactNode, StyleX
+ * @input Uses React, StyleX, shared document scroll-lock ownership and background layout reservation
  * @output Exports MobileNav component and MobileNavProps
  * @position Core implementation; consumed by index.ts
  *
@@ -35,7 +35,8 @@
  * SYNC: When modified, update these files to stay in sync:
  * - /packages/core/src/MobileNav/index.ts (exports if types change)
  * - /packages/core/src/Layer/useLayerDismissal.ts (dismissal stack)
- * - /packages/core/src/hooks/scrollbarGutter.ts (shared scroll-lock gutter)
+ * - /packages/core/src/hooks/scrollLock.ts (shared document lock)
+ * - /packages/core/src/MobileNav/MobileNavScrollbarGutter.test.tsx (lock lifetime)
  * - /packages/cli/assets/templates/blocks/components/MobileNav/ (showcase blocks)
  */
 
@@ -61,10 +62,7 @@ import {Button} from '../Button';
 import {Icon} from '../Icon';
 import {Heading} from '../Heading/Heading';
 import {useAppShellMobile} from '../AppShell/AppShellMobileContext';
-import {
-  holdScrollbarGutter,
-  type ScrollbarGutterHold,
-} from '../hooks/scrollbarGutter';
+import {holdScrollLock} from '../hooks/scrollLock';
 import {mergeProps, composeEventHandlers} from '../utils';
 import {layerTextReset} from '../Layer/layerTextReset.stylex';
 import {layerStructureReset} from '../Layer/layerStructureReset.stylex';
@@ -488,14 +486,12 @@ export function MobileNav({
   // Element that was focused when the drawer opened; focus goes back to it
   // once the native dialog has closed (see closeAndRestoreFocus).
   const triggerElementRef = useRef<HTMLElement | null>(null);
-  const gutterRef = useRef<ScrollbarGutterHold | null>(null);
+  const scrollReleaseRef = useRef<(() => void) | null>(null);
 
-  // Gives back the gutter held open in place of the hidden scrollbar.
-  const releaseGutter = useCallback(() => {
-    if (gutterRef.current) {
-      gutterRef.current.release();
-      gutterRef.current = null;
-    }
+  // Shared root clipping is independent of the native host's exit timer.
+  const releaseScroll = useCallback(() => {
+    scrollReleaseRef.current?.();
+    scrollReleaseRef.current = null;
   }, []);
   // Resolved side — computed from trigger position when side='auto'
   const [resolvedSide, setResolvedSide] = useState<'start' | 'end'>(
@@ -541,7 +537,7 @@ export function MobileNav({
     if (isOpen) {
       // Taken first: every mutation below is one that can hide the scrollbar,
       // and the gutter has to be measured while it is still there.
-      gutterRef.current ??= holdScrollbarGutter(document.documentElement);
+      scrollReleaseRef.current ??= holdScrollLock(dialog.ownerDocument, 'root');
 
       if (!dialog.open) {
         // Capture the opener before showModal() pulls focus into the top
@@ -552,17 +548,10 @@ export function MobileNav({
           document.activeElement as HTMLElement | null;
         dialog.showModal();
       }
-      // Prevent background scrolling and iOS pull-to-refresh.
-      // overflow: clip avoids creating a scroll container (unlike hidden),
-      // so there's no scroll bounce and no need to save/restore scroll position.
-      document.documentElement.style.overflow = 'clip';
-      gutterRef.current.settle();
     } else if (dialog.open) {
-      document.documentElement.style.overflow = '';
-      releaseGutter();
-
       closeTimeoutRef.current = setTimeout(() => {
         closeAndRestoreFocus(dialog, triggerElementRef);
+        releaseScroll();
       }, resolveCloseDelay(dialog));
     }
 
@@ -571,10 +560,8 @@ export function MobileNav({
         clearTimeout(closeTimeoutRef.current);
         closeTimeoutRef.current = null;
       }
-      document.documentElement.style.overflow = '';
-      releaseGutter();
     };
-  }, [isOpen, releaseGutter]);
+  }, [isOpen, releaseScroll]);
 
   // Close the native dialog on unmount if it's still open. Inside AppShell the
   // drawer is mounted in an <Activity> that switches to mode="hidden" when the
@@ -595,8 +582,9 @@ export function MobileNav({
       if (dialog?.open) {
         closeAndRestoreFocus(dialog, triggerElementRef);
       }
+      releaseScroll();
     };
-  }, []);
+  }, [releaseScroll]);
 
   const {shouldDismissOnCloseRequest} = useLayerDismissal({
     isActive: isOpen,

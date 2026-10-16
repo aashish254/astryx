@@ -4,7 +4,7 @@
 
 /**
  * @file index.ts
- * @input Imports hooks from individual files
+ * @input Imports hooks from individual files, including pre-paint shared scroll locking
  * @output Exports all hooks
  * @position Hook entry point; re-exported by /packages/core/src/index.ts
  *

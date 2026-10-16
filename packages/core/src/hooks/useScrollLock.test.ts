@@ -3,7 +3,7 @@
 /**
  * @file useScrollLock.test.ts
  * @input Uses vitest, @testing-library/react, useScrollLock hook
- * @output Unit tests for single and concurrent useScrollLock instances
+ * @output Unit tests for single and concurrent pre-paint locks and author-style restoration
  * @position Testing; validates useScrollLock.ts implementation
  *
  * SYNC: When useScrollLock.ts changes, update tests to match new behavior
@@ -41,6 +41,17 @@ describe('useScrollLock', () => {
     expect(document.body.style.overflow).toBe('auto');
     expect(document.body.style.position).toBe('relative');
     expect(window.scrollTo).toHaveBeenCalledWith(120, 480);
+  });
+
+  it('restores author declarations with their original important priorities', () => {
+    document.body.style.setProperty('position', 'relative', 'important');
+    document.body.style.setProperty('overflow', 'auto', 'important');
+    document.body.style.setProperty('left', '5px', 'important');
+    const before = document.body.style.cssText;
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const lock = renderHook(() => useScrollLock(true));
+    lock.unmount();
+    expect(document.body.style.cssText).toBe(before);
   });
 
   it('leaves the body alone and never scrolls when it is not locked', () => {
@@ -189,11 +200,19 @@ describe('useScrollLock', () => {
       value: 1009,
       configurable: true,
     });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      right: 1009,
+      width: 1009,
+      top: 0,
+      bottom: window.innerHeight,
+      height: window.innerHeight,
+    } as DOMRect);
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
     const lock = renderHook(() => useScrollLock(true));
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.documentElement.style.width).toBe('calc(100% - 15px)');
 
     lock.unmount();
 
@@ -230,16 +249,24 @@ describe('useScrollLock', () => {
       value: 1009,
       configurable: true,
     });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      right: 1009,
+      width: 1009,
+      top: 0,
+      bottom: window.innerHeight,
+      height: window.innerHeight,
+    } as DOMRect);
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
     const first = renderHook(() => useScrollLock(true));
     const second = renderHook(() => useScrollLock(true));
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.documentElement.style.width).toBe('calc(100% - 15px)');
 
     first.unmount();
 
-    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+    expect(document.documentElement.style.width).toBe('calc(100% - 15px)');
 
     second.unmount();
 

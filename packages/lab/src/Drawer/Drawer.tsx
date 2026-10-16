@@ -4,7 +4,7 @@
 
 /**
  * @file Drawer.tsx
- * @input Uses React, StyleX, theme tokens and text defaults, the Dialog purpose type, shared focus/dismissal/depth primitives, container padding lowering, scroll locking/dialog presence, BaseProps, merged refs/props, themeProps
+ * @input Uses React, StyleX, theme tokens and text defaults, the Dialog purpose type, shared focus/dismissal/depth primitives, container padding lowering, scroll locking through visible exit/dialog presence, BaseProps, merged refs/props, themeProps
  * @output Exports Drawer component and DrawerProps
  * @position Lab implementation; consumed by index.ts, tested by Drawer.test.tsx, demonstrated in Storybook
  *
@@ -497,8 +497,8 @@ export function Drawer({
     getContainer: () => dialogRef.current,
   });
 
-  // Lock body scroll while a modal drawer is open (iOS Safari workaround).
-  useScrollLock(isOpen && hasScrim);
+  // Keep background geometry stable through the complete visible slide-out.
+  useScrollLock(isRendered && hasScrim);
 
   // A modal dialog's native cancel event is a platform close request (for
   // example Android Back). Keep controlled state authoritative and apply the
