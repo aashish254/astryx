@@ -1,8 +1,8 @@
 # Foundation adoption workflow — #3755
 
-Implementation: `8eb9c552c0d2994345e49046b14b58fde6958770`
+Implementation: `4c43d6a20bc29000f3f8cbe154d7a12ca7c94cd8`
 Packed consumer execution: `c1931959e629f095a5ef94d284d0bb61a6062772`
-The final revision only adds the generated registry contract entry for this new template. No existing route changed; the consumer code is identical.
+The final revision adds the generated registry contract entry and the exact runtime-load inventory entry for this new tooling. No existing route or audit rule changed; the consumer runtime code is identical.
 Base: `86e83921910a0b29621d072087790d9c1572d3d4`
 
 ## Consumer path
