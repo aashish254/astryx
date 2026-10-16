@@ -1,0 +1,46 @@
+{
+  "build": "d150f7873806d0ac8817632cb3deebc830422dc2",
+  "page": "/blog/astryx-v0-7-0",
+  "expected": {
+    "theme": "astryx",
+    "dir": "ltr",
+    "width": 1280,
+    "colorScheme": "light",
+    "itemCount": 26
+  },
+  "observed": {
+    "theme": "astryx",
+    "colorScheme": "light",
+    "background": "rgba(0, 0, 0, 0)",
+    "direction": "ltr",
+    "viewport": {
+      "width": 1280,
+      "height": 900,
+      "dpr": 1
+    },
+    "media": {
+      "dark": false,
+      "reducedMotion": true,
+      "forcedColors": false,
+      "coarsePointer": false,
+      "hover": true
+    },
+    "fonts": "loaded",
+    "state": {
+      "count": 26,
+      "reportedItem": "Phone typography starts at 16px (#6699) \u2014 take the new Neutral, Chocolate, Butter, and Stone scale as-is, or add a later touch-and-narrow rule to keep 14px or your own scale; no codemod."
+    },
+    "geometry": {
+      "x": 256,
+      "y": -1420.890625,
+      "width": 768,
+      "height": 2424.453125
+    }
+  },
+  "image": {
+    "path": "docs/pr-assets/list-number-markers/desktop-before.png",
+    "width": 1280,
+    "height": 900,
+    "sha256": "cde7ffd3f07391f89de3a23950d14415715253ab861a641e243342ac57692c6b"
+  }
+}
