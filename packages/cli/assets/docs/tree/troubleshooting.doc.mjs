@@ -138,6 +138,14 @@ export const docs = {
               'One invalid doc hides all of your docs. Run `astryx doctor integration docs` in the package and fix the `invalid_doc` it names.',
             ],
             [
+              '`cli-command` warns: `Loaded integrations declare different CLI commands`',
+              "Two packages the app loads set different `cliCommand` values, so the CLI prints the package manager's command. Agree on one command, or remove the package that does not belong. See {@link generic:cli-command}.",
+            ],
+            [
+              '`invalid_cli_command`',
+              'Your `cliCommand` is not one line of plain text of at most 120 characters, so it is ignored. Fix the value; the rest of the manifest still loads.',
+            ],
+            [
               '`astryx upgrade` runs none of your codemods',
               'The app must list your package in `integrations` in `astryx.config`, or pass `--integration @acme/astryx-widgets`. It runs a codemod folder only when its version is after `--from` and at most the installed `@astryxdesign/core`.',
             ],

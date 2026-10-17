@@ -114,7 +114,12 @@ export const doc = {
         'trimmed, non-blank string of at most 240 Unicode code points with no ' +
         'line separators, control characters, NUL, or Astryx/XDS managed-marker ' +
         'text. The configured project may contain at most 32 integration lines ' +
-        'total.',
+        'total. Start a command in a line with the word astryx alone, with no ' +
+        'runner in front: the block names the command the app runs once, at its top.',
+    },
+    {
+      type: 'prose',
+      text: "Set `cliCommand` only when your users run the CLI with a command other than their package manager's, such as `acme astryx`. The CLI picks the command it prints in this order: the `cliCommand` of the loaded integrations when they name one command, then the command a host tool names, then the package manager's. Two different `cliCommand` values cancel out, and `astryx doctor` warns in its `cli-command` check. See `astryx docs cli/integrations/building-blocks/configuration/cli-command`.",
     },
     {
       type: 'prose',

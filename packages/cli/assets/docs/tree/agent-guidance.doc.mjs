@@ -80,6 +80,10 @@ export default {
           type: 'prose',
           text: 'A line is one line of plain text. Line breaks, control characters, spaces at either end, and managed-block markers such as `<!-- ASTRYX:START -->` are rejected.',
         },
+        {
+          type: 'prose',
+          text: 'Start a command in a line with the word astryx alone, with no runner in front, as in: Run astryx doctor before finishing. The block names the command the app runs once, at its top, for every command below it, so your line works in every app. See {@link generic:cli-command}.',
+        },
       ],
     },
     {
