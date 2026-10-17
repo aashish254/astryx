@@ -187,6 +187,31 @@ export async function loadProjectDebugHandler() {
 }
 
 /**
+ * Load the project's integrations before a help run, so help prints commands
+ * with the `cliCommand` they declare (spec:AST-081 FR5). Help is printed while
+ * Commander parses, before any hook, so the preAction load cannot reach it.
+ * `Project.load` reads astryx.config and each integration's manifest; it does
+ * no discovery. Skipped when the debug preload already loaded the project, and
+ * outside a package. Called from the bin before Commander parses.
+ *
+ * @param {string[]} [argv] arguments after the binary.
+ * @returns {Promise<void>}
+ */
+export async function loadProjectForHelp(argv = process.argv.slice(2)) {
+  const help =
+    argv.includes('--help') || argv.includes('-h') || argv[0] === 'help';
+  if (!help) return;
+  try {
+    const cwd = process.cwd();
+    if (hasRecordedProject(cwd)) return;
+    const {Project} = await import('../../foundation/config/project.mjs');
+    await Project.load(cwd);
+  } catch {
+    // Help prints with the package-manager guess.
+  }
+}
+
+/**
  * Hand the whole invocation to the debug recorder: which command ran, its
  * positional arguments by name, its options and where each value came from,
  * and the root-level flags.

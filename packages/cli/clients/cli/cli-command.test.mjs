@@ -7,10 +7,18 @@
  */
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {spawnSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {runCli} from '../../test-utils/run-cli.mjs';
-import {runWithCliDoor} from '../../foundation/env/cli-command.mjs';
+import {
+  hasRecordedProject,
+  runWithCliDoor,
+} from '../../foundation/env/cli-command.mjs';
+import {getCliInvocation} from '../../foundation/env/package-manager.mjs';
+import {loadProjectForHelp} from './index.mjs';
+
+const BIN = path.resolve(import.meta.dirname, 'bin', 'astryx.mjs');
 
 /** @type {string} */
 let tmpDir;
@@ -53,6 +61,32 @@ describe("an integration's cliCommand", () => {
     const {status, stderr} = await runCli(['theme', 'remove', 'nope'], tmpDir);
     expect(status).toBe(1);
     expect(stderr).toContain('`acme astryx theme add nope`');
+  });
+});
+
+describe('help', () => {
+  it('loads the project for a help run, and only for one', async () => {
+    appWithIntegration('acme astryx');
+    const cwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      await loadProjectForHelp(['docs', 'theme']);
+      expect(hasRecordedProject(tmpDir)).toBe(false);
+      await loadProjectForHelp(['component', '--help']);
+      expect(getCliInvocation(tmpDir)).toBe('acme astryx');
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it("prints the integration's command in `--help`", () => {
+    appWithIntegration('acme astryx');
+    const result = spawnSync(process.execPath, [BIN, '--help'], {
+      cwd: tmpDir,
+      encoding: 'utf-8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('acme astryx search button');
   });
 });
 
