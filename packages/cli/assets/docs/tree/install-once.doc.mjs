@@ -47,7 +47,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: 'A project can still install the CLI as a dev dependency, and a package runner (`npx @astryxdesign/cli`) still works. Every copy of the CLI follows the rules below, so the answer in a folder is the same whichever one you start.',
+          text: "A project can still install the CLI as a dev dependency, and a package runner (`npx @astryxdesign/cli`) still works. Inside a project, every copy follows the rules below, so the project's release answers whichever one you start. Outside a project, the copy you installed for your computer answers with the newest release it keeps, while a package runner's copy, or a version you type such as `npx @astryxdesign/cli@0.7.0`, answers as exactly that release.",
         },
       ],
     },
@@ -133,7 +133,7 @@ export const docs = {
       content: [
         {
           type: 'prose',
-          text: "In text mode, a run answered by anything other than the project's own CLI prints one line on standard error:",
+          text: "In text mode, a run prints one line on standard error when a copy hands it to the project's own CLI, when the release matching the project's Core answers, or outside a project. A run you start in the project's own CLI, which answers it directly, prints none:",
         },
         {
           type: 'code',
