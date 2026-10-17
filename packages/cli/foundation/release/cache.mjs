@@ -141,7 +141,8 @@ function fileHash(file) {
  * The cached release `version`, when it is installed and verified: its
  * marker parses, names the version, and records the bytes of the CLI's and
  * Core's package.json and the CLI's entry file, and those files still have
- * them. Anything else is a damaged release, which counts as absent and is
+ * them, and the number and total size of the two packages' files are the
+ * ones recorded. Anything else is a damaged release, which counts as absent and is
  * replaced the next time a run needs it.
  * @param {string} version
  * @param {string} [cacheDir]
@@ -149,6 +150,72 @@ function fileHash(file) {
  */
 export function cachedRelease(version, cacheDir = userCacheDir()) {
   if (!isReleaseVersion(version)) return null;
+  const key = `${cacheDir}\0${version}`;
+  if (verified.has(key)) return verified.get(key) ?? null;
+  const result = verifyRelease(version, cacheDir);
+  // Only a verified release is remembered; an absent one is looked at again,
+  // since another run may be installing it.
+  if (result) verified.set(key, result);
+  return result;
+}
+
+/**
+ * Releases this process already verified, so a run checks each one once.
+ * @type {Map<string, CachedRelease>}
+ */
+const verified = new Map();
+
+/** Forget which releases this process verified, so the next look checks again. */
+export function forgetVerifiedReleases() {
+  verified.clear();
+}
+
+/**
+ * The number of files and their total size under a package folder.
+ * @param {string} dir
+ * @returns {{count: number, bytes: number}}
+ */
+function treeSize(dir) {
+  let count = 0;
+  let bytes = 0;
+  /** @param {string} d */
+  const walk = d => {
+    for (const entry of fs.readdirSync(d, {withFileTypes: true})) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else {
+        count += 1;
+        bytes += fs.statSync(p).size;
+      }
+    }
+  };
+  walk(dir);
+  return {count, bytes};
+}
+
+/**
+ * The size record of a release's two packages.
+ * @param {string} dir the release folder
+ * @returns {{cli: {count: number, bytes: number}, core: {count: number, bytes: number}} | null}
+ */
+export function releaseTree(dir) {
+  try {
+    return {
+      cli: treeSize(path.join(dir, 'node_modules', '@astryxdesign', 'cli')),
+      core: treeSize(path.join(dir, 'node_modules', '@astryxdesign', 'core')),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The check behind {@link cachedRelease}.
+ * @param {string} version
+ * @param {string} cacheDir
+ * @returns {CachedRelease | null}
+ */
+function verifyRelease(version, cacheDir) {
   const dir = path.join(releasesDir(cacheDir), version);
   const marker = readJson(path.join(dir, 'release.json'));
   if (!marker || marker.version !== version || !marker.files) return null;
@@ -161,6 +228,13 @@ export function cachedRelease(version, cacheDir = userCacheDir()) {
     if (typeof want !== 'string' || fileHash(path.join(dir, rel)) !== want) {
       return null;
     }
+  }
+  // Every other file of the two packages: a deleted or truncated module
+  // changes the count or the total size.
+  if (
+    JSON.stringify(releaseTree(dir)) !== JSON.stringify(marker.tree ?? null)
+  ) {
+    return null;
   }
   return {version, dir, cliDir, coreDir, bin};
 }
@@ -235,17 +309,21 @@ export function npmCommand() {
 /**
  * Run npm synchronously with no output on the caller's streams.
  * @param {string[]} args
- * @param {{cwd?: string, timeoutMs?: number}} [options]
+ * @param {{cwd?: string, timeoutMs?: number, npm?: {command: string, prefix: string[], shell: boolean}}} [options]
+ *   `npm` replaces how npm is started (tests).
  * @returns {NpmResult}
  */
 export function runNpm(args, options = {}) {
-  const {command, prefix, shell} = npmCommand();
+  const {command, prefix, shell} = options.npm ?? npmCommand();
   const result = spawnSync(command, [...prefix, ...args], {
     cwd: options.cwd ?? os.tmpdir(),
     encoding: 'utf-8',
     shell,
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: options.timeoutMs ?? 300_000,
+    // npm defers SIGTERM until its work finishes, so a time limit has to end
+    // it outright or the limit never takes effect.
+    killSignal: 'SIGKILL',
     windowsHide: true,
   });
   return {
@@ -293,6 +371,12 @@ export function resolvePublishedVersion(name, spec, options = {}) {
 const BOUNDED_FETCH = ['--fetch-retries=1', '--fetch-timeout=30000'];
 
 /**
+ * The longest an install may take: generous, so a slow but moving download
+ * finishes, while a stalled one still ends in ERR_VERSIONS_UNAVAILABLE.
+ */
+export const INSTALL_TIMEOUT_MS = 15 * 60_000;
+
+/**
  * The exit statuses a package manager uses when Ctrl-C, a closed terminal, or
  * a termination request stopped it.
  * @type {Record<number, NodeJS.Signals>}
@@ -305,7 +389,10 @@ function sleep(ms) {
 }
 
 /** How long a lock may stand before a run treats its holder as gone. */
-const STALE_LOCK_MS = 10 * 60_000;
+const STALE_LOCK_MS = 30 * 60_000;
+
+/** How long a lock held from another computer (a shared cache) may stand. */
+const FOREIGN_LOCK_MS = 20 * 60_000;
 
 /** How long a lock with no owner record may stand: its holder died taking it. */
 const UNOWNED_LOCK_MS = 10_000;
@@ -327,8 +414,9 @@ function isAlive(pid) {
 
 /**
  * Has the run holding `lockDir` gone? Its owner record names a process on
- * this computer that no longer runs, or there is no record and the lock is
- * older than a run needs to write one, or the lock is older than any install.
+ * this computer that no longer runs; or there is no record and the lock is
+ * older than a run needs to write one; or another computer holds it for
+ * longer than an install takes; or it is older than any install.
  * @param {string} lockDir
  * @returns {boolean}
  */
@@ -342,11 +430,11 @@ function lockIsStale(lockDir) {
   if (age > STALE_LOCK_MS) return true;
   const owner = readJson(path.join(lockDir, 'owner.json'));
   if (!owner) return age > UNOWNED_LOCK_MS;
-  return (
-    owner.host === os.hostname() &&
-    Number.isInteger(owner.pid) &&
-    !isAlive(owner.pid)
-  );
+  if (owner.host !== os.hostname() || !Number.isInteger(owner.pid)) {
+    return age > FOREIGN_LOCK_MS;
+  }
+  // A live holder on this computer is installing, however slowly.
+  return !isAlive(owner.pid);
 }
 
 /**
@@ -419,7 +507,9 @@ function removeAside(dir) {
  * same release, this waits for it.
  *
  * @param {string} version
- * @param {{cacheDir?: string, run?: typeof runNpm, nodeVersion?: string, waitMs?: number}} [options]
+ * @param {{cacheDir?: string, run?: typeof runNpm, nodeVersion?: string, waitMs?: number, onProgress?: (event: 'install' | 'wait', version: string) => void}} [options]
+ *   `onProgress` hears once when an install starts and once when the run
+ *   starts waiting for another run's install.
  * @returns {CachedRelease | ReleaseUnavailable}
  */
 export function ensureRelease(version, options = {}) {
@@ -427,7 +517,8 @@ export function ensureRelease(version, options = {}) {
     cacheDir = userCacheDir(),
     run = runNpm,
     nodeVersion = process.versions.node,
-    waitMs = 5 * 60_000,
+    waitMs = INSTALL_TIMEOUT_MS + 60_000,
+    onProgress = () => {},
   } = options;
   if (!isReleaseVersion(version)) {
     return {version: String(version), reason: 'it is not a release version'};
@@ -435,7 +526,13 @@ export function ensureRelease(version, options = {}) {
   const existing = cachedRelease(version, cacheDir);
   if (existing) return existing;
   try {
-    const result = ensureLocked(version, {cacheDir, run, nodeVersion, waitMs});
+    const result = ensureLocked(version, {
+      cacheDir,
+      run,
+      nodeVersion,
+      waitMs,
+      onProgress,
+    });
     // Stopped with Ctrl-C (or closed): the lock and scratch folder are already
     // cleared; end the run the way the signal would have.
     if ('signal' in result && result.signal)
@@ -453,18 +550,26 @@ export function ensureRelease(version, options = {}) {
 /**
  * `ensureRelease` under the per-release lock.
  * @param {string} version
- * @param {{cacheDir: string, run: typeof runNpm, nodeVersion: string, waitMs: number}} options
+ * @param {{cacheDir: string, run: typeof runNpm, nodeVersion: string, waitMs: number, onProgress: (event: 'install' | 'wait', version: string) => void}} options
  * @returns {CachedRelease | ReleaseUnavailable}
  */
-function ensureLocked(version, {cacheDir, run, nodeVersion, waitMs}) {
+function ensureLocked(
+  version,
+  {cacheDir, run, nodeVersion, waitMs, onProgress},
+) {
   const root = releasesDir(cacheDir);
   const lockDir = path.join(root, `.lock-${version}`);
   const deadline = Date.now() + waitMs;
+  let waiting = false;
   while (!tryLock(lockDir)) {
     const ready = cachedRelease(version, cacheDir);
     if (ready) return ready;
     if (Date.now() > deadline) {
       return {version, reason: 'another run is still installing it'};
+    }
+    if (!waiting) {
+      waiting = true;
+      onProgress('wait', version);
     }
     sleep(200);
   }
@@ -509,6 +614,8 @@ function ensureLocked(version, {cacheDir, run, nodeVersion, waitMs}) {
       }
     }
     removeAside(path.join(root, version));
+    verified.delete(`${cacheDir}\0${version}`);
+    onProgress('install', version);
     return installLocked(version, {cacheDir, run, nodeVersion});
   } finally {
     removeSignalHandlers();
@@ -561,8 +668,15 @@ function installLocked(version, {cacheDir, run, nodeVersion}) {
         `@astryxdesign/cli@${version}`,
         `@astryxdesign/core@${version}`,
       ],
-      {cwd: tmp},
+      {cwd: tmp, timeoutMs: INSTALL_TIMEOUT_MS},
     );
+    // Our own time limit ends npm: that is a timeout, not a stopped run.
+    if (/** @type {any} */ (install.error)?.code === 'ETIMEDOUT') {
+      return {
+        version,
+        reason: `the install did not finish within ${INSTALL_TIMEOUT_MS / 60_000} minutes`,
+      };
+    }
     const stoppedBy = install.signal ?? EXIT_SIGNALS[install.status ?? -1];
     if (stoppedBy) {
       return {version, reason: 'the install was stopped', signal: stoppedBy};
@@ -605,7 +719,7 @@ function installLocked(version, {cacheDir, run, nodeVersion}) {
     }
     fs.writeFileSync(
       path.join(tmp, 'release.json'),
-      `${JSON.stringify({version, verifiedAt: new Date().toISOString(), files}, null, 2)}\n`,
+      `${JSON.stringify({version, verifiedAt: new Date().toISOString(), files, tree: releaseTree(tmp)}, null, 2)}\n`,
     );
 
     const dest = path.join(root, version);

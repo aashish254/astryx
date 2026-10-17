@@ -109,7 +109,9 @@ export function renderComputerAgentText({
   return [
     '---',
     'name: astryx',
-    `description: ${SKILL_DESCRIPTION}`,
+    // Quoted: the description holds `: `, which strict YAML parsers read as a
+    // second mapping, and an agent tool with one drops the whole skill.
+    `description: ${JSON.stringify(SKILL_DESCRIPTION)}`,
     '---',
     '',
     body,

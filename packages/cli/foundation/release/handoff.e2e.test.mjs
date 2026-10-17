@@ -176,3 +176,24 @@ describe('answeredBy on every successful JSON result', () => {
     }
   });
 });
+
+describe('computer-level commands are never handed to a project', () => {
+  it('answers init --user itself inside a project whose CLI is another release', () => {
+    const root = project(tempDir(), {'@astryxdesign/core': '0.6.8'});
+    installCore(root, '0.6.8');
+    installStandInCli(root, '0.6.8');
+    for (const args of [
+      ['init', '--user'],
+      ['--json', 'init', '--user', '--remove-agents'],
+    ]) {
+      const result = run(root, args);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain('"version":"0.6.8"');
+      expect(result.stderr).not.toContain('stand-in');
+    }
+    const text = run(root, ['init', '--user']);
+    expect(text.stderr.split('\n')[0]).toBe(
+      `astryx: answered by CLI ${SELF_VERSION} with Core ${SELF_VERSION}, for this computer`,
+    );
+  });
+});

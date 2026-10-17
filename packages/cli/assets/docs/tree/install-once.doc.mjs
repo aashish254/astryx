@@ -113,7 +113,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "It writes one skill file to the two folders coding agents read skills from, `~/.agents/skills/astryx/SKILL.md` and `~/.claude/skills/astryx/SKILL.md`, and nothing else; it works in any folder. The text is the same guide `init` writes into a project, without a version, and it tells agents to follow a project's own agent docs inside that project, because those match the project's release. Its commands start with `astryx`, so install the CLI for your computer first; when no `astryx` command runs the Astryx CLI, `init --user` still writes the text and warns.",
+          text: "It writes one skill file to the two folders coding agents read skills from, `~/.agents/skills/astryx/SKILL.md` and `~/.claude/skills/astryx/SKILL.md`, and nothing else. It works in any folder: inside a project it is never handed to the project's own CLI, because it writes to your computer, not the project. The text is the same guide `init` writes into a project, without a version, and it tells agents to follow a project's own agent docs inside that project, because those match the project's release. Its commands start with `astryx`, so install the CLI for your computer first; when no `astryx` command runs the Astryx CLI, `init --user` still writes the text and warns.",
         },
         {
           type: 'list',
@@ -166,6 +166,14 @@ export const docs = {
         {
           type: 'prose',
           text: "When the release a run needs is not in the cache and cannot be installed, the run fails before writing anything, with `ERR_VERSIONS_UNAVAILABLE` and the release it needs. Installing the project's dependencies, or running again when the registry can be reached, fixes it. No other release answers in its place.",
+        },
+        {
+          type: 'prose',
+          text: 'The first run that needs a release prints one line while it installs (`astryx: installing CLI release 0.6.8 into the per-user cache (once)...`), and a run that finds another run installing it waits and says so. A slow download is waited for, up to 15 minutes. A run stopped mid-install leaves nothing behind that blocks the next one, and a cached release whose files were damaged is installed again the next time a run needs it.',
+        },
+        {
+          type: 'prose',
+          text: "In a Yarn Plug'n'Play project, the CLI cannot see the project's own CLI without running the project's loader, so the release equal to the project's Core answers from the cache. That is the same release whenever the project's CLI matches its Core.",
         },
         {
           type: 'code',

@@ -159,7 +159,12 @@ function exactOrRange(name, spec) {
 
 /**
  * Choose who answers a run started by `self` in `cwd`.
- * @param {{cwd: string, self: RunningCopy, cacheDir?: string, resolve?: typeof resolvePublishedVersion}} input
+ *
+ * A command that acts on the computer rather than the folder is chosen as
+ * outside a project wherever it runs (`computer`), so a project's older CLI
+ * never answers it.
+ *
+ * @param {{cwd: string, self: RunningCopy, cacheDir?: string, resolve?: typeof resolvePublishedVersion, computer?: boolean}} input
  * @returns {ReleaseChoice}
  */
 export function chooseRelease({
@@ -167,8 +172,9 @@ export function chooseRelease({
   self,
   cacheDir = userCacheDir(),
   resolve = resolvePublishedVersion,
+  computer = false,
 }) {
-  const facts = readReleaseFacts(cwd);
+  const facts = computer ? OUTSIDE : readReleaseFacts(cwd);
   const selfReal = real(self.root);
 
   if (!facts.inProject) {
@@ -306,6 +312,44 @@ function isInside(child, parent) {
   const rel = path.relative(real(parent), child);
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return false;
   return !rel.split(path.sep).includes('node_modules');
+}
+
+/** The facts of a folder outside any project. */
+const OUTSIDE = Object.freeze({
+  inProject: false,
+  core: null,
+  cli: null,
+  declaringDir: null,
+  declaredCoreRange: null,
+  declaredCliRange: null,
+  lockedCoreVersion: null,
+  lockedCliVersion: null,
+});
+
+/** Root options that take a value, so their value is not the command name. */
+const VALUE_OPTIONS = new Set(['--lang', '--detail']);
+
+/**
+ * Is this run a command that acts on the computer rather than the folder it
+ * runs in? Today that is `astryx init --user`, which writes the
+ * computer-level agent text (spec AST-081 FR8, FR9).
+ * @param {string[]} argv arguments after `astryx`
+ * @returns {boolean}
+ */
+export function isComputerLevel(argv) {
+  let command = null;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (VALUE_OPTIONS.has(arg)) {
+      i += 1;
+      continue;
+    }
+    if (!arg.startsWith('-')) {
+      command = arg;
+      break;
+    }
+  }
+  return command === 'init' && argv.includes('--user');
 }
 
 /**

@@ -526,7 +526,9 @@ export function getCliInvocation(targetDir) {
  * @returns {string}
  */
 export function guessCliInvocation(targetDir) {
-  const choice = runChoice(targetDir ?? process.cwd());
+  // Who answered this run decides the stem, so every command one run prints
+  // reaches the same release, whichever folder a line names.
+  const choice = runChoice(process.cwd());
   if (choice.copy === 'project' && !isCliOneOff() && cliBinResolves(targetDir)) {
     return `${getRunPrefix(targetDir)} ${CLI_BIN}`;
   }

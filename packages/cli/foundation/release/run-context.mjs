@@ -17,7 +17,9 @@
 
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {chooseRelease, runningCopy} from './choose.mjs';
+import {chooseRelease, isComputerLevel, runningCopy} from './choose.mjs';
+import {progressLine} from './handoff.mjs';
+import {isJsonMode} from '../response/json.mjs';
 import {cachedRelease, ensureRelease, userCacheDir} from './cache.mjs';
 import {readJson, findReadCore, CORE_PACKAGE_NAME} from './project.mjs';
 
@@ -51,7 +53,12 @@ export function runChoice(cwd = process.cwd()) {
   if (recorded && recordedFor === path.resolve(cwd)) return recorded;
   try {
     const self = runningCopy(CLI_ROOT);
-    const choice = chooseRelease({cwd, self, resolve: () => null});
+    const choice = chooseRelease({
+      cwd,
+      self,
+      resolve: () => null,
+      computer: isComputerLevel(process.argv.slice(2)),
+    });
     if (choice.answer === 'self') return choice;
     // Driven in-process (the programmatic API, a test harness), nothing hands
     // the run off: this copy answers, as a release other than the project's.
@@ -101,7 +108,11 @@ export function carriedCore(options = {}) {
   const cached = cachedRelease(version, cacheDir);
   if (cached) return {dir: cached.coreDir, unavailable: null};
   if (!fetch) return {dir: null, unavailable: null};
-  const release = ensureRelease(version, {cacheDir});
+  const json = isJsonMode() || process.argv.includes('--json');
+  const release = ensureRelease(version, {
+    cacheDir,
+    onProgress: json ? undefined : progressLine,
+  });
   return 'coreDir' in release
     ? {dir: release.coreDir, unavailable: null}
     : {

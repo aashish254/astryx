@@ -5,6 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   chooseRelease,
+  isComputerLevel,
   isGlobalCopy,
   matchedVersionOf,
   namesWhoAnswered,
@@ -391,5 +392,17 @@ describe('namesWhoAnswered', () => {
       namesWhoAnswered(path.resolve(import.meta.dirname, '..', '..')),
     ).toBe(true);
     expect(namesWhoAnswered(installStandInCli(tempDir(), '0.6.8'))).toBe(false);
+  });
+});
+
+describe('isComputerLevel', () => {
+  it('is init --user, with root options anywhere before it', () => {
+    expect(isComputerLevel(['init', '--user'])).toBe(true);
+    expect(
+      isComputerLevel(['--json', 'init', '--user', '--remove-agents']),
+    ).toBe(true);
+    expect(isComputerLevel(['--lang', 'zh', 'init', '--user'])).toBe(true);
+    expect(isComputerLevel(['init'])).toBe(false);
+    expect(isComputerLevel(['docs', 'init', '--user'])).toBe(false);
   });
 });

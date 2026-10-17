@@ -10,6 +10,7 @@ import {createHash} from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import {releaseTree} from '../foundation/release/cache.mjs';
 
 /** @type {string[]} */
 const made = [];
@@ -146,6 +147,7 @@ export function seedRelease(cacheDir, version) {
     version,
     verifiedAt: 'test',
     files,
+    tree: releaseTree(dir),
   });
   return dir;
 }

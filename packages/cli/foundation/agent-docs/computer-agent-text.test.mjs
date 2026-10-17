@@ -25,6 +25,7 @@ import {generateCompressedIndex, parseBlockVersion} from './agent-docs.mjs';
 import {MARKER_END, MARKER_START} from './agent-doc-state.mjs';
 import {runWithCliDoor} from '../env/cli-command.mjs';
 import {runCli} from '../../test-utils/run-cli.mjs';
+import {parse as parseYaml} from 'yaml';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI_ROOT = path.resolve(HERE, '../..');
@@ -105,6 +106,17 @@ describe('renderComputerAgentText', () => {
     expect(lines[1]).toBe('name: astryx');
     expect(lines[2]).toMatch(/^description: .*Use when /);
     expect(lines[3]).toBe('---');
+    // Strict YAML: an agent tool with a strict parser drops a skill whose
+    // frontmatter does not parse.
+    const front = parseYaml(lines.slice(1, 3).join('\n'), {
+      strict: true,
+      uniqueKeys: true,
+    });
+    expect(front).toEqual({
+      name: 'astryx',
+      description: expect.stringContaining('Use when'),
+    });
+    expect(front.description).toContain(': ');
     expect(text).toContain(
       generateCompressedIndex(null, {scope: 'computer', invocation: 'astryx'}),
     );

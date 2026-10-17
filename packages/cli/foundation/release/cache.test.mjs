@@ -6,10 +6,12 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   cachedRelease,
+  forgetVerifiedReleases,
   ensureRelease,
   isInReleaseCache,
   releasesDir,
   resolvePublishedVersion,
+  runNpm,
   tryLock,
 } from './cache.mjs';
 import {
@@ -162,6 +164,7 @@ describe('cachedRelease', () => {
     const dir = seedRelease(cacheDir, '0.7.1');
     expect(cachedRelease('0.7.1', cacheDir)).not.toBeNull();
     fs.rmSync(path.join(dir, 'release.json'));
+    forgetVerifiedReleases();
     expect(cachedRelease('0.7.1', cacheDir)).toBeNull();
   });
 
@@ -207,13 +210,97 @@ describe('resolvePublishedVersion', () => {
 });
 
 describe('tryLock', () => {
-  it('takes a free lock once and reclaims a stale one', () => {
+  it('takes a free lock once, keeps a live holder, and reclaims a stale one', () => {
     const dir = path.join(tempDir('lock'), '.lock-x');
     expect(tryLock(dir)).toBe(true);
     expect(tryLock(dir)).toBe(false);
-    const old = new Date(Date.now() - 11 * 60_000);
+    // A live holder on this computer keeps its lock, however long it takes.
+    const slow = new Date(Date.now() - 25 * 60_000);
+    fs.utimesSync(dir, slow, slow);
+    expect(tryLock(dir)).toBe(false);
+    // Past the hard bound, even a live holder's lock is reclaimed.
+    const old = new Date(Date.now() - 31 * 60_000);
     fs.utimesSync(dir, old, old);
     expect(tryLock(dir)).toBe(true);
+  });
+
+  it('reclaims a lock with no owner record after a few seconds', () => {
+    const dir = path.join(tempDir('lock'), '.lock-y');
+    fs.mkdirSync(dir, {recursive: true});
+    expect(tryLock(dir)).toBe(false);
+    const old = new Date(Date.now() - 11_000);
+    fs.utimesSync(dir, old, old);
+    expect(tryLock(dir)).toBe(true);
+  });
+});
+
+describe('a slow install', () => {
+  it('ends in a timeout reason, never a stopped run, when npm hits the time limit', () => {
+    const cacheDir = tempDir('cache');
+    /** @type {import('./cache.mjs').runNpm} */
+    const run = () => ({
+      status: null,
+      signal: 'SIGTERM',
+      stdout: '',
+      stderr: '',
+      error: Object.assign(new Error('spawnSync npm ETIMEDOUT'), {
+        code: 'ETIMEDOUT',
+      }),
+    });
+    const result = ensureRelease('0.6.8', {cacheDir, run});
+    expect('reason' in result && result.reason).toMatch(
+      /did not finish within 15 minutes/,
+    );
+    expect('signal' in result && result.signal).toBeFalsy();
+  });
+
+  it('tells the caller once when it installs and once when it waits', () => {
+    const cacheDir = tempDir('cache');
+    /** @type {string[]} */
+    const events = [];
+    ensureRelease('0.6.8', {
+      cacheDir,
+      run: fakeNpm().run,
+      onProgress: (e, v) => events.push(`${e} ${v}`),
+    });
+    expect(events).toEqual(['install 0.6.8']);
+    const other = tempDir('cache');
+    const lock = path.join(releasesDir(other), '.lock-0.6.8');
+    fs.mkdirSync(lock, {recursive: true});
+    fs.writeFileSync(
+      path.join(lock, 'owner.json'),
+      JSON.stringify({pid: process.pid, host: os.hostname()}),
+    );
+    events.length = 0;
+    ensureRelease('0.6.8', {
+      cacheDir: other,
+      run: fakeNpm().run,
+      waitMs: 500,
+      onProgress: (e, v) => events.push(`${e} ${v}`),
+    });
+    expect(events).toEqual(['wait 0.6.8']);
+  });
+});
+
+describe('a damaged library file', () => {
+  it('is caught by the size record and replaced', () => {
+    const cacheDir = tempDir('cache');
+    const npm = fakeNpm();
+    ensureRelease('0.6.8', {cacheDir, run: npm.run});
+    const cli = path.join(
+      releasesDir(cacheDir),
+      '0.6.8',
+      'node_modules',
+      '@astryxdesign',
+      'cli',
+    );
+    fs.writeFileSync(path.join(cli, 'extra-module.mjs'), 'export {};\n');
+    forgetVerifiedReleases();
+    expect(cachedRelease('0.6.8', cacheDir)).toBeNull();
+    expect('bin' in ensureRelease('0.6.8', {cacheDir, run: npm.run})).toBe(
+      true,
+    );
+    expect(npm.calls).toHaveLength(2);
   });
 });
 
@@ -277,6 +364,7 @@ describe('stopped and damaged installs heal', () => {
       const first = ensureRelease('0.6.8', {cacheDir, run: npm.run});
       expect('bin' in first).toBe(true);
       harm(path.join(releasesDir(cacheDir), '0.6.8'));
+      forgetVerifiedReleases();
       expect(cachedRelease('0.6.8', cacheDir)).toBeNull();
       const healed = ensureRelease('0.6.8', {cacheDir, run: npm.run});
       expect('bin' in healed && healed.version).toBe('0.6.8');
@@ -292,5 +380,26 @@ describe('stopped and damaged installs heal', () => {
     fs.writeFileSync(cacheDir, '');
     const result = ensureRelease('0.6.8', {cacheDir, run: fakeNpm().run});
     expect('reason' in result && result.reason).toMatch(/cannot be written/);
+  });
+});
+
+describe('runNpm time limit', () => {
+  it('ends a package manager that ignores SIGTERM, leaving no process behind', () => {
+    const marker = tempDir('npm-pid');
+    const pidFile = path.join(marker, 'pid');
+    const result = runNpm([], {
+      timeoutMs: 500,
+      npm: {
+        command: process.execPath,
+        prefix: [
+          '-e',
+          `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); process.on('SIGTERM', () => {}); setTimeout(() => {}, 60000);`,
+        ],
+        shell: false,
+      },
+    });
+    expect(/** @type {any} */ (result.error)?.code).toBe('ETIMEDOUT');
+    const pid = Number(fs.readFileSync(pidFile, 'utf-8'));
+    expect(() => process.kill(pid, 0)).toThrow();
   });
 });

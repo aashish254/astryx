@@ -24,6 +24,7 @@
 import {spawn} from 'node:child_process';
 import {
   chooseRelease,
+  isComputerLevel,
   isGlobalCopy,
   namesWhoAnswered,
   packageRootOf,
@@ -44,10 +45,14 @@ const RELEASE_NOTES = 'https://github.com/facebook/astryx/releases/tag/v';
  * The who-answered line for a run a copy other than the project's own CLI
  * answers.
  * @param {import('./choose.mjs').ReleaseChoice} choice
+ * @param {boolean} [computer] the command acts on the computer, not the folder
  * @returns {string}
  */
-export function whoAnsweredLine(choice) {
+export function whoAnsweredLine(choice, computer = false) {
   const core = choice.coreVersion ?? choice.version;
+  if (computer) {
+    return `astryx: answered by CLI ${choice.version} with Core ${core}, for this computer`;
+  }
   return choice.copy === 'matched'
     ? `astryx: answered by CLI ${choice.version} with Core ${core}, the release that matches this project's Core`
     : `astryx: answered by CLI ${choice.version} with Core ${core}, outside a project`;
@@ -61,6 +66,20 @@ export function whoAnsweredLine(choice) {
  */
 export function handedToProjectLine(projectVersion, startedIn) {
   return `astryx: answered by this project's CLI ${projectVersion}, handed over from CLI ${startedIn}`;
+}
+
+/**
+ * One line on standard error while a release installs, so a slow download
+ * never looks like a hang. Text mode only.
+ * @param {'install' | 'wait'} event
+ * @param {string} version
+ */
+export function progressLine(event, version) {
+  console.error(
+    event === 'install'
+      ? `astryx: installing CLI release ${version} into the per-user cache (once)...`
+      : `astryx: waiting for another run to finish installing CLI release ${version}...`,
+  );
 }
 
 /**
@@ -139,10 +158,16 @@ export async function startRun({cliRoot, argv}) {
     }
   }
 
+  const computer = isComputerLevel(argv);
   /** @type {import('./choose.mjs').ReleaseChoice} */
   let choice;
   try {
-    choice = chooseRelease({cwd: process.cwd(), self, cacheDir});
+    choice = chooseRelease({
+      cwd: process.cwd(),
+      self,
+      cacheDir,
+      computer,
+    });
   } catch {
     choice = {
       copy: 'carried',
@@ -170,13 +195,16 @@ export async function startRun({cliRoot, argv}) {
   if (choice.answer === 'self') {
     recordRunChoice(choice);
     if (!json && choice.copy !== 'project')
-      console.error(whoAnsweredLine(choice));
+      console.error(whoAnsweredLine(choice, computer));
     return;
   }
 
   let bin = choice.bin;
   if (!bin) {
-    const release = ensureRelease(choice.version, {cacheDir});
+    const release = ensureRelease(choice.version, {
+      cacheDir,
+      onProgress: json ? undefined : progressLine,
+    });
     if (!('bin' in release)) {
       failUnavailable(
         `This project needs CLI release ${choice.version}, which is not available: ${release.reason}. ${nextStep(release.reason)}`,
@@ -190,7 +218,7 @@ export async function startRun({cliRoot, argv}) {
     if (choice.copy === 'project') {
       console.error(handedToProjectLine(choice.version, self.version));
     } else if (!namesWhoAnswered(packageRootOf(bin))) {
-      console.error(whoAnsweredLine(choice));
+      console.error(whoAnsweredLine(choice, computer));
     }
   }
 
