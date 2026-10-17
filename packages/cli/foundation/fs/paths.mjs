@@ -51,7 +51,7 @@ export function requireCoreDir(startDir = process.cwd()) {
   if (typeof found === 'string') return found;
   if (found.unavailable) {
     throw codedError(
-      `${found.unavailable}. Outside a project, commands that read Core use the Core of the release that answers; install it by running again when the package registry can be reached.`,
+      `${found.unavailable}. Outside a project, commands that read Core use the Core of the release that answers; ${/cannot be written/.test(found.unavailable) ? 'make that folder writable and run again' : 'run again when the package registry can be reached'}.`,
       ERROR_CODES.ERR_VERSIONS_UNAVAILABLE,
     );
   }

@@ -20,6 +20,7 @@ import {formatCliCommand, getCliInvocation} from '../../foundation/env/package-m
 import {hasRecordedProject} from '../../foundation/env/cli-command.mjs';
 import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {API_VERSION, setJsonMode} from '../../foundation/response/json.mjs';
+import {answeredBy} from '../../foundation/release/run-context.mjs';
 import {buildManifest} from './lib/manifest.mjs';
 import {cliError} from './lib/cli-error.mjs';
 import {emit, section, text, records} from './formatters/index.mjs';
@@ -66,7 +67,7 @@ export function handleVersionJsonPreflight(argv = process.argv.slice(2)) {
   // reports the same shape Commander's own `--version` path does.
   debug.recordCommandResult(debug.NO_RESULT_SET);
   debug.setOutcome('ok', {exitCode: 0});
-  console.log(JSON.stringify({apiVersion: API_VERSION, type: 'version', data: {version: pkg.version}}, null, 2));
+  console.log(JSON.stringify({apiVersion: API_VERSION, type: 'version', data: {version: pkg.version}, meta: {answeredBy: answeredBy()}}, null, 2));
   process.exit(0);
 }
 
@@ -458,6 +459,7 @@ export async function createProgram() {
             // Enriched, self-describing surface (the full manifest payload).
             manifest,
           },
+          meta: {answeredBy: answeredBy()},
         }, null, 2));
         debug.recordCommandResult(
           debug.resultSet({
@@ -658,7 +660,7 @@ export async function createProgram() {
       );
       if (program.opts().json) {
         process.__xdsJsonHandled = true;
-        console.log(JSON.stringify({apiVersion: API_VERSION, type: 'manifest', data: manifest}, null, 2));
+        console.log(JSON.stringify({apiVersion: API_VERSION, type: 'manifest', data: manifest, meta: {answeredBy: answeredBy()}}, null, 2));
         return;
       }
       // Human-readable summary as greppable records (agents should use --json).

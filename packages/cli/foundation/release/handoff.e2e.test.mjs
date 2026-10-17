@@ -153,3 +153,26 @@ describe('answering itself', () => {
     });
   });
 });
+
+describe('answeredBy on every successful JSON result', () => {
+  it('covers the manifest, the version, and help', () => {
+    const empty = tempDir('empty');
+    for (const args of [
+      ['manifest', '--json'],
+      ['--json'],
+      ['--version', '--json'],
+      ['component', '--help', '--json'],
+    ]) {
+      const result = run(empty, args);
+      expect(result.status, args.join(' ')).toBe(0);
+      expect(
+        JSON.parse(result.stdout).meta?.answeredBy,
+        args.join(' '),
+      ).toEqual({
+        cli: SELF_VERSION,
+        core: SELF_VERSION,
+        copy: 'carried',
+      });
+    }
+  });
+});

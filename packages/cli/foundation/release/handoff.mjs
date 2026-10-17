@@ -64,6 +64,17 @@ export function handedToProjectLine(projectVersion, startedIn) {
 }
 
 /**
+ * What to do about a release that is not available.
+ * @param {string} reason
+ * @returns {string}
+ */
+function nextStep(reason) {
+  return /cannot be written/.test(reason)
+    ? "Make that folder writable, or install the project's dependencies."
+    : "Install the project's dependencies, or run again when the package registry can be reached.";
+}
+
+/**
  * Fail the run before any command starts, in the shape every command fails
  * in: the JSON error envelope on stdout with `--json`, else `Error: …` on
  * standard error. Exit status 1.
@@ -148,7 +159,7 @@ export async function startRun({cliRoot, argv}) {
     failUnavailable(
       choice.copy === 'project'
         ? `This project's CLI ${choice.version} could not be started: ${choice.unavailable}. Reinstall the project's dependencies.`
-        : `This project needs CLI release ${choice.version}, which is not available: ${choice.unavailable}. Install the project's dependencies, or run again when the package registry can be reached.`,
+        : `This project needs CLI release ${choice.version}, which is not available: ${choice.unavailable}. ${nextStep(choice.unavailable)}`,
       json,
     );
   }
@@ -168,7 +179,7 @@ export async function startRun({cliRoot, argv}) {
     const release = ensureRelease(choice.version, {cacheDir});
     if (!('bin' in release)) {
       failUnavailable(
-        `This project needs CLI release ${choice.version}, which is not available: ${release.reason}. Install the project's dependencies, or run again when the package registry can be reached.`,
+        `This project needs CLI release ${choice.version}, which is not available: ${release.reason}. ${nextStep(release.reason)}`,
         json,
       );
     }

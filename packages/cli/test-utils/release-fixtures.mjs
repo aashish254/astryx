@@ -6,6 +6,7 @@
  * `astryx` command reports what it received.
  */
 
+import {createHash} from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -130,7 +131,22 @@ export function seedRelease(cacheDir, version) {
   });
   installStandInCli(dir, version);
   installCore(dir, version);
-  writeJson(path.join(dir, 'release.json'), {version, verifiedAt: 'test'});
+  /** @type {Record<string, string>} */
+  const files = {};
+  for (const rel of [
+    'node_modules/@astryxdesign/cli/package.json',
+    'node_modules/@astryxdesign/core/package.json',
+    'node_modules/@astryxdesign/cli/bin.cjs',
+  ]) {
+    files[rel] = createHash('sha256')
+      .update(fs.readFileSync(path.join(dir, rel)))
+      .digest('hex');
+  }
+  writeJson(path.join(dir, 'release.json'), {
+    version,
+    verifiedAt: 'test',
+    files,
+  });
   return dir;
 }
 

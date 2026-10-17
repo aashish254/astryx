@@ -36,6 +36,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {satisfiesRange} from '../env/semver.mjs';
 import {readJson} from './project.mjs';
 
@@ -108,7 +109,40 @@ export function cliBinOf(cliDir) {
 }
 
 /**
- * The cached release `version`, when it is installed and verified.
+ * The files whose bytes a cached release's marker records, relative to the
+ * release folder: enough to notice a damaged or half-written release without
+ * reading every file on each run.
+ * @param {string} bin the CLI's entry file
+ * @param {string} dir the release folder
+ * @returns {string[]}
+ */
+function checkedFiles(bin, dir) {
+  return [
+    path.join('node_modules', '@astryxdesign', 'cli', 'package.json'),
+    path.join('node_modules', '@astryxdesign', 'core', 'package.json'),
+    path.relative(dir, bin),
+  ];
+}
+
+/**
+ * The sha256 of a file, or null when it cannot be read.
+ * @param {string} file
+ * @returns {string | null}
+ */
+function fileHash(file) {
+  try {
+    return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The cached release `version`, when it is installed and verified: its
+ * marker parses, names the version, and records the bytes of the CLI's and
+ * Core's package.json and the CLI's entry file, and those files still have
+ * them. Anything else is a damaged release, which counts as absent and is
+ * replaced the next time a run needs it.
  * @param {string} version
  * @param {string} [cacheDir]
  * @returns {CachedRelease | null}
@@ -117,11 +151,17 @@ export function cachedRelease(version, cacheDir = userCacheDir()) {
   if (!isReleaseVersion(version)) return null;
   const dir = path.join(releasesDir(cacheDir), version);
   const marker = readJson(path.join(dir, 'release.json'));
-  if (!marker || marker.version !== version) return null;
+  if (!marker || marker.version !== version || !marker.files) return null;
   const cliDir = path.join(dir, 'node_modules', '@astryxdesign', 'cli');
   const coreDir = path.join(dir, 'node_modules', '@astryxdesign', 'core');
   const bin = cliBinOf(cliDir);
-  if (!bin || !fs.existsSync(path.join(coreDir, 'package.json'))) return null;
+  if (!bin) return null;
+  for (const rel of checkedFiles(bin, dir)) {
+    const want = marker.files[rel.split(path.sep).join('/')];
+    if (typeof want !== 'string' || fileHash(path.join(dir, rel)) !== want) {
+      return null;
+    }
+  }
   return {version, dir, cliDir, coreDir, bin};
 }
 
@@ -186,6 +226,7 @@ export function npmCommand() {
  * The result of running npm.
  * @typedef {object} NpmResult
  * @property {number | null} status
+ * @property {NodeJS.Signals | null} [signal] the signal that ended npm, such as Ctrl-C's
  * @property {string} stdout
  * @property {string} stderr
  * @property {Error} [error]
@@ -209,6 +250,7 @@ export function runNpm(args, options = {}) {
   });
   return {
     status: result.status,
+    signal: result.signal ?? null,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
     ...(result.error ? {error: result.error} : {}),
@@ -250,6 +292,13 @@ export function resolvePublishedVersion(name, spec, options = {}) {
  */
 const BOUNDED_FETCH = ['--fetch-retries=1', '--fetch-timeout=30000'];
 
+/**
+ * The exit statuses a package manager uses when Ctrl-C, a closed terminal, or
+ * a termination request stopped it.
+ * @type {Record<number, NodeJS.Signals>}
+ */
+const EXIT_SIGNALS = {129: 'SIGHUP', 130: 'SIGINT', 143: 'SIGTERM'};
+
 /** Sleep the thread without spinning. @param {number} ms */
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -258,8 +307,52 @@ function sleep(ms) {
 /** How long a lock may stand before a run treats its holder as gone. */
 const STALE_LOCK_MS = 10 * 60_000;
 
+/** How long a lock with no owner record may stand: its holder died taking it. */
+const UNOWNED_LOCK_MS = 10_000;
+
 /**
- * Take a lock folder, or return false when another live run holds it.
+ * Is process `pid` on this computer still running?
+ * @param {number} pid
+ * @returns {boolean}
+ */
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it runs, as another user.
+    return /** @type {NodeJS.ErrnoException} */ (error).code === 'EPERM';
+  }
+}
+
+/**
+ * Has the run holding `lockDir` gone? Its owner record names a process on
+ * this computer that no longer runs, or there is no record and the lock is
+ * older than a run needs to write one, or the lock is older than any install.
+ * @param {string} lockDir
+ * @returns {boolean}
+ */
+function lockIsStale(lockDir) {
+  let age;
+  try {
+    age = Date.now() - fs.statSync(lockDir).mtimeMs;
+  } catch {
+    return false;
+  }
+  if (age > STALE_LOCK_MS) return true;
+  const owner = readJson(path.join(lockDir, 'owner.json'));
+  if (!owner) return age > UNOWNED_LOCK_MS;
+  return (
+    owner.host === os.hostname() &&
+    Number.isInteger(owner.pid) &&
+    !isAlive(owner.pid)
+  );
+}
+
+/**
+ * Take a lock folder, or return false when another live run holds it. A lock
+ * whose holder has gone, such as a run stopped with Ctrl-C or killed, is taken
+ * over at once. Throws when the cache folder cannot be written.
  * @param {string} lockDir
  * @returns {boolean}
  */
@@ -267,20 +360,49 @@ export function tryLock(lockDir) {
   fs.mkdirSync(path.dirname(lockDir), {recursive: true});
   try {
     fs.mkdirSync(lockDir);
-    return true;
-  } catch {
-    try {
-      const age = Date.now() - fs.statSync(lockDir).mtimeMs;
-      if (age > STALE_LOCK_MS) {
-        fs.rmSync(lockDir, {recursive: true, force: true});
-        fs.mkdirSync(lockDir);
-        return true;
-      }
-    } catch {
-      // Another run took or freed it in between; treat it as held.
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EEXIST') {
+      throw error;
     }
-    return false;
+    if (!lockIsStale(lockDir)) return false;
+    const aside = `${lockDir}.stale-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      fs.renameSync(lockDir, aside);
+    } catch {
+      // Another run took it over first.
+      return false;
+    }
+    fs.rmSync(aside, {recursive: true, force: true});
+    try {
+      fs.mkdirSync(lockDir);
+    } catch {
+      return false;
+    }
   }
+  try {
+    fs.writeFileSync(
+      path.join(lockDir, 'owner.json'),
+      JSON.stringify({pid: process.pid, host: os.hostname()}),
+    );
+  } catch {
+    // Without a record the lock still expires on its own.
+  }
+  return true;
+}
+
+/**
+ * Remove a folder by renaming it aside first, so a run never sees it half
+ * removed.
+ * @param {string} dir
+ */
+function removeAside(dir) {
+  const aside = `${dir}.removing-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    fs.renameSync(dir, aside);
+  } catch {
+    return;
+  }
+  fs.rmSync(aside, {recursive: true, force: true});
 }
 
 /**
@@ -288,6 +410,7 @@ export function tryLock(lockDir) {
  * @typedef {object} ReleaseUnavailable
  * @property {string} version
  * @property {string} reason one plain sentence
+ * @property {NodeJS.Signals} [signal] the install was stopped by this signal
  */
 
 /**
@@ -311,7 +434,29 @@ export function ensureRelease(version, options = {}) {
   }
   const existing = cachedRelease(version, cacheDir);
   if (existing) return existing;
+  try {
+    const result = ensureLocked(version, {cacheDir, run, nodeVersion, waitMs});
+    // Stopped with Ctrl-C (or closed): the lock and scratch folder are already
+    // cleared; end the run the way the signal would have.
+    if ('signal' in result && result.signal)
+      process.kill(process.pid, result.signal);
+    return result;
+  } catch (error) {
+    const code = /** @type {NodeJS.ErrnoException} */ (error).code;
+    return {
+      version,
+      reason: `the release cache ${releasesDir(cacheDir)} cannot be written${code ? ` (${code})` : ''}`,
+    };
+  }
+}
 
+/**
+ * `ensureRelease` under the per-release lock.
+ * @param {string} version
+ * @param {{cacheDir: string, run: typeof runNpm, nodeVersion: string, waitMs: number}} options
+ * @returns {CachedRelease | ReleaseUnavailable}
+ */
+function ensureLocked(version, {cacheDir, run, nodeVersion, waitMs}) {
   const root = releasesDir(cacheDir);
   const lockDir = path.join(root, `.lock-${version}`);
   const deadline = Date.now() + waitMs;
@@ -323,12 +468,64 @@ export function ensureRelease(version, options = {}) {
     }
     sleep(200);
   }
+  // A run stopped mid-install (Ctrl-C, a closed terminal) frees the lock and
+  // its scratch folder on the way out; a killed one is taken over by the
+  // owner check in tryLock.
+  const release = () => {
+    for (const entry of safeList(root)) {
+      if (entry.startsWith(`.tmp-${version}-${process.pid}-`)) {
+        fs.rmSync(path.join(root, entry), {recursive: true, force: true});
+      }
+    }
+    fs.rmSync(lockDir, {recursive: true, force: true});
+  };
+  /** @param {NodeJS.Signals} signal */
+  const onSignal = signal => {
+    release();
+    removeSignalHandlers();
+    process.kill(process.pid, signal);
+  };
+  const signals = /** @type {NodeJS.Signals[]} */ ([
+    'SIGINT',
+    'SIGTERM',
+    'SIGHUP',
+  ]);
+  const removeSignalHandlers = () => {
+    for (const signal of signals) process.off(signal, onSignal);
+  };
+  for (const signal of signals) process.on(signal, onSignal);
   try {
     const again = cachedRelease(version, cacheDir);
     if (again) return again;
+    // Under the lock, anything left for this version is a damaged release or
+    // the scratch folder of a run that stopped: clear both.
+    for (const entry of safeList(root)) {
+      if (
+        entry.startsWith(`.tmp-${version}-`) ||
+        entry.startsWith(`${version}.removing-`) ||
+        entry.startsWith(`.lock-${version}.stale-`)
+      ) {
+        fs.rmSync(path.join(root, entry), {recursive: true, force: true});
+      }
+    }
+    removeAside(path.join(root, version));
     return installLocked(version, {cacheDir, run, nodeVersion});
   } finally {
-    fs.rmSync(lockDir, {recursive: true, force: true});
+    removeSignalHandlers();
+    release();
+  }
+}
+
+/**
+ * A folder's entries, or none.
+ * @param {string} dir
+ * @returns {string[]}
+ */
+function safeList(dir) {
+  try {
+    return fs.readdirSync(dir);
+  } catch {
+    return [];
   }
 }
 
@@ -366,6 +563,10 @@ function installLocked(version, {cacheDir, run, nodeVersion}) {
       ],
       {cwd: tmp},
     );
+    const stoppedBy = install.signal ?? EXIT_SIGNALS[install.status ?? -1];
+    if (stoppedBy) {
+      return {version, reason: 'the install was stopped', signal: stoppedBy};
+    }
     if (install.status !== 0) {
       return {version, reason: npmFailure(install)};
     }
@@ -397,10 +598,16 @@ function installLocked(version, {cacheDir, run, nodeVersion}) {
     if (started.status !== 0 || reported !== version) {
       return {version, reason: 'its CLI did not start and report its version'};
     }
+    /** @type {Record<string, string | null>} */
+    const files = {};
+    for (const rel of checkedFiles(bin, tmp)) {
+      files[rel.split(path.sep).join('/')] = fileHash(path.join(tmp, rel));
+    }
     fs.writeFileSync(
       path.join(tmp, 'release.json'),
-      `${JSON.stringify({version, verifiedAt: new Date().toISOString()}, null, 2)}\n`,
+      `${JSON.stringify({version, verifiedAt: new Date().toISOString(), files}, null, 2)}\n`,
     );
+
     const dest = path.join(root, version);
     try {
       fs.renameSync(tmp, dest);

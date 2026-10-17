@@ -2,6 +2,7 @@
 
 import {describe, it, expect, afterEach} from 'vitest';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   cachedRelease,
@@ -213,5 +214,83 @@ describe('tryLock', () => {
     const old = new Date(Date.now() - 11 * 60_000);
     fs.utimesSync(dir, old, old);
     expect(tryLock(dir)).toBe(true);
+  });
+});
+
+describe('stopped and damaged installs heal', () => {
+  it('takes over a lock whose holder has gone, and clears its scratch folder', () => {
+    const cacheDir = tempDir('cache');
+    const root = releasesDir(cacheDir);
+    const lock = path.join(root, '.lock-0.6.8');
+    fs.mkdirSync(lock, {recursive: true});
+    // A process id no run has: the holder was killed.
+    fs.writeFileSync(
+      path.join(lock, 'owner.json'),
+      JSON.stringify({pid: 2 ** 22 + 7, host: os.hostname()}),
+    );
+    fs.mkdirSync(path.join(root, '.tmp-0.6.8-999-abc'), {recursive: true});
+    const started = Date.now();
+    const result = ensureRelease('0.6.8', {
+      cacheDir,
+      run: fakeNpm().run,
+      waitMs: 60_000,
+    });
+    expect('bin' in result).toBe(true);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(fs.readdirSync(root).filter(n => n.startsWith('.'))).toEqual([]);
+  });
+
+  it('waits for a holder that is still running', () => {
+    const cacheDir = tempDir('cache');
+    const lock = path.join(releasesDir(cacheDir), '.lock-0.6.8');
+    fs.mkdirSync(lock, {recursive: true});
+    fs.writeFileSync(
+      path.join(lock, 'owner.json'),
+      JSON.stringify({pid: process.pid, host: os.hostname()}),
+    );
+    const result = ensureRelease('0.6.8', {
+      cacheDir,
+      run: fakeNpm().run,
+      waitMs: 300,
+    });
+    expect('reason' in result && result.reason).toMatch(/still installing/);
+  });
+
+  it('replaces a release whose marker, Core, or entry file is damaged', () => {
+    /** @type {Array<(dir: string) => void>} */
+    const damage = [
+      dir =>
+        fs.writeFileSync(path.join(dir, 'release.json'), '{"version": "0.6'),
+      dir =>
+        fs.rmSync(path.join(dir, 'node_modules', '@astryxdesign', 'core'), {
+          recursive: true,
+        }),
+      dir =>
+        fs.writeFileSync(
+          path.join(dir, 'node_modules', '@astryxdesign', 'cli', 'bin.cjs'),
+          '#!/usr/bin/env node\n',
+        ),
+    ];
+    for (const harm of damage) {
+      const cacheDir = tempDir('cache');
+      const npm = fakeNpm();
+      const first = ensureRelease('0.6.8', {cacheDir, run: npm.run});
+      expect('bin' in first).toBe(true);
+      harm(path.join(releasesDir(cacheDir), '0.6.8'));
+      expect(cachedRelease('0.6.8', cacheDir)).toBeNull();
+      const healed = ensureRelease('0.6.8', {cacheDir, run: npm.run});
+      expect('bin' in healed && healed.version).toBe('0.6.8');
+      expect(npm.calls).toHaveLength(2);
+      expect(cachedRelease('0.6.8', cacheDir)).not.toBeNull();
+    }
+  });
+
+  it('says the cache cannot be written instead of throwing', () => {
+    const parent = tempDir('ro');
+    const cacheDir = path.join(parent, 'cache');
+    // A file where the cache folder should be: no folder can be made there.
+    fs.writeFileSync(cacheDir, '');
+    const result = ensureRelease('0.6.8', {cacheDir, run: fakeNpm().run});
+    expect('reason' in result && result.reason).toMatch(/cannot be written/);
   });
 });
