@@ -225,9 +225,10 @@ export function runNpm(args, options = {}) {
  */
 export function resolvePublishedVersion(name, spec, options = {}) {
   const run = options.run ?? runNpm;
-  const result = run(['view', `${name}@${spec}`, 'version', '--json'], {
-    timeoutMs: 60_000,
-  });
+  const result = run(
+    ['view', `${name}@${spec}`, 'version', '--json', ...BOUNDED_FETCH],
+    {timeoutMs: 60_000},
+  );
   if (result.status !== 0) return null;
   let parsed;
   try {
@@ -240,6 +241,14 @@ export function resolvePublishedVersion(name, spec, options = {}) {
   );
   return versions.length > 0 ? versions[versions.length - 1] : null;
 }
+
+/**
+ * Registry requests give up after one retry and 30 seconds each, so a run with
+ * no network fails in seconds with ERR_VERSIONS_UNAVAILABLE instead of waiting
+ * out npm's default retries. Registry, proxy, and offline settings still come
+ * from the user's npm configuration.
+ */
+const BOUNDED_FETCH = ['--fetch-retries=1', '--fetch-timeout=30000'];
 
 /** Sleep the thread without spinning. @param {number} ms */
 function sleep(ms) {
@@ -349,6 +358,8 @@ function installLocked(version, {cacheDir, run, nodeVersion}) {
         '--ignore-scripts',
         '--no-audit',
         '--no-fund',
+        '--prefer-offline',
+        ...BOUNDED_FETCH,
         '--loglevel=error',
         `@astryxdesign/cli@${version}`,
         `@astryxdesign/core@${version}`,

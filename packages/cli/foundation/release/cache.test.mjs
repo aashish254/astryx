@@ -82,6 +82,7 @@ describe('ensureRelease', () => {
       expect.arrayContaining([
         'install',
         '--ignore-scripts',
+        '--prefer-offline',
         '@astryxdesign/cli@0.6.8',
         '@astryxdesign/core@0.6.8',
       ]),
@@ -180,6 +181,8 @@ describe('resolvePublishedVersion', () => {
         '@astryxdesign/core@^0.6.0',
         'version',
         '--json',
+        '--fetch-retries=1',
+        '--fetch-timeout=30000',
       ]);
       return {status: 0, stdout: '["0.6.3","0.6.8"]', stderr: ''};
     };

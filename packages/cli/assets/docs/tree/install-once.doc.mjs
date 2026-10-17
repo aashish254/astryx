@@ -3,7 +3,8 @@
 /**
  * @file `astryx docs cli/install-once`: install the CLI once for the
  * computer and run it in any folder; which release answers each folder, and
- * what the CLI keeps in the per-user cache (spec AST-081).
+ * what the CLI keeps in the per-user cache, and the agent text for the whole
+ * computer (spec AST-081).
  */
 
 /** @type {import('@astryxdesign/cli/authoring').ReferenceDoc} */
@@ -24,6 +25,9 @@ export const docs = {
     'cache',
     'offline',
     'update',
+    'init --user',
+    'SKILL.md',
+    'skills',
   ],
   description:
     'Install the CLI once for your computer and run it in any folder: each project is answered by the release that matches its Core, and folders outside a project by the newest release.',
@@ -91,6 +95,35 @@ export const docs = {
           type: 'code',
           lang: 'text',
           code: 'astryx: now using 0.7.3 (was 0.7.2). What changed: https://github.com/facebook/astryx/releases/tag/v0.7.3',
+        },
+      ],
+    },
+    {
+      id: 'agent-text',
+      title: 'Agent text for the whole computer',
+      content: [
+        {
+          type: 'prose',
+          text: "A project's agent docs reach only agents working in that project. To tell agents anywhere on your computer how to use Astryx, write the computer-level agent text:",
+        },
+        {
+          type: 'code',
+          lang: 'bash',
+          code: 'astryx init --user',
+        },
+        {
+          type: 'prose',
+          text: "It writes one skill file to the two folders coding agents read skills from, `~/.agents/skills/astryx/SKILL.md` and `~/.claude/skills/astryx/SKILL.md`, and nothing else; it works in any folder. The text is the same guide `init` writes into a project, without a version, and it tells agents to follow a project's own agent docs inside that project, because those match the project's release. Its commands start with `astryx`, so install the CLI for your computer first; when no `astryx` command runs the Astryx CLI, `init --user` still writes the text and warns.",
+        },
+        {
+          type: 'list',
+          style: 'unordered',
+          items: [
+            'Run it again after a new release to refresh the text. Outside a project, `astryx doctor` says whether the text is there and matches the release that answered.',
+            'A file at either path that Astryx did not write, or a symlink, is left as it is.',
+            '`astryx init --user --remove-agents` removes both files.',
+            'Nothing else writes these files: not installing the CLI, not `init` in a project, not `upgrade`.',
+          ],
         },
       ],
     },

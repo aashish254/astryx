@@ -22,12 +22,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {afterAll, afterEach, beforeAll, describe, expect, it} from 'vitest';
+import {afterAll, afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {program, JSON_SUPPORTED} from '../index.mjs';
 import {buildManifest} from '../lib/manifest.mjs';
 import {runCli} from '../../../test-utils/run-cli.mjs';
 import {
   checkAnsweringRelease,
+  checkComputerAgentText,
   checkNewestRelease,
 } from '../../../api/doctor/doctor.mjs';
 
@@ -299,6 +300,7 @@ describe('doctor outside a project (own)', () => {
         'node-version',
         'answering-release',
         'newest-release',
+        'computer-agent-text',
       ]);
       expect(checks.every(c => c.status !== 'fail')).toBe(true);
       expect(checks[1].message).toContain(`CLI ${VERSION}`);
@@ -327,6 +329,7 @@ describe('doctor outside a project (own)', () => {
       const ids = r.envelope.data.checks.map(c => c.id);
       expect(ids).toContain('core-installed');
       expect(ids).not.toContain('answering-release');
+      expect(ids).not.toContain('computer-agent-text');
       const newest = r.envelope.data.checks.find(
         c => c.id === 'newest-release',
       );
@@ -370,6 +373,89 @@ describe('doctor outside a project (own)', () => {
       expect(at(latest).fix).toBeUndefined();
     }
   });
+});
+
+describe('doctor: the computer-level agent text', () => {
+  const at = agentText =>
+    checkComputerAgentText({
+      nodeVersion: '22.13.0',
+      answeredBy: {cli: '1.2.0', core: '1.2.0', copy: 'carried'},
+      latest: null,
+      agentText,
+      cwd: os.tmpdir(),
+    });
+  const A = '/home/me/.agents/skills/astryx/SKILL.md';
+  const C = '/home/me/.claude/skills/astryx/SKILL.md';
+
+  it('present and current: no fix', () => {
+    const check = at([
+      {path: A, state: 'current'},
+      {path: C, state: 'current'},
+    ]);
+    expect(check).toMatchObject({id: 'computer-agent-text', status: 'info'});
+    expect(check.message).toContain('matches this release');
+    expect(check.fix).toBeUndefined();
+  });
+
+  it('present but different, or only one file: fix with init --user', () => {
+    for (const states of [
+      ['differs', 'current'],
+      ['current', 'absent'],
+      ['differs', 'foreign'],
+    ]) {
+      const check = at([
+        {path: A, state: states[0]},
+        {path: C, state: states[1]},
+      ]);
+      expect(check.status).toBe('info');
+      expect(check.message).toContain("differs from this release's");
+      expect(check.fix).toMatch(/init --user`\.$/);
+    }
+  });
+
+  it('absent, or only files Astryx did not write: fix with init --user', () => {
+    for (const states of [
+      ['absent', 'absent'],
+      ['foreign', 'absent'],
+    ]) {
+      const check = at([
+        {path: A, state: states[0]},
+        {path: C, state: states[1]},
+      ]);
+      expect(check.status).toBe('info');
+      expect(check.message).toContain('No computer-level agent text');
+      expect(check.fix).toMatch(/init --user`\.$/);
+    }
+    expect(
+      at([
+        {path: A, state: 'foreign'},
+        {path: C, state: 'absent'},
+      ]).message,
+    ).toContain(`Not written by Astryx, so left as they are: ${A}`);
+  });
+
+  it(
+    'reads the home folder: absent, then current after init --user',
+    async () => {
+      const home = tmpDir('home');
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      try {
+        const find = r =>
+          r.envelope.data.checks.find(c => c.id === 'computer-agent-text');
+        const before = find(await answer(['--json', 'doctor'], tmpDir('doc')));
+        expect(before.message).toContain('No computer-level agent text');
+        expect(before.status).toBe('info');
+        await runCli(['--json', 'init', '--user'], tmpDir('user'));
+        const after = find(await answer(['--json', 'doctor'], tmpDir('doc2')));
+        expect(after.message).toContain('matches this release');
+        expect(after.fix).toBeUndefined();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+    SLOW,
+  );
 });
 
 describe('doctor integration validate outside a package (own)', () => {
@@ -430,6 +516,32 @@ describe('init outside a project (own)', () => {
       expect(r.status).toBe(0);
       expect(r.stdout).not.toContain('theme add');
       expect(r.stdout).toContain('theme eject');
+    },
+    SLOW,
+  );
+
+  it(
+    '--user writes only the computer-level agent text, in the home folder',
+    async () => {
+      const home = tmpDir('home');
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      try {
+        const r = await answer(
+          ['--json', 'init', '--user'],
+          tmpDir('init-user'),
+        );
+        expect(r.status).toBe(0);
+        expect(r.written).toEqual([]);
+        expect(r.envelope.type).toBe('init.user');
+        // The per-user cache may also live under this home folder.
+        expect(filesIn(home).filter(f => !f.startsWith('.cache'))).toEqual([
+          path.join('.agents', 'skills', 'astryx', 'SKILL.md'),
+          path.join('.claude', 'skills', 'astryx', 'SKILL.md'),
+        ]);
+      } finally {
+        vi.unstubAllEnvs();
+      }
     },
     SLOW,
   );

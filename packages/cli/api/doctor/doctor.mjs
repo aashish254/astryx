@@ -6,8 +6,9 @@
  * Runs a series of diagnostic checks against the user's project and
  * environment, returning a structured report. Outside a project it checks the
  * computer instead (spec AST-081 FR4): the Node version, the release that
- * answered, and the newest release the computer knows of; no check fails
- * because the folder has no project. Each check is a small,
+ * answered, the newest release the computer knows of, and whether the
+ * computer-level agent text is present and current; no check fails because
+ * the folder has no project. Each check is a small,
  * self-contained function that returns a {@link DoctorCheck} record, so
  * adding a new diagnostic is just appending a function to {@link SYNC_CHECKS}.
  *
@@ -59,6 +60,7 @@ import {checkAppThemes, checkThemes} from './theme-checks.mjs';
 import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {answeredBy} from '../../foundation/release/run-context.mjs';
 import {knownLatestRelease} from '../../foundation/release/global-state.mjs';
+import {displayHomePath, inspectComputerAgentText} from '../../foundation/agent-docs/computer-agent-text.mjs';
 
 /**
  * @typedef {'pass'|'warn'|'fail'|'info'} DoctorStatus
@@ -1337,6 +1339,9 @@ export function checkCliCommand(ctx) {
  * @property {string} nodeVersion
  * @property {{cli: string, core: string | null, copy: string}} answeredBy
  * @property {string | null} latest the newest release known, or null
+ * @property {Array<{path: string, state: import('../../foundation/agent-docs/computer-agent-text.mjs').ComputerAgentTextState}>} [agentText]
+ *   each file of the computer-level agent text against this release's rendering
+ * @property {string} [cwd] the folder doctor runs in, for the printed fix
  */
 
 /**
@@ -1384,6 +1389,53 @@ export function checkNewestRelease(ctx) {
 }
 
 /**
+ * The computer-level agent text (spec AST-081 FR4, FR8): present and equal to
+ * this release's rendering, present but different, or absent. Always `info`:
+ * the text is optional, so it never warns or fails. A file Astryx did not
+ * write counts as absent, and `init --user` keeps it.
+ * @param {ComputerContext} ctx
+ * @returns {DoctorCheck}
+ */
+export function checkComputerAgentText(ctx) {
+  const files = ctx.agentText ?? inspectComputerAgentText();
+  const base = {
+    id: 'computer-agent-text',
+    label: 'Computer-level agent text',
+    status: /** @type {const} */ ('info'),
+  };
+  const fix = `Run \`${formatCliCommand('astryx init --user', ctx.cwd)}\`.`;
+  const ours = files.filter(f => f.state === 'current' || f.state === 'differs');
+  const kept = files
+    .filter(f => f.state === 'foreign')
+    .map(f => displayHomePath(f.path));
+  const keptNote =
+    kept.length > 0
+      ? ` Not written by Astryx, so left as they are: ${kept.join(', ')}.`
+      : '';
+  if (ours.length === 0) {
+    return {
+      ...base,
+      message: `No computer-level agent text: agents outside a project with Astryx agent docs are not told how to use Astryx.${keptNote}`,
+      fix,
+    };
+  }
+  if (files.every(f => f.state === 'current')) {
+    return {
+      ...base,
+      message: `The computer-level agent text matches this release: ${files.map(f => displayHomePath(f.path)).join(', ')}.`,
+    };
+  }
+  const stale = files
+    .filter(f => f.state === 'differs' || f.state === 'absent')
+    .map(f => displayHomePath(f.path));
+  return {
+    ...base,
+    message: `The computer-level agent text differs from this release's: ${stale.join(', ')}.${keptNote}`,
+    fix,
+  };
+}
+
+/**
  * The checks doctor runs outside a project, in order.
  * @type {Array<(ctx: ComputerContext) => DoctorCheck>}
  */
@@ -1397,6 +1449,7 @@ export const COMPUTER_CHECKS = [
     }),
   checkAnsweringRelease,
   checkNewestRelease,
+  checkComputerAgentText,
 ];
 
 /**
@@ -1410,6 +1463,8 @@ function runComputerChecks(cwd) {
     nodeVersion: process.versions.node,
     answeredBy: answeredBy(cwd),
     latest: knownLatestRelease(),
+    agentText: inspectComputerAgentText(),
+    cwd,
   };
   const checks = COMPUTER_CHECKS.map(fn => fn(ctx));
   const summary = {pass: 0, warn: 0, fail: 0, info: 0};

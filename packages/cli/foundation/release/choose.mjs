@@ -84,7 +84,8 @@ function real(p) {
 
 /** Folder-name patterns of package-manager global installs that hold a package.json. */
 const GLOBAL_OWNER_PATTERNS = [
-  /[\\/]pnpm[\\/]global[\\/]\d+$/,
+  // pnpm: `<pnpm home>/global/5` before pnpm 10, `<pnpm home>/global/v11/<id>` since.
+  /[\\/]global[\\/]v?\d+(?:[\\/][^\\/]+)?$/,
   /[\\/]yarn[\\/]global$/,
   /[\\/]\.bun[\\/]install[\\/]global$/,
 ];
@@ -240,6 +241,19 @@ export function chooseRelease({
   }
 
   if (!version || version === self.version) {
+    // A copy that lives inside the project itself, such as a workspace's own
+    // CLI package beside its Core package, is the project's own CLI.
+    if (isInside(selfReal, projectRootOf(facts))) {
+      return {
+        copy: 'project',
+        answer: 'self',
+        version: self.version,
+        bin: null,
+        coreVersion: facts.core?.version ?? null,
+        inProject: true,
+        unavailable: null,
+      };
+    }
     return {
       copy: 'matched',
       answer: 'self',
@@ -259,6 +273,39 @@ export function chooseRelease({
     inProject: true,
     unavailable: null,
   };
+}
+
+/**
+ * The folder a project's facts point at: the declaring package.json's folder,
+ * else the folder that holds the Core (the one above its node_modules, or the
+ * workspace root above `packages/core`).
+ * @param {import('./project.mjs').ReleaseFacts} facts
+ * @returns {string | null}
+ */
+function projectRootOf(facts) {
+  if (facts.declaringDir) return facts.declaringDir;
+  const dir = facts.core?.dir ?? facts.cli?.dir;
+  if (!dir) return null;
+  const parts = path.resolve(dir).split(path.sep);
+  const at = parts.indexOf('node_modules');
+  if (at > 0) return parts.slice(0, at).join(path.sep) || path.sep;
+  return path.dirname(path.dirname(dir));
+}
+
+/**
+ * Is `child` inside `parent` (both real paths), outside any node_modules
+ * folder in between? A package installed into a project's node_modules is
+ * found as the project's CLI already; this covers a copy that is part of the
+ * project's own source, such as a workspace package.
+ * @param {string} child
+ * @param {string | null} parent
+ * @returns {boolean}
+ */
+function isInside(child, parent) {
+  if (!parent) return false;
+  const rel = path.relative(real(parent), child);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  return !rel.split(path.sep).includes('node_modules');
 }
 
 /**

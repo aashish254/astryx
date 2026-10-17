@@ -32,6 +32,11 @@ export const doc = {
       description:
         'The removal receipt — returned when --remove-agents is set: `data.removed` is true when a managed agent-docs block was found and removed, and false when there was none to remove.',
     },
+    {
+      value: 'init.user',
+      description:
+        'The computer-level agent text receipt — returned when --user is set: `data.files`, one `{path, action}` per skill file (action `written` | `unchanged` | `removed` | `absent` | `kept`), `data.command` (the command the text names), and `data.warnings`.',
+    },
     // component
     {
       value: 'component.list',

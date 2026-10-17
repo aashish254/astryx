@@ -21,7 +21,8 @@ export const doc = {
     "the docs the CLI reads, and the newest release the computer knows of (info only). It writes nothing, but loading astryx.config runs that file's code. " +
     'The `integration` subcommands provide authoring checks for one integration package. ' +
     'Outside a project it checks the computer instead: the Node version, the release that answered, ' +
-    'and the newest release this computer knows of. It never fails a check because the folder has no project.',
+    'the newest release this computer knows of, and whether the computer-level agent text (`astryx init --user`) is present and matches this release (info only). ' +
+    'It never fails a check because the folder has no project.',
   fn: 'doctor',
   subcommands: ['integration'],
   examples: [

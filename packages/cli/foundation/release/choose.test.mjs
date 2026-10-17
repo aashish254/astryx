@@ -250,6 +250,26 @@ describe('chooseRelease in a project', () => {
   });
 });
 
+describe("chooseRelease for a workspace's own CLI package", () => {
+  it('counts a copy inside the project, outside node_modules, as the project CLI', () => {
+    const ws = tempDir();
+    writeJson(path.join(ws, 'package.json'), {name: 'ws', private: true});
+    writeJson(path.join(ws, 'packages', 'core', 'package.json'), {
+      name: '@astryxdesign/core',
+      version: '0.7.2',
+    });
+    const cli = path.join(ws, 'packages', 'cli');
+    writeJson(path.join(cli, 'package.json'), {
+      name: '@astryxdesign/cli',
+      version: '0.7.2',
+    });
+    const self = {version: '0.7.2', root: cli};
+    expect(
+      chooseRelease({cwd: ws, self, cacheDir: tempDir('cache')}),
+    ).toMatchObject({copy: 'project', answer: 'self'});
+  });
+});
+
 describe('chooseRelease outside a project', () => {
   it('answers with the global copy until a newer release is kept', () => {
     const empty = tempDir('empty');
@@ -303,6 +323,22 @@ describe('isGlobalCopy', () => {
     };
     expect(isGlobalCopy(at('usr/lib'), cacheDir)).toBe(true);
     expect(isGlobalCopy(at('pnpm/global/5', true), cacheDir)).toBe(true);
+    // pnpm 11+: the global packages live in a store folder under global/v11/<id>.
+    const pnpmOwner = path.join(base, 'share/pnpm/global/v11/2f9c1a');
+    fs.mkdirSync(pnpmOwner, {recursive: true});
+    writeJson(path.join(pnpmOwner, 'package.json'), {
+      dependencies: {'@astryxdesign/cli': '0.7.2'},
+    });
+    const pnpmStore = path.join(
+      pnpmOwner,
+      'node_modules',
+      '.pnpm',
+      '@astryxdesign+cli@0.7.2',
+    );
+    fs.mkdirSync(pnpmStore, {recursive: true});
+    expect(isGlobalCopy(installStandInCli(pnpmStore, '0.7.2'), cacheDir)).toBe(
+      true,
+    );
     expect(isGlobalCopy(at('yarn/global', true), cacheDir)).toBe(true);
     expect(isGlobalCopy(at('.bun/install/global', true), cacheDir)).toBe(true);
     expect(isGlobalCopy(at('app', true), cacheDir)).toBe(false);
