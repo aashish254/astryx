@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import {describe, it, expect, afterEach} from 'vitest';
+import {spawn} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -402,4 +403,86 @@ describe('runNpm time limit', () => {
     const pid = Number(fs.readFileSync(pidFile, 'utf-8'));
     expect(() => process.kill(pid, 0)).toThrow();
   });
+});
+
+describe('no install outlives its run', () => {
+  /** @param {number} pid */
+  const alive = pid => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  /** @param {() => boolean} done @param {number} ms */
+  const waitFor = async (done, ms) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (done()) return true;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    return done();
+  };
+
+  it('ends npm when the run that started it is killed outright', async () => {
+    const dir = tempDir('orphan');
+    const pidFile = path.join(dir, 'npm-pid');
+    const cacheModule = new URL('./cache.mjs', import.meta.url).href;
+    const sleeper = `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 120000);`;
+    const script = `import(${JSON.stringify(cacheModule)}).then(m => m.runNpm([], {timeoutMs: 120000, npm: {command: process.execPath, prefix: ['-e', ${JSON.stringify(sleeper)}], shell: false}}));`;
+    const cli = spawn(process.execPath, ['-e', script], {stdio: 'ignore'});
+    expect(await waitFor(() => fs.existsSync(pidFile), 10_000)).toBe(true);
+    const npmPid = Number(fs.readFileSync(pidFile, 'utf-8'));
+    expect(alive(npmPid)).toBe(true);
+    cli.kill('SIGKILL');
+    expect(await waitFor(() => !alive(npmPid), 5_000)).toBe(true);
+  }, 30_000);
+
+  it('ends npm, which ignores Ctrl-C, when the run gets Ctrl-C', async () => {
+    const dir = tempDir('ctrlc');
+    const pidFile = path.join(dir, 'npm-pid');
+    const cacheModule = new URL('./cache.mjs', import.meta.url).href;
+    const sleeper = `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); process.on('SIGINT', () => {}); setTimeout(() => {}, 120000);`;
+    const script = `import(${JSON.stringify(cacheModule)}).then(m => m.runNpm([], {timeoutMs: 120000, npm: {command: process.execPath, prefix: ['-e', ${JSON.stringify(sleeper)}], shell: false}}));`;
+    // Its own group, as a terminal's foreground job: Ctrl-C reaches the group.
+    const cli = spawn(process.execPath, ['-e', script], {
+      stdio: 'ignore',
+      detached: true,
+    });
+    expect(await waitFor(() => fs.existsSync(pidFile), 10_000)).toBe(true);
+    const npmPid = Number(fs.readFileSync(pidFile, 'utf-8'));
+    const exited = new Promise(resolve => cli.on('exit', resolve));
+    process.kill(-(/** @type {number} */ (cli.pid)), 'SIGINT');
+    expect(await waitFor(() => !alive(npmPid), 5_000)).toBe(true);
+    await exited;
+  }, 30_000);
+
+  it("a run that takes over a dead run's lock ends the install it recorded", async () => {
+    const cacheDir = tempDir('cache');
+    const lock = path.join(releasesDir(cacheDir), '.lock-0.6.8');
+    fs.mkdirSync(lock, {recursive: true});
+    // An install left running by a run that was killed: its own group, and
+    // `npm` in its command line.
+    const leftover = spawn(
+      process.execPath,
+      ['-e', 'setTimeout(() => {}, 120000)', 'npm-install'],
+      {
+        detached: true,
+        stdio: 'ignore',
+      },
+    );
+    leftover.unref();
+    fs.writeFileSync(
+      path.join(lock, 'owner.json'),
+      JSON.stringify({pid: 2 ** 22 + 7, host: os.hostname()}),
+    );
+    fs.writeFileSync(path.join(lock, 'npm.pid'), String(leftover.pid));
+    expect(alive(/** @type {number} */ (leftover.pid))).toBe(true);
+    const result = ensureRelease('0.6.8', {cacheDir, run: fakeNpm().run});
+    expect('bin' in result).toBe(true);
+    expect(
+      await waitFor(() => !alive(/** @type {number} */ (leftover.pid)), 5_000),
+    ).toBe(true);
+  }, 30_000);
 });

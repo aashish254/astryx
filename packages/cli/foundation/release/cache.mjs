@@ -37,6 +37,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
 import {satisfiesRange} from '../env/semver.mjs';
 import {readJson} from './project.mjs';
 
@@ -309,31 +310,69 @@ export function npmCommand() {
 /**
  * Run npm synchronously with no output on the caller's streams.
  * @param {string[]} args
- * @param {{cwd?: string, timeoutMs?: number, npm?: {command: string, prefix: string[], shell: boolean}}} [options]
- *   `npm` replaces how npm is started (tests).
+ * npm runs under npm-guard.mjs, which gives it a process group of its own
+ * and ends that group when the time limit passes, when this run goes away
+ * (even killed outright), or when this run receives Ctrl-C. So no install
+ * outlives the run that started it.
+ *
+ * @param {string[]} args
+ * @param {{cwd?: string, timeoutMs?: number, pidFile?: string, npm?: {command: string, prefix: string[], shell: boolean}}} [options]
+ *   `pidFile` receives npm's process id while it runs (the release lock's
+ *   record); `npm` replaces how npm is started (tests).
  * @returns {NpmResult}
  */
 export function runNpm(args, options = {}) {
   const {command, prefix, shell} = options.npm ?? npmCommand();
-  const result = spawnSync(command, [...prefix, ...args], {
-    cwd: options.cwd ?? os.tmpdir(),
-    encoding: 'utf-8',
-    shell,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: options.timeoutMs ?? 300_000,
-    // npm defers SIGTERM until its work finishes, so a time limit has to end
-    // it outright or the limit never takes effect.
-    killSignal: 'SIGKILL',
-    windowsHide: true,
-  });
+  const timeoutMs = options.timeoutMs ?? 300_000;
+  const direct = shell || process.platform === 'win32';
+  const result = direct
+    ? spawnSync(command, [...prefix, ...args], {
+        cwd: options.cwd ?? os.tmpdir(),
+        encoding: 'utf-8',
+        shell,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: timeoutMs,
+        // npm defers SIGTERM until its work finishes, so a time limit has to
+        // end it outright or the limit never takes effect.
+        killSignal: 'SIGKILL',
+        windowsHide: true,
+      })
+    : spawnSync(
+        process.execPath,
+        [
+          GUARD,
+          String(timeoutMs),
+          options.pidFile ?? '',
+          command,
+          ...prefix,
+          ...args,
+        ],
+        {
+          cwd: options.cwd ?? os.tmpdir(),
+          encoding: 'utf-8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          // A backstop only: the guard ends npm at the limit itself.
+          timeout: timeoutMs + 30_000,
+          killSignal: 'SIGKILL',
+          windowsHide: true,
+        },
+      );
+  const timedOut = !direct && result.status === 124;
   return {
-    status: result.status,
+    status: timedOut ? null : result.status,
     signal: result.signal ?? null,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
-    ...(result.error ? {error: result.error} : {}),
+    ...(timedOut
+      ? {error: Object.assign(new Error('npm timed out'), {code: 'ETIMEDOUT'})}
+      : result.error
+        ? {error: result.error}
+        : {}),
   };
 }
+
+/** The guard npm runs under. */
+const GUARD = fileURLToPath(new URL('./npm-guard.mjs', import.meta.url));
 
 /**
  * The newest published version that `spec` (a dist-tag or a range) names,
@@ -453,6 +492,9 @@ export function tryLock(lockDir) {
       throw error;
     }
     if (!lockIsStale(lockDir)) return false;
+    // The run that held it is gone; end the install it left running, if any,
+    // before starting another.
+    endRecordedInstall(lockDir);
     const aside = `${lockDir}.stale-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       fs.renameSync(lockDir, aside);
@@ -476,6 +518,33 @@ export function tryLock(lockDir) {
     // Without a record the lock still expires on its own.
   }
   return true;
+}
+
+/**
+ * End the npm process group a stale lock records, when that process is still
+ * running and is npm. On computers without a process table to check, the
+ * record is trusted only while the lock is younger than any install.
+ * @param {string} lockDir
+ */
+function endRecordedInstall(lockDir) {
+  let pid;
+  try {
+    pid = Number(fs.readFileSync(path.join(lockDir, 'npm.pid'), 'utf-8'));
+  } catch {
+    return;
+  }
+  if (!Number.isInteger(pid) || pid <= 1 || !isAlive(pid)) return;
+  try {
+    const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf-8');
+    if (!/npm/.test(cmdline)) return;
+  } catch {
+    // No process table here; fall through on the record alone.
+  }
+  try {
+    process.kill(process.platform === 'win32' ? pid : -pid, 'SIGKILL');
+  } catch {
+    // Already gone.
+  }
 }
 
 /**
@@ -668,7 +737,11 @@ function installLocked(version, {cacheDir, run, nodeVersion}) {
         `@astryxdesign/cli@${version}`,
         `@astryxdesign/core@${version}`,
       ],
-      {cwd: tmp, timeoutMs: INSTALL_TIMEOUT_MS},
+      {
+        cwd: tmp,
+        timeoutMs: INSTALL_TIMEOUT_MS,
+        pidFile: path.join(root, `.lock-${version}`, 'npm.pid'),
+      },
     );
     // Our own time limit ends npm: that is a timeout, not a stopped run.
     if (/** @type {any} */ (install.error)?.code === 'ETIMEDOUT') {

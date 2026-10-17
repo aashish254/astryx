@@ -290,8 +290,12 @@ const RUNNERS = {
     sites: ['importUserModule'],
   },
   'foundation/release/cache.mjs': {
-    runs: 'npm, to install and look up CLI releases in the per-user cache, and each installed release once, to check it starts and reports its version',
-    sites: ['child_process.spawnSync ×2'],
+    runs: 'npm (under npm-guard.mjs), to install and look up CLI releases in the per-user cache, and each installed release once, to check it starts and reports its version',
+    sites: ['child_process.spawnSync ×3'],
+  },
+  'foundation/release/npm-guard.mjs': {
+    runs: 'npm, in a process group of its own that it ends at the time limit, on Ctrl-C, or when the run that started it goes away',
+    sites: ['child_process.spawn'],
   },
   'foundation/release/global-state.mjs': {
     runs: "the background check of the registry's `latest` release, detached",
