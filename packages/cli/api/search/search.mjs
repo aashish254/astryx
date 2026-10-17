@@ -81,7 +81,8 @@
 
 import {withListingCache} from '../../foundation/fs/listing-cache.mjs';
 import {readDocView} from '../../foundation/doc-compiler/read.mjs';
-import {findCoreDir} from '../../foundation/fs/paths.mjs';
+import {findCoreDir, requireCoreDir} from '../../foundation/fs/paths.mjs';
+import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {
   discoverComponents,
   discoverValidIntegrationComponents,
@@ -115,7 +116,7 @@ import {
   sectionKey,
   sectionSummary,
 } from '../../foundation/discovery/docs-section-key.mjs';
-import {AstryxError} from '../error.mjs';
+import {AstryxError, coreDirOrThrow} from '../error.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
 import {setResultCoverage} from './coverage.mjs';
 
@@ -1700,8 +1701,11 @@ async function gatherThemes(cwd) {
  * @param {string} reason
  * @param {number} matchedTerms - Query concepts this result answered.
  * @param {number} queryTerms - Query concepts there were to answer.
+ * @param {boolean} [outside] - The search runs outside a project, where a
+ *   theme cannot be added to an app, so its command forks the source instead
+ *   (spec AST-081 FR3).
  */
-function toResult(c, score, reason, matchedTerms, queryTerms) {
+function toResult(c, score, reason, matchedTerms, queryTerms, outside = false) {
   const base = {
     domain: c.domain,
     name: c._resultName ?? c.name,
@@ -1750,7 +1754,9 @@ function toResult(c, score, reason, matchedTerms, queryTerms) {
       result = {
         ...base,
         displayName: c._displayName,
-        command: `astryx theme add ${c.name}`,
+        command: outside
+          ? `astryx theme eject ${c.name}`
+          : `astryx theme add ${c.name}`,
       };
       break;
     default:
@@ -1819,14 +1825,10 @@ async function searchOnce(query, options) {
   // name, it is an error without core; an open search then covers the docs
   // and themes alone.
   const needsCore = !type || !CORELESS_DOMAINS.includes(type);
-  const coreDir = needsCore ? findCoreDir(cwd) : null;
-  if (type && needsCore && !coreDir) {
-    throw new AstryxError(
-      'Could not find @astryxdesign/core package',
-      undefined,
-      ERROR_CODES.ERR_CORE_NOT_FOUND,
-    );
-  }
+  // Asked for by name, a domain that reads Core fetches the carried Core
+  // when it must; an open search answers from whatever Core is at hand.
+  const coreDir =
+    type && needsCore ? coreDirOrThrow(requireCoreDir, cwd) : needsCore ? findCoreDir(cwd) : null;
 
   // Gather candidates from each requested domain in parallel.
   /** @param {string} d */
@@ -1850,6 +1852,7 @@ async function searchOnce(query, options) {
   // strongest PAGE, not outrank every component.
   /** @type {{result: any, priority: 0 | 1 | 2}[]} */
   const ranked = [];
+  const outside = themes.length > 0 && isOutsideProject(cwd);
   for (const candidate of all) {
     const hit = scoreQuery(term, tokens, candidate);
     if (hit)
@@ -1860,6 +1863,7 @@ async function searchOnce(query, options) {
           hit.reason,
           hit.matched,
           hit.total,
+          outside,
         ),
         priority: domainPriority(term, tokens, candidate, hit),
       });

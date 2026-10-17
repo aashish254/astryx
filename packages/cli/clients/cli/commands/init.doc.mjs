@@ -19,7 +19,9 @@ export const doc = {
     'agents, and CI). By default it installs the AGENTS.md/CLAUDE.md agent-docs, ' +
     'including guidance from configured integrations, and prints getting-started ' +
     "steps. --features and --all print only the chosen features' guidance (no " +
-    'getting-started steps); the theme feature also writes an annotated theme template.',
+    'getting-started steps); the theme feature also writes an annotated theme template. ' +
+    'Outside a project it writes the same files but prints no step that sets up a project: ' +
+    'no getting-started steps, and no step that adds a theme to an app.',
   fn: 'init',
   options: [
     {
@@ -67,6 +69,7 @@ export const doc = {
     {label: 'All features, no prompts', cli: 'astryx init --all'},
     {label: 'Machine-readable receipt', cli: 'astryx init --json'},
   ],
+  outsideProject: 'own',
   exitCodes: [
     {
       code: 0,

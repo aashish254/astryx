@@ -83,7 +83,10 @@ describe('astryx discover with a manifest that fails to load', () => {
     });
 
     expect(status).toBe(0);
-    expect(JSON.parse(stdout).meta).toEqual({configured: true});
+    expect(JSON.parse(stdout).meta).toEqual({
+      configured: true,
+      answeredBy: expect.any(Object),
+    });
     expect(stderr).not.toContain('integration issue');
   });
 });

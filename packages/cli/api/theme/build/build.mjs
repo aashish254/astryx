@@ -64,6 +64,7 @@ import {
 } from '../../../foundation/env/package-manager.mjs';
 import {
   CLI_ROOT,
+  findCarriedCoreDir,
   findCoreDir,
   findInstalledPackage,
 } from '../../../foundation/fs/paths.mjs';
@@ -286,7 +287,10 @@ function realOrSelf(file) {
  * @returns {Promise<CoreBindings | null>}
  */
 async function loadProjectCore(cwd, cliCore) {
-  const dir = findInstalledPackage(cwd, '@astryxdesign/core');
+  // Outside a project, the Core the answering copy carries (spec AST-081 FR3).
+  const dir =
+    findInstalledPackage(cwd, '@astryxdesign/core') ??
+    findCarriedCoreDir(cwd, {fetch: true});
   const themeFile = dir ? importTarget(dir, './theme') : null;
   if (!dir || !themeFile) return null;
   if (cliCore.themeModule) {

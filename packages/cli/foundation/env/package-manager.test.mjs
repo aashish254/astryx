@@ -16,6 +16,7 @@ import {
   prefixCliCommands,
 } from './package-manager.mjs';
 import {recordDeclaredCliCommands, runWithCliDoor} from './cli-command.mjs';
+import {CLI_VERSION} from '../../test-utils/release-fixtures.mjs';
 
 let tmpDir;
 const ORIGINAL_ARGV1 = process.argv[1];
@@ -40,7 +41,15 @@ function linkCliBin(dir, name = 'astryx') {
   const binDir = path.join(dir, 'node_modules', '.bin');
   fs.mkdirSync(binDir, {recursive: true});
   fs.writeFileSync(path.join(binDir, name), '');
+  // The installed package the bin belongs to: this copy, so the project's own
+  // CLI is the one answering (spec AST-081 FR5's run-prefix case).
+  const pkg = path.join(dir, 'node_modules', '@astryxdesign', 'cli');
+  fs.mkdirSync(path.dirname(pkg), {recursive: true});
+  if (!fs.existsSync(pkg)) fs.symlinkSync(THIS_CLI, pkg, 'dir');
 }
+
+/** This CLI package's folder. */
+const THIS_CLI = path.resolve(import.meta.dirname, '..', '..');
 
 /** The header a classic Yarn (1.x) lockfile starts with. */
 const YARN_V1_LOCK =
@@ -509,11 +518,11 @@ describe('getCliInvocation', () => {
   // fresh package), the CLI used to print `npx astryx` for a project where that
   // bin does not resolve, so following the hint fetched someone else's package.
   it.each([
-    ['package-lock.json', '{}', 'npx @astryxdesign/cli'],
-    ['pnpm-lock.yaml', '', 'pnpm dlx @astryxdesign/cli'],
-    ['yarn.lock', YARN_BERRY_LOCK, 'yarn dlx @astryxdesign/cli'],
-    ['yarn.lock', YARN_V1_LOCK, 'npx @astryxdesign/cli'],
-    ['bun.lockb', '', 'bunx @astryxdesign/cli'],
+    ['package-lock.json', '{}', `npx @astryxdesign/cli@${CLI_VERSION}`],
+    ['pnpm-lock.yaml', '', `pnpm dlx @astryxdesign/cli@${CLI_VERSION}`],
+    ['yarn.lock', YARN_BERRY_LOCK, `yarn dlx @astryxdesign/cli@${CLI_VERSION}`],
+    ['yarn.lock', YARN_V1_LOCK, `npx @astryxdesign/cli@${CLI_VERSION}`],
+    ['bun.lockb', '', `bunx @astryxdesign/cli@${CLI_VERSION}`],
   ])(
     'prints the scoped package for a project with no local CLI (%s), launched from an installed path',
     (lockfile, contents, expected) => {
@@ -530,21 +539,21 @@ describe('getCliInvocation', () => {
     const dir = makeTmpDir();
     delete process.env.npm_config_user_agent;
     fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"fresh"}');
-    expect(getCliInvocation(dir)).toBe('npx @astryxdesign/cli');
+    expect(getCliInvocation(dir)).toBe(`npx @astryxdesign/cli@${CLI_VERSION}`);
   });
 
   it('uses the dlx runner + scoped package when run one-off', () => {
     process.argv[1] = '/home/u/.npm/_npx/a1b2/node_modules/.bin/astryx';
     const dir = makeTmpDir();
     delete process.env.npm_config_user_agent;
-    expect(getCliInvocation(dir)).toBe('npx @astryxdesign/cli');
+    expect(getCliInvocation(dir)).toBe(`npx @astryxdesign/cli@${CLI_VERSION}`);
   });
 
   it('pairs the dlx runner with the scoped package for pnpm one-off', () => {
     process.argv[1] = '/home/u/.cache/pnpm/dlx/9f/node_modules/@astryxdesign/cli/bin/astryx.mjs';
     const dir = makeTmpDir();
     fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), '');
-    expect(getCliInvocation(dir)).toBe('pnpm dlx @astryxdesign/cli');
+    expect(getCliInvocation(dir)).toBe(`pnpm dlx @astryxdesign/cli@${CLI_VERSION}`);
   });
 });
 
@@ -569,7 +578,7 @@ describe('formatCliCommand', () => {
     process.argv[1] = '/home/u/.npm/_npx/a1b2/node_modules/.bin/astryx';
     const dir = makeTmpDir();
     fs.writeFileSync(path.join(dir, 'package-lock.json'), '{}');
-    expect(formatCliCommand('astryx component Button', dir)).toBe('npx @astryxdesign/cli component Button');
+    expect(formatCliCommand('astryx component Button', dir)).toBe(`npx @astryxdesign/cli@${CLI_VERSION} component Button`);
   });
 });
 

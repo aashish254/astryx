@@ -113,7 +113,7 @@ describe('progressive reads', () => {
     expect(stdout).toMatch(/^principles +\S/m);
     expect(widest(stdout)).toBeLessThanOrEqual(120);
     // The repo root has no `astryx` bin, so the CLI names the scoped package.
-    expect(stdout).toMatch(/Usage: \S+(?: dlx)? (?:astryx|@astryxdesign\/cli) docs <topic>/);
+    expect(stdout).toMatch(/Usage: \S+(?: dlx)? (?:astryx|@astryxdesign\/cli(?:@\S+)?) docs <topic>/);
   }, SLOW);
 
   it("prints a topic's section index with the keys to read by", async () => {

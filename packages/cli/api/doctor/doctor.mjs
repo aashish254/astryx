@@ -4,7 +4,10 @@
  * @file Health-check engine for `astryx doctor`.
  *
  * Runs a series of diagnostic checks against the user's project and
- * environment, returning a structured report. Each check is a small,
+ * environment, returning a structured report. Outside a project it checks the
+ * computer instead (spec AST-081 FR4): the Node version, the release that
+ * answered, and the newest release the computer knows of; no check fails
+ * because the folder has no project. Each check is a small,
  * self-contained function that returns a {@link DoctorCheck} record, so
  * adding a new diagnostic is just appending a function to {@link SYNC_CHECKS}.
  *
@@ -25,7 +28,7 @@ import * as path from 'node:path';
 
 import {MIN_NODE_VERSION, isNodeVersionSupported} from '../../foundation/env/node-version.mjs';
 import {AGENT_DOC_PATHS} from '../../foundation/agent-docs/agent-doc-state.mjs';
-import {CLI_ROOT, findCoreDir, findInstalledPackage} from '../../foundation/fs/paths.mjs';
+import {CLI_ROOT, findProjectCoreDir, findInstalledPackage} from '../../foundation/fs/paths.mjs';
 import {explainPackageManager, formatCliCommand, getCliInvocation, guessCliInvocation} from '../../foundation/env/package-manager.mjs';
 import {chooseDeclaredCliCommand, declaredCliCommandsOf} from '../../foundation/env/cli-command.mjs';
 import {
@@ -53,6 +56,9 @@ import {typedEdges} from '../docs/node/node.mjs';
 import {detailView, indexView} from '../../foundation/doc-compiler/lenses.mjs';
 import {semverCompare, isValidSemver, satisfiesRange} from '../../foundation/env/semver.mjs';
 import {checkAppThemes, checkThemes} from './theme-checks.mjs';
+import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
+import {answeredBy} from '../../foundation/release/run-context.mjs';
+import {knownLatestRelease} from '../../foundation/release/global-state.mjs';
 
 /**
  * @typedef {'pass'|'warn'|'fail'|'info'} DoctorStatus
@@ -1322,6 +1328,95 @@ export function checkCliCommand(ctx) {
   };
 }
 
+/* ── outside a project: the computer ─────────────────────────────────── */
+
+/**
+ * What a computer check reads: the running Node, the release that answered
+ * (`meta.answeredBy`), and the newest release the computer knows of.
+ * @typedef {object} ComputerContext
+ * @property {string} nodeVersion
+ * @property {{cli: string, core: string | null, copy: string}} answeredBy
+ * @property {string | null} latest the newest release known, or null
+ */
+
+/**
+ * The release that answered this run outside a project, and the Core it
+ * reads from.
+ * @param {ComputerContext} ctx
+ * @returns {DoctorCheck}
+ */
+export function checkAnsweringRelease(ctx) {
+  const {cli, core} = ctx.answeredBy;
+  return {
+    id: 'answering-release',
+    label: 'Release that answered',
+    status: core ? 'pass' : 'info',
+    message: core
+      ? `CLI ${cli} with Core ${core} answered, outside a project.`
+      : `CLI ${cli} answered, outside a project. It installs Core ${cli} into the per-user cache the first time a command needs it.`,
+  };
+}
+
+/**
+ * The newest release this computer knows of, beside the one that answered.
+ * Runs inside and outside a project. Always `info`: it reports, never warns or
+ * fails, and doctor installs nothing.
+ * @param {ComputerContext} ctx
+ * @returns {DoctorCheck}
+ */
+export function checkNewestRelease(ctx) {
+  const {latest} = ctx;
+  const {cli} = ctx.answeredBy;
+  const base = {id: 'newest-release', label: 'Newest release', status: /** @type {const} */ ('info')};
+  if (!latest) {
+    return {
+      ...base,
+      message: 'No newer release is known: this computer has not checked the package registry yet.',
+    };
+  }
+  if (isValidSemver(latest) && isValidSemver(cli) && semverCompare(latest, cli) > 0) {
+    return {
+      ...base,
+      message: `Release ${latest} is newer than ${cli}, the release that answered.`,
+    };
+  }
+  return {...base, message: `No newer release is known: the newest is ${latest}.`};
+}
+
+/**
+ * The checks doctor runs outside a project, in order.
+ * @type {Array<(ctx: ComputerContext) => DoctorCheck>}
+ */
+export const COMPUTER_CHECKS = [
+  ctx =>
+    checkNodeVersion({
+      cwd: '',
+      nodeVersion: ctx.nodeVersion,
+      coreDir: null,
+      configPath: null,
+    }),
+  checkAnsweringRelease,
+  checkNewestRelease,
+];
+
+/**
+ * Doctor outside a project: the computer, never the folder.
+ * @param {string} cwd
+ * @returns {DoctorReport}
+ */
+function runComputerChecks(cwd) {
+  /** @type {ComputerContext} */
+  const ctx = {
+    nodeVersion: process.versions.node,
+    answeredBy: answeredBy(cwd),
+    latest: knownLatestRelease(),
+  };
+  const checks = COMPUTER_CHECKS.map(fn => fn(ctx));
+  const summary = {pass: 0, warn: 0, fail: 0, info: 0};
+  for (const c of checks) summary[c.status] += 1;
+  return {checks, summary};
+}
+
 /**
  * Ordered list of synchronous check functions. Append here to add a check.
  * (checkConfig is async and is awaited separately by {@link runChecks}.)
@@ -1350,7 +1445,8 @@ export const SYNC_CHECKS = [
  */
 export async function runChecks(options = {}) {
   const cwd = options.cwd ?? process.cwd();
-  const coreDir = findCoreDir(cwd);
+  if (isOutsideProject(cwd)) return runComputerChecks(cwd);
+  const coreDir = findProjectCoreDir(cwd);
   // findConfigPath throws when multiple config files coexist. That's a
   // misconfiguration doctor exists to report — catch it and surface it through
   // checkConfig as a FAIL rather than crashing the whole diagnostic engine.
@@ -1511,6 +1607,13 @@ export async function runChecks(options = {}) {
       checks.push(await checkConfig(ctx));
     }
   }
+  checks.push(
+    checkNewestRelease({
+      nodeVersion: ctx.nodeVersion,
+      answeredBy: answeredBy(cwd),
+      latest: knownLatestRelease(),
+    }),
+  );
   checks.push(await checkAuthoringDocs(ctx));
   checks.push(await checkCliDocs(ctx));
   checks.push(await checkDocsTree(ctx));

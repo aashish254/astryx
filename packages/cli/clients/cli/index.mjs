@@ -18,6 +18,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {formatCliCommand, getCliInvocation} from '../../foundation/env/package-manager.mjs';
 import {hasRecordedProject} from '../../foundation/env/cli-command.mjs';
+import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {API_VERSION, setJsonMode} from '../../foundation/response/json.mjs';
 import {buildManifest} from './lib/manifest.mjs';
 import {cliError} from './lib/cli-error.mjs';
@@ -584,7 +585,8 @@ export async function createProgram() {
    * consumers parse stdout, not stderr — a stderr nudge would not reach them anyway.
    * The core/cli postinstall layers already nudge at install time regardless of
    * --json; a machine-readable nudge could later be an envelope field. Also skipped
-   * for the installer commands themselves and outside a project (no package.json).
+   * for the installer commands themselves and outside a project (no package.json,
+   * or one that neither installs nor declares Astryx).
    */
   program.hook('preAction', (thisCommand, actionCommand) => {
     try {
@@ -592,6 +594,10 @@ export async function createProgram() {
       if (SETUP_NUDGE_EXEMPT.has(actionCommand.name())) return;
       const cwd = process.cwd();
       if (!fs.existsSync(path.join(cwd, 'package.json'))) return; // not a project
+      // A package.json that neither installs nor declares Astryx is outside a
+      // project: `init` would set up a project the folder does not have
+      // (spec AST-081 FR3).
+      if (isOutsideProject(cwd)) return;
       // An integration package is not an app: `init` is not its next step.
       if (INTEGRATION_MANIFEST_FILES.some(file => fs.existsSync(path.join(cwd, file)))) return;
       if (isAstryxInitialized(cwd)) return; // already set up — stay quiet

@@ -21,7 +21,8 @@ export const doc = {
     'agent-docs cheat sheet, including guidance from configured integrations, and ' +
     "prints getting-started guidance; `features` / `all` print only the chosen features' " +
     'guidance instead (the theme feature also writes the annotated theme template). ' +
-    'With `removeAgents` it removes the managed agent-docs block instead of installing.',
+    'With `removeAgents` it removes the managed agent-docs block instead of installing. ' +
+    'Outside a project it writes the same files but prints no getting-started steps and no step that adds a theme to an app, since those set up a project the folder does not have.',
   importPath: '@astryxdesign/cli/api',
   signature:
     'init(options?: InitOptions, ctx?: {cwd?: string}): Promise<InitRunResponse | InitRemoveResponse>',
@@ -71,7 +72,7 @@ export const doc = {
     {
       type: 'init.run',
       description:
-        'The install receipt: the `mode` (`default` | `features`), the features run, agent-doc files written, any soft docsError, the theme-template outcome (`created` | `skipped` | `failed`) plus its path, the page-template outcome (`workflow` | `created` | `skipped`) plus its path, and whether the next-steps were emitted.',
+        'The install receipt: the `mode` (`default` | `features`), the features run, agent-doc files written, any soft docsError, the theme-template outcome (`created` | `skipped` | `failed`) plus its path, the page-template outcome (`workflow` | `created` | `skipped`) plus its path, and whether the next-steps were emitted (never outside a project).',
     },
     {
       type: 'init.remove',

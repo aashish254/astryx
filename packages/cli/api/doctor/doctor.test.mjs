@@ -112,7 +112,7 @@ describe('integration issue check', () => {
 describe('doctor leaf — degradation & error paths', () => {
   it('does not crash on multiple config files; reports a config FAIL', async () => {
     const dir = mkProject({
-      'package.json': '{"name":"x"}',
+      'package.json': '{"name":"x","dependencies":{"@astryxdesign/core":"*"}}',
       'astryx.config.mjs': 'export default {};',
       'astryx.config.js': 'export default {};',
     });
@@ -125,7 +125,7 @@ describe('doctor leaf — degradation & error paths', () => {
 
   it('reports a config FAIL (not a crash) when astryx.config.mjs throws on import', async () => {
     const dir = mkProject({
-      'package.json': '{"name":"x"}',
+      'package.json': '{"name":"x","dependencies":{"@astryxdesign/core":"*"}}',
       'astryx.config.mjs': 'throw new Error("boom");\nexport default {};',
     });
     const r = await doctor({cwd: dir});
@@ -136,7 +136,7 @@ describe('doctor leaf — degradation & error paths', () => {
 
   it('flags a non-object config default export as FAIL', async () => {
     const dir = mkProject({
-      'package.json': '{"name":"x"}',
+      'package.json': '{"name":"x","dependencies":{"@astryxdesign/core":"*"}}',
       'astryx.config.mjs': 'export default 42;',
     });
     const r = await doctor({cwd: dir});

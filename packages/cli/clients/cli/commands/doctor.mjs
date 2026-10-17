@@ -39,6 +39,7 @@ import {NO_RESULT_SET} from '../../../foundation/debug/index.mjs';
 import {cliError} from '../lib/cli-error.mjs';
 import {ERROR_CODES} from '../../../foundation/response/error-codes.mjs';
 import {formatCliCommand} from '../../../foundation/env/package-manager.mjs';
+import {isOutsideProject} from '../../../foundation/env/project-scope.mjs';
 
 const STATUS = {
   pass: '[ok]',
@@ -289,10 +290,14 @@ async function runAuthoringCheck(program, pkg, kind) {
 
   if (program.opts().json) jsonOut(result);
   else if (!result.data.validated) {
+    // Outside a project no integration is installed to check by name
+    // (spec AST-081 FR3).
     emit(
       text(
-        'Nothing was checked: no astryx.integration.* found next to package.json. ' +
-          `To check an installed integration: ${formatCliCommand(`doctor integration ${kind} <package>`)}`,
+        isOutsideProject()
+          ? 'Nothing was checked: no astryx.integration.* found next to package.json, and this folder is outside a project.'
+          : 'Nothing was checked: no astryx.integration.* found next to package.json. ' +
+              `To check an installed integration: ${formatCliCommand(`doctor integration ${kind} <package>`)}`,
       ),
     );
   } else if (kind === 'templates') {

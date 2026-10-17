@@ -53,6 +53,16 @@ if (!isNodeVersionSupported(process.versions.node)) {
   process.exit(1);
 }
 
+// Global mode: choose the release that answers this folder and, when it is
+// not this copy, hand the run to it before anything the project provides (its
+// astryx.config, integrations, or Core) is loaded. Returns only when this copy
+// answers. See foundation/release/handoff.mjs and spec AST-081 FR2 and FR9.
+const {startRun} = await importSrc('../../foundation/release/handoff.mjs');
+await startRun({
+  cliRoot: join(binDir, '..', '..', '..'),
+  argv: process.argv.slice(2),
+});
+
 // Imports that transitively load `styleText` must happen AFTER the gate above,
 // so they are dynamically imported here rather than at the top of the module.
 const {

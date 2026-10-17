@@ -79,7 +79,7 @@ export default {
           items: [
             'The `cliCommand` of the packages the app loads, when they name one command.',
             'The command a host tool names when it runs the CLI for the app. Nothing in a plain project names one.',
-            "What the app's package manager runs, such as `npx astryx`, `pnpm exec astryx`, or `npx @astryxdesign/cli` when the CLI is not installed there.",
+            "A command that reaches the release that answered: what the app's package manager runs when the app's own CLI answered, such as `npx astryx` or `pnpm exec astryx`; `astryx` outside a project when the CLI installed for the computer answered; otherwise the CLI package pinned to that release, such as `npx @astryxdesign/cli@0.7.2` (see `astryx docs cli/install-once`).",
           ],
         },
         {

@@ -17,7 +17,7 @@
  * @property {string | null} themeTemplatePath Relative output path when `themeTemplate === 'created'`.
  * @property {'workflow' | 'created' | 'skipped' | null} template Template outcome (`workflow` is the CLI default; `created`/`skipped` are programmatic).
  * @property {string | null} templatePath Relative output path when `template === 'created'`.
- * @property {boolean} nextSteps Whether the getting-started "Next steps" were emitted (default mode).
+ * @property {boolean} nextSteps Whether the getting-started "Next steps" were emitted (default mode inside a project; false outside one).
  */
 
 /**

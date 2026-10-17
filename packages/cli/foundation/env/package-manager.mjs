@@ -15,6 +15,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {cliDoor, declaredCliCommand} from './cli-command.mjs';
+import {CLI_ROOT} from '../fs/paths.mjs';
+import {cliVersion, runChoice} from '../release/run-context.mjs';
+import {isGlobalCopy} from '../release/choose.mjs';
+import {isInReleaseCache} from '../release/cache.mjs';
 
 /**
  * A package manager we can install with and run binaries through.
@@ -490,15 +494,17 @@ export function cliBinResolves(targetDir = process.cwd()) {
  *   plain run.
  * - Otherwise the guess below.
  *
- * The guess:
+ * The guess names a command that, run from `targetDir`, reaches the release
+ * that answered (spec AST-081 FR5):
  *
- * - The `astryx` bin resolves from `targetDir`: `<run-prefix> astryx`
- *   (e.g. `pnpm exec astryx`).
- * - Launched one-off (npx/dlx cache), or the bin does not resolve from
- *   `targetDir` (a global install, a fresh package in a workspace):
- *   `<dlx-prefix> @astryxdesign/cli`. The bare `astryx` name would make npm
- *   fetch an unrelated registry package; the scoped package always resolves
- *   to this CLI.
+ * - The project's own CLI answered and its `astryx` bin resolves from
+ *   `targetDir`: `<run-prefix> astryx` (e.g. `pnpm exec astryx`).
+ * - Outside a project, the CLI installed for the computer (or the release it
+ *   keeps) answered: `astryx`.
+ * - Otherwise: `<dlx-prefix> @astryxdesign/cli@<answering version>`, pinned so
+ *   the package runner starts the same release. The bare `astryx` name would
+ *   make npm fetch an unrelated registry package, and the unpinned scoped
+ *   package the newest release.
  *
  * @param {string} [targetDir] the project the printed command runs in;
  *   defaults to the working directory
@@ -520,10 +526,14 @@ export function getCliInvocation(targetDir) {
  * @returns {string}
  */
 export function guessCliInvocation(targetDir) {
-  if (isCliOneOff() || !cliBinResolves(targetDir)) {
-    return `${getDlxPrefix(targetDir)} ${CLI_PACKAGE}`;
+  const choice = runChoice(targetDir ?? process.cwd());
+  if (choice.copy === 'project' && !isCliOneOff() && cliBinResolves(targetDir)) {
+    return `${getRunPrefix(targetDir)} ${CLI_BIN}`;
   }
-  return `${getRunPrefix(targetDir)} ${CLI_BIN}`;
+  if (!choice.inProject && (isGlobalCopy(CLI_ROOT) || isInReleaseCache(CLI_ROOT))) {
+    return CLI_BIN;
+  }
+  return `${getDlxPrefix(targetDir)} ${CLI_PACKAGE}@${cliVersion()}`;
 }
 
 /**
