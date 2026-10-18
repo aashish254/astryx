@@ -75,7 +75,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "A project is found from the folder you run in: the Core or the CLI installed there or a few folders above it, else the nearest `package.json` that declares either one, up to the repository root. A folder inside another project, such as a nested app or a cloned repository, answers with that project's release.",
+          text: "A project is found from the folder you run in: the Core or the CLI installed there or a few folders above it, else the nearest `package.json` that declares either one, up to the repository root. A folder inside another project, such as a nested app or a cloned repository, answers with that project's release. A repository that builds the CLI itself, with the CLI package in `packages/cli` beside Core in `packages/core`, answers with that CLI. Folder names are compared the way your file system compares them, so a folder typed in another letter case on macOS or Windows, or reached through a link, answers as the folder does.",
         },
       ],
     },
@@ -220,7 +220,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: 'The first run that needs a release prints one line while it installs (`astryx: installing CLI release 0.6.8 into the per-user cache (once)...`), and a run that finds another run installing it waits and says so. A slow download is waited for, up to 15 minutes. A run stopped mid-install leaves nothing behind that blocks the next one, and a cached release whose files were damaged is installed again the next time a run needs it.',
+          text: 'The first run that needs a release prints one line while it installs (`astryx: installing CLI release 0.6.8 into the per-user cache (once)...`), and a run that finds another run installing it waits and says so. A slow download is waited for, up to 15 minutes. A run stopped mid-install leaves nothing behind that blocks the next one, and a cached release whose files were damaged is installed again the next time a run needs it. When several computers share one cache folder, a run installing a release renews its claim every 10 seconds, and a claim from another computer that goes a minute without renewal is taken over.',
         },
         {
           type: 'prose',

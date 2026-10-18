@@ -75,24 +75,30 @@ const WINDSURF_SKILL = path.join(
  * second copy anywhere.
  * @type {Readonly<Record<string, string>>}
  */
-export const COMPUTER_AGENT_FILES = Object.freeze({
-  claude: CLAUDE_SKILL,
-  codex: SHARED_SKILL,
-  gemini: SHARED_SKILL,
-  copilot: SHARED_SKILL,
-  'cursor': SHARED_SKILL,
-  opencode: SHARED_SKILL,
-  crush: SHARED_SKILL,
-  qwen: SHARED_SKILL,
-  cline: SHARED_SKILL,
-  amp: SHARED_SKILL,
-  goose: SHARED_SKILL,
-  roo: SHARED_SKILL,
-  zed: SHARED_SKILL,
-  continue: CONTINUE_SKILL,
-  kiro: KIRO_SKILL,
-  windsurf: WINDSURF_SKILL,
-});
+export const COMPUTER_AGENT_FILES = Object.freeze(
+  // Pairs, not an object literal: some agent names are also style property
+  // names, and these are file paths, not styles.
+  Object.fromEntries([
+    ['claude', CLAUDE_SKILL],
+    ...[
+      'codex',
+      'gemini',
+      'copilot',
+      'cursor',
+      'opencode',
+      'crush',
+      'qwen',
+      'cline',
+      'amp',
+      'goose',
+      'roo',
+      'zed',
+    ].map(name => [name, SHARED_SKILL]),
+    ['continue', CONTINUE_SKILL],
+    ['kiro', KIRO_SKILL],
+    ['windsurf', WINDSURF_SKILL],
+  ]),
+);
 
 /** The agent names, in the order the docs list them. */
 export const COMPUTER_AGENTS = Object.freeze(Object.keys(COMPUTER_AGENT_FILES));

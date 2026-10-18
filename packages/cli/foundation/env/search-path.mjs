@@ -100,10 +100,12 @@ export function astryxCliRootOf(file) {
   }
   const base = path.dirname(file);
   for (const match of text.matchAll(SHIM_PACKAGE)) {
-    const named = match[1].replace(
-      /^(?:\$basedir|%~dp0|%dp0%|\$PSScriptRoot)[\\/]?/u,
-      `${base}${path.sep}`,
-    );
+    const named = match[1]
+      .replace(
+        /^(?:\$basedir|%~dp0|%dp0%|\$PSScriptRoot)[\\/]?/u,
+        `${base}${path.sep}`,
+      )
+      .replace(/[\\/]/gu, path.sep);
     const dir = path.resolve(base, named);
     if (cliVersionAt(dir) !== null) return dir;
   }

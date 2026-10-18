@@ -41,6 +41,8 @@ import {fileURLToPath} from 'node:url';
 import {satisfiesRange} from '../env/semver.mjs';
 import {readJson} from './project.mjs';
 import {userCacheDir as userCacheDirFor} from '../env/user-dirs.mjs';
+import {foreignLockIsSilent} from './lock-lease.mjs';
+import {relativeWithin} from '../fs/path-compare.mjs';
 
 /**
  * The per-user cache directory every Astryx cache lives in, never inside a
@@ -265,9 +267,9 @@ export function keptReleaseVersions(cacheDir = userCacheDir()) {
  * @returns {boolean}
  */
 export function isInReleaseCache(dir, cacheDir = userCacheDir()) {
-  const root = realOrSelf(releasesDir(cacheDir));
-  const rel = path.relative(root, realOrSelf(dir));
-  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+  return (
+    relativeWithin(realOrSelf(releasesDir(cacheDir)), realOrSelf(dir)) !== null
+  );
 }
 
 /**
@@ -447,7 +449,11 @@ function sleep(ms) {
 /** How long a lock may stand before a run treats its holder as gone. */
 const STALE_LOCK_MS = 30 * 60_000;
 
-/** How long a lock held from another computer (a shared cache) may stand. */
+/**
+ * How long a lock held from another computer (a shared cache) may stand,
+ * however often its holder renews it; one whose holder stops renewing it is
+ * taken over sooner (lock-lease.mjs).
+ */
 const FOREIGN_LOCK_MS = 20 * 60_000;
 
 /** How long a lock with no owner record may stand: its holder died taking it. */
@@ -472,14 +478,16 @@ function isAlive(pid) {
  * Has the run holding `lockDir` gone? Its owner record names a process on
  * this computer that no longer runs; or there is no record and the lock is
  * older than a run needs to write one; or another computer holds it for
- * longer than an install takes; or it is older than any install.
+ * longer than an install takes, or its holder there stopped renewing it; or
+ * it is older than any install.
  * @param {string} lockDir
+ * @param {number} now
  * @returns {boolean}
  */
-function lockIsStale(lockDir) {
+function lockIsStale(lockDir, now) {
   let age;
   try {
-    age = Date.now() - fs.statSync(lockDir).mtimeMs;
+    age = now - fs.statSync(lockDir).mtimeMs;
   } catch {
     return false;
   }
@@ -487,7 +495,7 @@ function lockIsStale(lockDir) {
   const owner = readJson(path.join(lockDir, 'owner.json'));
   if (!owner) return age > UNOWNED_LOCK_MS;
   if (owner.host !== os.hostname() || !Number.isInteger(owner.pid)) {
-    return age > FOREIGN_LOCK_MS;
+    return age > FOREIGN_LOCK_MS || foreignLockIsSilent(lockDir, now);
   }
   // A live holder on this computer is installing, however slowly.
   return !isAlive(owner.pid);
@@ -496,11 +504,13 @@ function lockIsStale(lockDir) {
 /**
  * Take a lock folder, or return false when another live run holds it. A lock
  * whose holder has gone, such as a run stopped with Ctrl-C or killed, is taken
- * over at once. Throws when the cache folder cannot be written.
+ * over at once, and one from another computer once its holder has stopped
+ * renewing it. Throws when the cache folder cannot be written.
  * @param {string} lockDir
+ * @param {{now?: number}} [options] the clock, for tests
  * @returns {boolean}
  */
-export function tryLock(lockDir) {
+export function tryLock(lockDir, {now = Date.now()} = {}) {
   fs.mkdirSync(path.dirname(lockDir), {recursive: true});
   try {
     fs.mkdirSync(lockDir);
@@ -508,7 +518,7 @@ export function tryLock(lockDir) {
     if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EEXIST') {
       throw error;
     }
-    if (!lockIsStale(lockDir)) return false;
+    if (!lockIsStale(lockDir, now)) return false;
     // The run that held it is gone; end the install it left running, if any,
     // before starting another.
     endRecordedInstall(lockDir);

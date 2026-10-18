@@ -46,6 +46,7 @@ import {isReleaseVersion, userCacheDir} from './cache.mjs';
 import {currentGlobalRelease, readGlobalState} from './global-state.mjs';
 import {projectRootOf} from './choose.mjs';
 import {readJson, readReleaseFacts} from './project.mjs';
+import {samePath} from '../fs/path-compare.mjs';
 
 /** A reminder prints at most once in this long. */
 export const REMINDER_INTERVAL_MS = 24 * 60 * 60_000;
@@ -287,7 +288,7 @@ export function projectLagLine(lag) {
 export function oldGlobalCommand({selfRoot, ...options} = {}) {
   const first = astryxCommandsOnSearchPath(options)[0];
   if (!first?.astryx || !first.cliRoot || first.handsOff !== false) return null;
-  if (selfRoot && real(selfRoot) === real(first.cliRoot)) return null;
+  if (selfRoot && samePath(real(selfRoot), real(first.cliRoot))) return null;
   return {file: first.file, version: first.version};
 }
 
