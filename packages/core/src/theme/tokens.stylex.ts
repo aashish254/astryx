@@ -25,22 +25,21 @@ import * as stylex from '@stylexjs/stylex';
 export const colorDefaults = {
   // Core semantic
   '--color-accent': 'light-dark(#0064E0, #2694FE)',
-  '--color-accent-muted': 'light-dark(#0082FB33, #0082FB3F)',
+  '--color-accent-muted': 'light-dark(#3585FD33, #0C87EF3F)',
   '--color-on-accent': 'light-dark(#FFFFFF, #FFFFFF)',
-  '--color-neutral':
-    'light-dark(rgba(5, 54, 89, 0.1), rgba(223, 226, 229, 0.2))',
+  '--color-neutral': 'light-dark(#2B383D1A, #DFE2E533)',
   '--color-background-surface': 'light-dark(#FFFFFF, #1F1F22)',
   '--color-background-body': 'light-dark(#F1F4F7, #111112)',
-  '--color-overlay': 'light-dark(#01122866, #11111299)',
-  '--color-overlay-hover': 'light-dark(#0536590C, #FFFFFF0C)',
-  '--color-overlay-pressed': 'light-dark(#05365919, #FFFFFF19)',
-  '--color-background-muted': 'light-dark(#0536590C, #1111127F)',
+  '--color-overlay': 'light-dark(#0A131766, #11111299)',
+  '--color-overlay-hover': 'light-dark(#2B383D0C, #FFFFFF0C)',
+  '--color-overlay-pressed': 'light-dark(#2B383D19, #FFFFFF19)',
+  '--color-background-muted': 'light-dark(#2B383D0C, #1111127F)',
 
   // Text
   '--color-text-primary': 'light-dark(#0A1317, #DFE2E5)',
   '--color-text-secondary': 'light-dark(#4E606F, #AAAFB5)',
   '--color-text-disabled': 'light-dark(#A4B0BC, #6F747C)',
-  '--color-text-accent': 'light-dark(#0064E0, #3E9EFB)',
+  '--color-text-accent': 'light-dark(#0064E0, #4CA3FF)',
   '--color-on-dark': 'light-dark(#FFFFFF, #FFFFFF)',
   '--color-on-light': 'light-dark(#000000, #000000)',
 
@@ -54,21 +53,21 @@ export const colorDefaults = {
   '--color-background-card': 'light-dark(#FFFFFF, #1F1F22)',
   '--color-background-popover': 'light-dark(#FFFFFF, #28292C)',
   '--color-background-inverted': 'light-dark(#0A1317, #FFFFFF)',
-  '--color-background-error-inverted': 'light-dark(#AA071E, #E3193B)',
+  '--color-background-error-inverted': 'light-dark(#A20025, #E53149)',
 
   // Status/Sentiment
-  '--color-success': 'light-dark(#0D8626, #0D8626)',
-  '--color-success-muted': 'light-dark(#0B991F33, #0B991F3F)',
+  '--color-success': 'light-dark(#2F7D33, #3E7B40)',
+  '--color-success-muted': 'light-dark(#4A984C33, #5895583F)',
   '--color-on-success': 'light-dark(#FFFFFF, #FFFFFF)',
-  '--color-error': 'light-dark(#E3193B, #F5394F)',
-  '--color-error-muted': 'light-dark(#E3193B33, #F5394F3F)',
+  '--color-error': 'light-dark(#E71E40, #F64054)',
+  '--color-error-muted': 'light-dark(#E71E4033, #F640543F)',
   '--color-on-error': 'light-dark(#FFFFFF, #FFFFFF)',
   '--color-warning': 'light-dark(#E9AF08, #F2C00B)',
-  '--color-warning-muted': 'light-dark(#E2A40033, #E2A4003F)',
-  '--color-on-warning': 'light-dark(#0A1317, #0A1317)',
+  '--color-warning-muted': 'light-dark(#D9A20033, #D1A6003F)',
+  '--color-on-warning': 'light-dark(#0A1317, #111112)',
 
   // Border
-  '--color-border': 'light-dark(#05365919, #F2F4F619)',
+  '--color-border': 'light-dark(#2B383D19, #F2F4F619)',
   '--color-border-emphasized': 'light-dark(#CCD3DB, #494D53)',
 
   // Effects
@@ -78,69 +77,69 @@ export const colorDefaults = {
   // is the same low-contrast surface as --color-skeleton; themes can
   // override per their neutral ramp if 1-D channels need more weight.
   '--color-track': 'light-dark(#CCD3DB, #5A5E66)',
-  '--color-shadow': 'light-dark(rgba(5, 54, 89, 0.1), rgba(0, 0, 0, 0.3))',
+  '--color-shadow': 'light-dark(#2B383D1A, #0000004C)',
   // Hover tint: black in light mode, white in dark mode - used with color-mix for hover states
-  '--color-tint-hover': 'light-dark(black, white)',
+  '--color-tint-hover': 'light-dark(#000000, #FFFFFF)',
 
   // Blue
-  '--color-background-blue': 'light-dark(#0171E333, #0171E333)',
-  '--color-border-blue': 'light-dark(#0064E0, #2694FE)', // Blue 650 / 500
+  '--color-background-blue': 'light-dark(#1D74EF33, #0078DB33)',
+  '--color-border-blue': 'light-dark(#0064E0, #2694FE)',
   '--color-icon-blue': 'light-dark(#0064E0, #2694FE)',
-  '--color-text-blue': 'light-dark(#042F97, #AFD7FF)',
+  '--color-text-blue': 'light-dark(#003583, #B6D8FF)',
 
   // Cyan
-  '--color-background-cyan': 'light-dark(#03A7D733, #03A7D733)',
-  '--color-border-cyan': 'light-dark(#089DD0, #0171A4)', // Cyan 500 / 650
-  '--color-icon-cyan': 'light-dark(#00ACC1, #26C6DA)',
-  '--color-text-cyan': 'light-dark(#014975, #A1EEF9)',
+  '--color-background-cyan': 'light-dark(#29AFCB33, #49ADC433)',
+  '--color-border-cyan': 'light-dark(#00A2BE, #00788D)',
+  '--color-icon-cyan': 'light-dark(#29AFCB, #5DBAD1)',
+  '--color-text-cyan': 'light-dark(#00505F, #B1EEFE)',
 
   // Gray
-  '--color-background-gray': 'light-dark(#0A131733, #666A724C)',
-  '--color-border-gray': 'light-dark(#647685, #748695)', // Gray 600 / 550
+  '--color-background-gray': 'light-dark(#0A131733, #6469724C)',
+  '--color-border-gray': 'light-dark(#5D788F, #7C828A)',
   '--color-icon-gray': 'light-dark(#4E606F, #AAAFB5)',
-  '--color-text-gray': 'light-dark(#0A1317, #E7EAED)',
+  '--color-text-gray': 'light-dark(#0A1317, #DFE2E5)',
 
   // Green
-  '--color-background-green': 'light-dark(#24BB5E33, #24BB5E33)',
-  '--color-border-green': 'light-dark(#0D8626, #0B991F)', // Green 600 / 550
-  '--color-icon-green': 'light-dark(#0D8626, #26A756)',
-  '--color-text-green': 'light-dark(#09441F, #A5F690)',
+  '--color-background-green': 'light-dark(#6AB26B33, #74AF7533)',
+  '--color-border-green': 'light-dark(#2F7D33, #589558)',
+  '--color-icon-green': 'light-dark(#2F7D33, #65A266)',
+  '--color-text-green': 'light-dark(#00490B, #BCE0BB)',
 
   // Orange
-  '--color-background-orange': 'light-dark(#F2790233, #F2790233)',
-  '--color-border-orange': 'light-dark(#EB6E00, #B34A01)', // Orange 500 / 650
-  '--color-icon-orange': 'light-dark(#E9690B, #FB8C00)',
-  '--color-text-orange': 'light-dark(#6B2203, #FDB876)',
+  '--color-background-orange': 'light-dark(#E97E1D33, #DF843F33)',
+  '--color-border-orange': 'light-dark(#E97E1D, #A54F00)',
+  '--color-icon-orange': 'light-dark(#D97000, #EB9352)',
+  '--color-text-orange': 'light-dark(#622700, #FFB37E)',
 
   // Pink
-  '--color-background-pink': 'light-dark(#E638B333, #E638B333)',
-  '--color-border-pink': 'light-dark(#F351C0, #C02294)', // Pink 500 / 650
-  '--color-icon-pink': 'light-dark(#C2185B, #EC407A)',
-  '--color-text-pink': 'light-dark(#650053, #FEADE3)',
+  '--color-background-pink': 'light-dark(#E2579633, #D7639533)',
+  '--color-border-pink': 'light-dark(#EF67A3, #BB477C)',
+  '--color-icon-pink': 'light-dark(#B52970, #D76395)',
+  '--color-text-pink': 'light-dark(#70003F, #FFA9CA)',
 
   // Purple
   '--color-background-purple': 'light-dark(#7952FF33, #7952FF33)',
-  '--color-border-purple': 'light-dark(#9081FF, #7340FE)', // Purple 500 / 650
-  '--color-icon-purple': 'light-dark(#5B08D8, #7952FF)',
-  '--color-text-purple': 'light-dark(#3E0697, #B3B0FE)',
+  '--color-border-purple': 'light-dark(#8E7CFF, #6D46EA)',
+  '--color-icon-purple': 'light-dark(#603BD2, #7952FF)',
+  '--color-text-purple': 'light-dark(#3B2287, #B3ADFF)',
 
   // Red
-  '--color-background-red': 'light-dark(#E3193B33, #E3193B33)',
-  '--color-border-red': 'light-dark(#E3193B, #F5394F)',
-  '--color-icon-red': 'light-dark(#D31130, #E3193B)',
-  '--color-text-red': 'light-dark(#7B0210, #FFB2B8)',
+  '--color-background-red': 'light-dark(#E71E4033, #E5314933)',
+  '--color-border-red': 'light-dark(#E71E40, #F64054)',
+  '--color-icon-red': 'light-dark(#D40034, #E53149)',
+  '--color-text-red': 'light-dark(#750017, #FFAEAD)',
 
   // Teal
-  '--color-background-teal': 'light-dark(#0DB7AF33, #0DB7AF33)',
-  '--color-border-teal': 'light-dark(#08A3A3, #08767D)', // Teal 500 / 650
-  '--color-icon-teal': 'light-dark(#009688, #26A69A)',
-  '--color-text-teal': 'light-dark(#083943, #40DCCD)',
+  '--color-background-teal': 'light-dark(#34B5A133, #4FB1A033)',
+  '--color-border-teal': 'light-dark(#01A894, #007C6D)',
+  '--color-icon-teal': 'light-dark(#009986, #39A593)',
+  '--color-text-teal': 'light-dark(#003A32, #81C9BB)',
 
   // Yellow
-  '--color-background-yellow': 'light-dark(#E2A40033, #E2A40033)',
-  '--color-border-yellow': 'light-dark(#C58600, #B47700)', // Yellow 500 / 550
-  '--color-icon-yellow': 'light-dark(#FBC02D, #FFEE58)',
-  '--color-text-yellow': 'light-dark(#753F07, #FBCE03)',
+  '--color-background-yellow': 'light-dark(#D9A20033, #D1A60033)',
+  '--color-border-yellow': 'light-dark(#B78800, #A27F00)',
+  '--color-icon-yellow': 'light-dark(#F3BE42, #FFDF8C)',
+  '--color-text-yellow': 'light-dark(#6A4D00, #FBD052)',
 
   // Syntax highlighting
 } as const;

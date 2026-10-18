@@ -41,8 +41,8 @@ export const docs = {
             ],
             [
               "--color-accent-muted",
-              "#0082FB33",
-              "#0082FB3F"
+              "#3585FD33",
+              "#0C87EF3F"
             ],
             [
               "--color-on-accent",
@@ -51,8 +51,8 @@ export const docs = {
             ],
             [
               "--color-neutral",
-              "rgba(5, 54, 89, 0.1)",
-              "rgba(223, 226, 229, 0.2)"
+              "#2B383D1A",
+              "#DFE2E533"
             ],
             [
               "--color-background-surface",
@@ -66,22 +66,22 @@ export const docs = {
             ],
             [
               "--color-overlay",
-              "#01122866",
+              "#0A131766",
               "#11111299"
             ],
             [
               "--color-overlay-hover",
-              "#0536590C",
+              "#2B383D0C",
               "#FFFFFF0C"
             ],
             [
               "--color-overlay-pressed",
-              "#05365919",
+              "#2B383D19",
               "#FFFFFF19"
             ],
             [
               "--color-background-muted",
-              "#0536590C",
+              "#2B383D0C",
               "#1111127F"
             ],
             [
@@ -102,7 +102,7 @@ export const docs = {
             [
               "--color-text-accent",
               "#0064E0",
-              "#3E9EFB"
+              "#4CA3FF"
             ],
             [
               "--color-on-dark",
@@ -151,18 +151,18 @@ export const docs = {
             ],
             [
               "--color-background-error-inverted",
-              "#AA071E",
-              "#E3193B"
+              "#A20025",
+              "#E53149"
             ],
             [
               "--color-success",
-              "#0D8626",
-              "#0D8626"
+              "#2F7D33",
+              "#3E7B40"
             ],
             [
               "--color-success-muted",
-              "#0B991F33",
-              "#0B991F3F"
+              "#4A984C33",
+              "#5895583F"
             ],
             [
               "--color-on-success",
@@ -171,13 +171,13 @@ export const docs = {
             ],
             [
               "--color-error",
-              "#E3193B",
-              "#F5394F"
+              "#E71E40",
+              "#F64054"
             ],
             [
               "--color-error-muted",
-              "#E3193B33",
-              "#F5394F3F"
+              "#E71E4033",
+              "#F640543F"
             ],
             [
               "--color-on-error",
@@ -191,17 +191,17 @@ export const docs = {
             ],
             [
               "--color-warning-muted",
-              "#E2A40033",
-              "#E2A4003F"
+              "#D9A20033",
+              "#D1A6003F"
             ],
             [
               "--color-on-warning",
               "#0A1317",
-              "#0A1317"
+              "#111112"
             ],
             [
               "--color-border",
-              "#05365919",
+              "#2B383D19",
               "#F2F4F619"
             ],
             [
@@ -221,18 +221,18 @@ export const docs = {
             ],
             [
               "--color-shadow",
-              "rgba(5, 54, 89, 0.1)",
-              "rgba(0, 0, 0, 0.3)"
+              "#2B383D1A",
+              "#0000004C"
             ],
             [
               "--color-tint-hover",
-              "black",
-              "white"
+              "#000000",
+              "#FFFFFF"
             ],
             [
               "--color-background-blue",
-              "#0171E333",
-              "#0171E333"
+              "#1D74EF33",
+              "#0078DB33"
             ],
             [
               "--color-border-blue",
@@ -246,38 +246,38 @@ export const docs = {
             ],
             [
               "--color-text-blue",
-              "#042F97",
-              "#AFD7FF"
+              "#003583",
+              "#B6D8FF"
             ],
             [
               "--color-background-cyan",
-              "#03A7D733",
-              "#03A7D733"
+              "#29AFCB33",
+              "#49ADC433"
             ],
             [
               "--color-border-cyan",
-              "#089DD0",
-              "#0171A4"
+              "#00A2BE",
+              "#00788D"
             ],
             [
               "--color-icon-cyan",
-              "#00ACC1",
-              "#26C6DA"
+              "#29AFCB",
+              "#5DBAD1"
             ],
             [
               "--color-text-cyan",
-              "#014975",
-              "#A1EEF9"
+              "#00505F",
+              "#B1EEFE"
             ],
             [
               "--color-background-gray",
               "#0A131733",
-              "#666A724C"
+              "#6469724C"
             ],
             [
               "--color-border-gray",
-              "#647685",
-              "#748695"
+              "#5D788F",
+              "#7C828A"
             ],
             [
               "--color-icon-gray",
@@ -287,67 +287,67 @@ export const docs = {
             [
               "--color-text-gray",
               "#0A1317",
-              "#E7EAED"
+              "#DFE2E5"
             ],
             [
               "--color-background-green",
-              "#24BB5E33",
-              "#24BB5E33"
+              "#6AB26B33",
+              "#74AF7533"
             ],
             [
               "--color-border-green",
-              "#0D8626",
-              "#0B991F"
+              "#2F7D33",
+              "#589558"
             ],
             [
               "--color-icon-green",
-              "#0D8626",
-              "#26A756"
+              "#2F7D33",
+              "#65A266"
             ],
             [
               "--color-text-green",
-              "#09441F",
-              "#A5F690"
+              "#00490B",
+              "#BCE0BB"
             ],
             [
               "--color-background-orange",
-              "#F2790233",
-              "#F2790233"
+              "#E97E1D33",
+              "#DF843F33"
             ],
             [
               "--color-border-orange",
-              "#EB6E00",
-              "#B34A01"
+              "#E97E1D",
+              "#A54F00"
             ],
             [
               "--color-icon-orange",
-              "#E9690B",
-              "#FB8C00"
+              "#D97000",
+              "#EB9352"
             ],
             [
               "--color-text-orange",
-              "#6B2203",
-              "#FDB876"
+              "#622700",
+              "#FFB37E"
             ],
             [
               "--color-background-pink",
-              "#E638B333",
-              "#E638B333"
+              "#E2579633",
+              "#D7639533"
             ],
             [
               "--color-border-pink",
-              "#F351C0",
-              "#C02294"
+              "#EF67A3",
+              "#BB477C"
             ],
             [
               "--color-icon-pink",
-              "#C2185B",
-              "#EC407A"
+              "#B52970",
+              "#D76395"
             ],
             [
               "--color-text-pink",
-              "#650053",
-              "#FEADE3"
+              "#70003F",
+              "#FFA9CA"
             ],
             [
               "--color-background-purple",
@@ -356,78 +356,78 @@ export const docs = {
             ],
             [
               "--color-border-purple",
-              "#9081FF",
-              "#7340FE"
+              "#8E7CFF",
+              "#6D46EA"
             ],
             [
               "--color-icon-purple",
-              "#5B08D8",
+              "#603BD2",
               "#7952FF"
             ],
             [
               "--color-text-purple",
-              "#3E0697",
-              "#B3B0FE"
+              "#3B2287",
+              "#B3ADFF"
             ],
             [
               "--color-background-red",
-              "#E3193B33",
-              "#E3193B33"
+              "#E71E4033",
+              "#E5314933"
             ],
             [
               "--color-border-red",
-              "#E3193B",
-              "#F5394F"
+              "#E71E40",
+              "#F64054"
             ],
             [
               "--color-icon-red",
-              "#D31130",
-              "#E3193B"
+              "#D40034",
+              "#E53149"
             ],
             [
               "--color-text-red",
-              "#7B0210",
-              "#FFB2B8"
+              "#750017",
+              "#FFAEAD"
             ],
             [
               "--color-background-teal",
-              "#0DB7AF33",
-              "#0DB7AF33"
+              "#34B5A133",
+              "#4FB1A033"
             ],
             [
               "--color-border-teal",
-              "#08A3A3",
-              "#08767D"
+              "#01A894",
+              "#007C6D"
             ],
             [
               "--color-icon-teal",
-              "#009688",
-              "#26A69A"
+              "#009986",
+              "#39A593"
             ],
             [
               "--color-text-teal",
-              "#083943",
-              "#40DCCD"
+              "#003A32",
+              "#81C9BB"
             ],
             [
               "--color-background-yellow",
-              "#E2A40033",
-              "#E2A40033"
+              "#D9A20033",
+              "#D1A60033"
             ],
             [
               "--color-border-yellow",
-              "#C58600",
-              "#B47700"
+              "#B78800",
+              "#A27F00"
             ],
             [
               "--color-icon-yellow",
-              "#FBC02D",
-              "#FFEE58"
+              "#F3BE42",
+              "#FFDF8C"
             ],
             [
               "--color-text-yellow",
-              "#753F07",
-              "#FBCE03"
+              "#6A4D00",
+              "#FBD052"
             ]
           ]
         }

@@ -5,15 +5,17 @@ published theme package: its audience and visual intent, inherited base, portabl
 token choices, theme-local roles, tonal palette families and selected tones,
 component/state mappings, compatibility, artifact shape, and measured evidence.
 
-Theme specifications are colocated with their package at
-`packages/themes/<theme>/<theme>.spec.md`, analogous to component specs. This
-page is guidance and an index, not a canonical record. Start a record from
+Theme specifications are colocated with their owning package. Published package
+themes live at `packages/themes/<theme>/<theme>.spec.md`; the default Core theme
+lives at `packages/core/astryx.spec.md`. This page is guidance and an index, not
+a canonical record. Start a record from
 `docs/templates/knowledge/theme-spec.md` and use an id of the form
 `theme:<package-theme-name>` (for example, `theme:neutral`).
 
-Current records:
+Theme records:
 
-- [Neutral](../../packages/themes/neutral/neutral.spec.md) — draft
+- [Astryx default](../../packages/core/astryx.spec.md) — draft
+- [Neutral](../../packages/themes/neutral/neutral.spec.md) — current
 
 A theme record sits between system theming architecture and consumer/component
 records. It uses one typed `references` list for architecture, design, system,
