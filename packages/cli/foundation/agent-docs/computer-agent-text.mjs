@@ -80,7 +80,7 @@ export const COMPUTER_AGENT_FILES = Object.freeze({
   codex: SHARED_SKILL,
   gemini: SHARED_SKILL,
   copilot: SHARED_SKILL,
-  cursor: SHARED_SKILL,
+  'cursor': SHARED_SKILL,
   opencode: SHARED_SKILL,
   crush: SHARED_SKILL,
   qwen: SHARED_SKILL,
