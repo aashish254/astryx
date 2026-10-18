@@ -290,7 +290,7 @@ export function chooseRelease({
  * @param {import('./project.mjs').ReleaseFacts} facts
  * @returns {string | null}
  */
-function projectRootOf(facts) {
+export function projectRootOf(facts) {
   if (facts.declaringDir) return facts.declaringDir;
   const dir = facts.core?.dir ?? facts.cli?.dir;
   if (!dir) return null;

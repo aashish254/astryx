@@ -89,12 +89,40 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "The CLI you installed for your computer stays on the newest release. At most once an hour, never in the first hour after you install it, a run starts a background check of the registry's `latest` release, installs a newer one into the cache, and verifies that it starts. The next run outside a project uses it and says so once. A failed check changes nothing, and the release it switched from stays in the cache. Projects are never updated: `astryx doctor` reports a newer release instead.",
+          text: "The CLI you installed for your computer stays on the newest release. At most once an hour, never in the first hour after you install it, a run starts a background check of the registry's `latest` release, installs a newer one into the cache, and verifies that it starts. The next run outside a project uses it and says so once. A failed check changes nothing, and the release it switched from stays in the cache. Projects are never updated: a reminder and `astryx doctor` name the commands instead (see below).",
         },
         {
           type: 'code',
           lang: 'text',
           code: 'astryx: now using 0.7.3 (was 0.7.2). What changed: https://github.com/facebook/astryx/releases/tag/v0.7.3',
+        },
+      ],
+    },
+    {
+      id: 'reminders',
+      title: 'Reminders to update',
+      content: [
+        {
+          type: 'prose',
+          text: "A text-mode run prints one reminder line on standard error, at most once a day for each reason, and never with `--json`. Reminders never change a command's output or exit status. They need a newest release the CLI installed for your computer has found, so a fresh home folder, such as a CI run's, never prints one.",
+        },
+        {
+          type: 'list',
+          style: 'unordered',
+          items: [
+            'The project is on an older release than the newest. The line names the install command for your package manager and the `upgrade` command that migrates the code.',
+            'The CLI installed for your computer cannot move to the newest release: it needs a newer Node, the per-user cache cannot be written, or the registry has not been reached for 7 days. The line points at `astryx doctor`, which names the fix for your computer.',
+            'The first `astryx` on your search path is a release from before projects were handed to their own release, so it answers every folder itself. The line names the command that replaces it.',
+          ],
+        },
+        {
+          type: 'code',
+          lang: 'text',
+          code: 'astryx: this project uses Astryx 0.7.1; 0.7.3 is the newest. To upgrade: npm install @astryxdesign/core@0.7.3 @astryxdesign/cli@0.7.3, then npx astryx upgrade --from 0.7.1 --apply.\nastryx: cannot move to Astryx 0.8.0: it needs Node >=24, and this computer runs Node 22.13.0. Run astryx doctor for the fix.\nastryx: the astryx command on this computer runs CLI 0.7.1, which answers every folder itself. Replace it: npm i -g @astryxdesign/cli@latest.',
+        },
+        {
+          type: 'prose',
+          text: "`astryx doctor` reports the same things: in a project, its release beside the newest with the commands; outside one, whether the CLI installed for your computer can move to the newest release; and, everywhere, every `astryx` on your search path in the order your shell tries them. The times of the reminders live in `astryx/reminders.json` in your platform's configuration folder.",
         },
       ],
     },
@@ -116,10 +144,17 @@ export const docs = {
           rows: [
             ['`claude`', '`~/.claude/skills/astryx/SKILL.md`'],
             [
-              '`codex`, `gemini`, `copilot`',
+              '`codex`, `gemini`, `copilot`, `cursor`, `opencode`, `crush`, `qwen`, `cline`, `amp`, `goose`, `roo`, `zed`',
               '`~/.agents/skills/astryx/SKILL.md`',
             ],
+            ['`continue`', '`~/.continue/skills/astryx/SKILL.md`'],
+            ['`kiro`', '`~/.kiro/skills/astryx/SKILL.md`'],
+            ['`windsurf`', '`~/.codeium/windsurf/skills/astryx/SKILL.md`'],
           ],
+        },
+        {
+          type: 'prose',
+          text: "Tools that read both the shared folder and Claude Code's list the guide once. Continue, Kiro, and Windsurf read only their own folder, so the CLI writes theirs only when that tool's folder exists in your home folder, or when you choose the tool with `--agent`. Aider reads no skill folder: to give it the guide, add the shared file to the `read:` list in your Aider configuration yourself. The CLI never edits an agent tool's own configuration.",
         },
         {
           type: 'prose',

@@ -17,6 +17,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {
   COMPUTER_AGENT_FILES,
   COMPUTER_AGENTS,
+  allComputerAgentTextPaths,
   astryxOnSearchPath,
   computerAgentTextPaths,
   unknownComputerAgents,
@@ -246,11 +247,56 @@ describe('write, refresh, keep, remove', () => {
   });
 
   it('maps every agent name to a file it names, and reports unknown names', () => {
+    const all = allComputerAgentTextPaths(home);
     for (const name of COMPUTER_AGENTS) {
-      expect(SKILLS).toContain(COMPUTER_AGENT_FILES[name]);
+      expect(all).toContain(path.join(home, COMPUTER_AGENT_FILES[name]));
     }
-    expect(unknownComputerAgents(['claude', 'cursor', 'codex'])).toEqual([
-      'cursor',
+    expect(unknownComputerAgents(['claude', 'aider', 'codex'])).toEqual([
+      'aider',
+    ]);
+  });
+
+  it('writes every file as a skill whose name matches its folder and whose frontmatter is strict YAML', () => {
+    writeComputerAgentText({
+      home,
+      command: 'astryx',
+      agents: [...COMPUTER_AGENTS],
+    });
+    for (const file of allComputerAgentTextPaths(home)) {
+      expect(fs.lstatSync(file).isFile()).toBe(true);
+      const text = fs.readFileSync(file, 'utf8');
+      const [, front] = /^---\n([\s\S]*?)\n---\n/u.exec(text) ?? [];
+      const parsed = parseYaml(front ?? '', {strict: true, uniqueKeys: true});
+      expect(parsed.name).toBe(path.basename(path.dirname(file)));
+      expect(parsed.name).toMatch(/^[a-z0-9-]{1,64}$/u);
+      expect(typeof parsed.description).toBe('string');
+    }
+  });
+
+  it("writes a single-tool file for every agent only when that tool's folder exists, and always when chosen", () => {
+    const kiro = path.join(home, '.kiro', 'skills', 'astryx', 'SKILL.md');
+    const cont = path.join(home, '.continue', 'skills', 'astryx', 'SKILL.md');
+    writeComputerAgentText({home, command: 'astryx'});
+    expect(fs.existsSync(kiro)).toBe(false);
+    fs.mkdirSync(path.join(home, '.kiro'));
+    expect(
+      writeComputerAgentText({home, command: 'astryx'}).map(f => f.action),
+    ).toEqual(['unchanged', 'unchanged', 'written']);
+    expect(fs.readFileSync(kiro, 'utf8')).toBe(
+      renderComputerAgentText({command: 'astryx'}),
+    );
+    expect(
+      writeComputerAgentText({home, command: 'astryx', agents: ['continue']}),
+    ).toEqual([
+      {path: path.join(home, SKILLS[0]), action: 'removed'},
+      {path: path.join(home, SKILLS[1]), action: 'removed'},
+      {path: cont, action: 'written'},
+      {path: kiro, action: 'removed'},
+    ]);
+    expect(removeComputerAgentText({home})).toEqual([
+      {path: path.join(home, SKILLS[0]), action: 'absent'},
+      {path: path.join(home, SKILLS[1]), action: 'absent'},
+      {path: cont, action: 'removed'},
     ]);
   });
 

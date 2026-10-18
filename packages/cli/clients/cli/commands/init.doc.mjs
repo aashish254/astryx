@@ -52,9 +52,9 @@ export const doc = {
       flag: '--user',
       param: 'options.user',
       description:
-                'Write or refresh the computer-level agent text, one skill file at ~/.agents/skills/astryx/SKILL.md and ~/.claude/skills/astryx/SKILL.md, ' +
+        'Write or refresh the computer-level agent text, one skill file at ~/.agents/skills/astryx/SKILL.md and ~/.claude/skills/astryx/SKILL.md, plus ~/.continue, ~/.kiro, or ~/.codeium/windsurf skills when that tool is installed, ' +
         "instead of setting up the folder. It tells agents anywhere on the computer how to use Astryx through the `astryx` command, and to follow a project's own agent docs inside that project. " +
-        'With --agent, a comma-separated list of claude, codex, gemini, and copilot, it writes only the files those agents read and removes the other unedited one. ' +
+        'With --agent, a comma-separated list of claude, codex, gemini, copilot, cursor, opencode, crush, qwen, cline, amp, goose, roo, zed, continue, kiro, windsurf, it writes only the files those agents read and removes the other unedited one. ' +
         'Records the choice in astryx/settings.json in the per-user configuration folder, which the CLI installed for the computer follows when it refreshes the text in the background. ' +
         'Works in any folder and writes only those files and that setting. A file there without the Astryx markers, one edited since Astryx wrote it, or a symlink, is kept as it is. ' +
         'Warns, and still writes, when no `astryx` command on the computer runs the Astryx CLI. ' +
@@ -69,7 +69,7 @@ export const doc = {
         'codex and muse (AGENTS.md), hermes (.hermes.md or HERMES.md if present, else AGENTS.md), all (every existing agent doc, else AGENTS.md and .claude/CLAUDE.md). ' +
         'An unknown tool exits 1 with ERR_UNKNOWN_AGENT. ' +
                 'Used only when agent docs are installed (the default, --all, or --features agents); --agent-docs-path takes precedence. ' +
-        'With --user it takes a comma-separated list of the agents the computer-level text is for: claude, codex, gemini, copilot',
+        'With --user it takes a comma-separated list of the agents the computer-level text is for: claude, codex, gemini, copilot, cursor, opencode, crush, qwen, cline, amp, goose, roo, zed, continue, kiro, windsurf',
     },
     {
       flag: '--agent-docs-path <path...>',

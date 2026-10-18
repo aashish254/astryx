@@ -9,7 +9,13 @@
  * share a file share one write:
  *
  * - `claude` reads `~/.claude/skills/astryx/SKILL.md`
- * - `codex`, `gemini`, and `copilot` read `~/.agents/skills/astryx/SKILL.md`
+ * - `codex`, `gemini`, `copilot`, `cursor`, `opencode`, and most other agent
+ *   tools read `~/.agents/skills/astryx/SKILL.md`
+ * - `continue`, `kiro`, and `windsurf` read only their own folder, written
+ *   for every agent only when that tool's folder exists
+ *
+ * Tools that read both shared folders list the skill once; no always-on
+ * instructions file is written, since no tool merges one with a skill.
  *
  * The body comes from the same source as a project's agent-docs block
  * (`generateCompressedIndex`, scope `computer`): no version, no component
@@ -38,6 +44,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {cliDoor} from '../env/cli-command.mjs';
+import {astryxCommandsOnSearchPath} from '../env/search-path.mjs';
 import {generateCompressedIndex} from './agent-docs.mjs';
 import {createHash} from 'node:crypto';
 import {MARKER_START, MARKER_END} from './agent-doc-state.mjs';
@@ -48,15 +55,24 @@ export const COMPUTER_COMMAND = 'astryx';
 /** The install step for the CLI copy the computer-level text relies on. */
 export const COMPUTER_INSTALL_STEP = 'npm i -g @astryxdesign/cli';
 
-/** The CLI package whose bin the text's command must reach. */
-const CLI_PACKAGE = '@astryxdesign/cli';
-
 const SHARED_SKILL = path.join('.agents', 'skills', 'astryx', 'SKILL.md');
 const CLAUDE_SKILL = path.join('.claude', 'skills', 'astryx', 'SKILL.md');
+const CONTINUE_SKILL = path.join('.continue', 'skills', 'astryx', 'SKILL.md');
+const KIRO_SKILL = path.join('.kiro', 'skills', 'astryx', 'SKILL.md');
+const WINDSURF_SKILL = path.join(
+  '.codeium',
+  'windsurf',
+  'skills',
+  'astryx',
+  'SKILL.md',
+);
 
 /**
  * Each agent name `astryx init --user --agent` accepts, and the file, relative
- * to the home folder, that agent reads.
+ * to the home folder, that agent reads. Most agent tools read the shared
+ * `.agents/skills` folder; Claude Code reads only its own; a few tools read
+ * only their own folder, which no other tool reads, so writing it adds no
+ * second copy anywhere.
  * @type {Readonly<Record<string, string>>}
  */
 export const COMPUTER_AGENT_FILES = Object.freeze({
@@ -64,6 +80,18 @@ export const COMPUTER_AGENT_FILES = Object.freeze({
   codex: SHARED_SKILL,
   gemini: SHARED_SKILL,
   copilot: SHARED_SKILL,
+  cursor: SHARED_SKILL,
+  opencode: SHARED_SKILL,
+  crush: SHARED_SKILL,
+  qwen: SHARED_SKILL,
+  cline: SHARED_SKILL,
+  amp: SHARED_SKILL,
+  goose: SHARED_SKILL,
+  roo: SHARED_SKILL,
+  zed: SHARED_SKILL,
+  continue: CONTINUE_SKILL,
+  kiro: KIRO_SKILL,
+  windsurf: WINDSURF_SKILL,
 });
 
 /** The agent names, in the order the docs list them. */
@@ -71,10 +99,18 @@ export const COMPUTER_AGENTS = Object.freeze(Object.keys(COMPUTER_AGENT_FILES));
 
 /**
  * Every file, relative to the home folder, in the order they are written and
- * reported.
- * @type {readonly string[]}
+ * reported, with the folder of the one tool that reads it when only that tool
+ * does. Without a chosen agent list, such a file is written only when its
+ * tool's folder exists in the home folder.
+ * @type {ReadonlyArray<{file: string, toolFolder: string | null}>}
  */
-const SKILL_FILES = Object.freeze([SHARED_SKILL, CLAUDE_SKILL]);
+const SKILL_FILES = Object.freeze([
+  {file: SHARED_SKILL, toolFolder: null},
+  {file: CLAUDE_SKILL, toolFolder: null},
+  {file: CONTINUE_SKILL, toolFolder: '.continue'},
+  {file: KIRO_SKILL, toolFolder: '.kiro'},
+  {file: WINDSURF_SKILL, toolFolder: path.join('.codeium', 'windsurf')},
+]);
 
 /**
  * When an agent should load the skill; the frontmatter `description`.
@@ -97,8 +133,9 @@ export function displayHomePath(file, home = os.homedir()) {
 }
 
 /**
- * The absolute paths of the computer-level text: every file, or only the
- * files the named agents read.
+ * The absolute paths of the computer-level text the chosen agents read: with
+ * no list, the shared and Claude Code files, and each single-tool file whose
+ * tool's folder exists; with a list, exactly the files those agents read.
  * @param {string} [home] the home folder; defaults to the current user's
  * @param {readonly string[] | null} [agents] agent names; `null` for every agent
  * @returns {string[]}
@@ -107,9 +144,21 @@ export function computerAgentTextPaths(home = os.homedir(), agents = null) {
   const wanted = agents
     ? new Set(agents.map(name => COMPUTER_AGENT_FILES[name]).filter(Boolean))
     : null;
-  return SKILL_FILES.filter(rel => !wanted || wanted.has(rel)).map(rel =>
-    path.join(home, rel),
-  );
+  return SKILL_FILES.filter(({file, toolFolder}) =>
+    wanted
+      ? wanted.has(file)
+      : !toolFolder || fs.existsSync(path.join(home, toolFolder)),
+  ).map(({file}) => path.join(home, file));
+}
+
+/**
+ * Every file Astryx may write for the computer-level text, whether or not
+ * any chosen agent reads it.
+ * @param {string} [home]
+ * @returns {string[]}
+ */
+export function allComputerAgentTextPaths(home = os.homedir()) {
+  return SKILL_FILES.map(({file}) => path.join(home, file));
 }
 
 /**
@@ -318,7 +367,7 @@ export function writeComputerAgentText({
   const wanted = new Set(computerAgentTextPaths(home, agents));
   /** @type {import('../../api/init/init.type.mjs').InitUserFile[]} */
   const rows = [];
-  for (const file of computerAgentTextPaths(home)) {
+  for (const file of allComputerAgentTextPaths(home)) {
     const state = stateOf(file, expected);
     if (!wanted.has(file)) {
       if (state === 'current' || state === 'differs') {
@@ -347,104 +396,31 @@ export function writeComputerAgentText({
  * @returns {import('../../api/init/init.type.mjs').InitUserFile[]}
  */
 export function removeComputerAgentText({home = os.homedir()} = {}) {
-  return computerAgentTextPaths(home).map(file => {
+  /** @type {import('../../api/init/init.type.mjs').InitUserFile[]} */
+  const rows = [];
+  allComputerAgentTextPaths(home).forEach((file, index) => {
     const state = stateOf(file, '');
-    if (state === 'absent') return {path: file, action: 'absent'};
+    // The single-tool files are reported only when there is one to act on.
+    if (state === 'absent') {
+      if (index < 2) rows.push({path: file, action: 'absent'});
+      return;
+    }
     if (state === 'foreign' || state === 'edited') {
-      return {path: file, action: 'kept', reason: keptReason(state)};
+      rows.push({path: file, action: 'kept', reason: keptReason(state)});
+      return;
     }
     removeFile(file);
-    return {path: file, action: 'removed'};
+    rows.push({path: file, action: 'removed'});
   });
-}
-
-/**
- * Whether a package folder is the Astryx CLI.
- * @param {string} dir
- * @returns {boolean}
- */
-function isCliPackage(dir) {
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
-    );
-    return pkg?.name === CLI_PACKAGE;
-  } catch {
-    return false;
-  }
-}
-
-/** A package manager's shim names the bin it starts by its package path. */
-const SHIM_TARGET = /node_modules[\\/]@astryxdesign[\\/]cli[\\/]/u;
-
-/** Shims are small; anything larger is a program, not a shim. */
-const MAX_SHIM_BYTES = 64 * 1024;
-
-/**
- * Whether an executable named `astryx` belongs to the Astryx CLI: its real
- * file sits in the CLI package (npm and bun link it), or it is a package
- * manager's shim script that starts the CLI package's bin (npm on Windows,
- * pnpm, yarn).
- * @param {string} file
- * @returns {boolean}
- */
-function isAstryxCliBin(file) {
-  let real;
-  try {
-    real = fs.realpathSync(file);
-  } catch {
-    return false;
-  }
-  let dir = path.dirname(real);
-  for (;;) {
-    if (isCliPackage(dir)) return true;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  try {
-    if (fs.statSync(real).size > MAX_SHIM_BYTES) return false;
-    return SHIM_TARGET.test(fs.readFileSync(real, 'utf8'));
-  } catch {
-    return false;
-  }
+  return rows;
 }
 
 /**
  * Whether the `astryx` a shell would run from this computer's search path is
- * the Astryx CLI. Reads the operating system's search path (and, on Windows,
- * its executable extensions); the first `astryx` found is the one that runs.
+ * the Astryx CLI: the first `astryx` found is the one that runs.
  * @param {{searchPath?: string, platform?: NodeJS.Platform}} [options]
  * @returns {boolean}
  */
-export function astryxOnSearchPath({
-  searchPath = process.env.PATH ?? '',
-  platform = process.platform,
-} = {}) {
-  const windows = platform === 'win32';
-  const names = windows
-    ? ['astryx.cmd', 'astryx.exe', 'astryx.ps1', 'astryx']
-    : [COMPUTER_COMMAND];
-  for (const dir of searchPath.split(path.delimiter)) {
-    if (!dir) continue;
-    for (const name of names) {
-      const file = path.join(dir, name);
-      let stat;
-      try {
-        stat = fs.statSync(file);
-      } catch {
-        continue;
-      }
-      if (!stat.isFile()) continue;
-      if (!windows) {
-        try {
-          fs.accessSync(file, fs.constants.X_OK);
-        } catch {
-          continue;
-        }
-      }
-      return isAstryxCliBin(file);
-    }
-  }
-  return false;
+export function astryxOnSearchPath(options = {}) {
+  return astryxCommandsOnSearchPath(options)[0]?.astryx ?? false;
 }

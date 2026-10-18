@@ -158,10 +158,10 @@ describe('init({user: true})', () => {
 
   it('refuses an unknown agent name with ERR_UNKNOWN_AGENT and writes nothing', async () => {
     await expect(
-      init({user: true, agent: 'claude,cursor'}),
+      init({user: true, agent: 'claude,aider'}),
     ).rejects.toMatchObject({
       code: 'ERR_UNKNOWN_AGENT',
-      message: expect.stringContaining('`cursor`'),
+      message: expect.stringContaining('`aider`'),
     });
     expect(fs.existsSync(path.join(home, '.claude'))).toBe(false);
     expect(settings()).toBeNull();
