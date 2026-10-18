@@ -104,25 +104,41 @@ export const docs = {
       content: [
         {
           type: 'prose',
-          text: "A project's agent docs reach only agents working in that project. To tell agents anywhere on your computer how to use Astryx, write the computer-level agent text:",
+          text: "A project's agent docs reach only agents working in that project. The CLI you install for your computer also keeps a short guide where agent tools look on your computer, so agents anywhere know how to use Astryx. It writes the guide on its first run and again after each switch to a newer release, in the background, so no command waits for it. Installing the package does not write it: some package managers skip install scripts.",
+        },
+        {
+          type: 'prose',
+          text: "The guide is one skill file, written to each folder an agent tool reads skills from in your home folder. It is the same guide `init` writes into a project, without a version, and it tells agents to follow a project's own agent docs inside that project, because those match the project's release. Its commands start with `astryx`.",
+        },
+        {
+          type: 'table',
+          headers: ['Agent name', 'File'],
+          rows: [
+            ['`claude`', '`~/.claude/skills/astryx/SKILL.md`'],
+            [
+              '`codex`, `gemini`, `copilot`',
+              '`~/.agents/skills/astryx/SKILL.md`',
+            ],
+          ],
+        },
+        {
+          type: 'prose',
+          text: 'To write it now, or to keep it only where some agent tools look, run `init --user`, with `--agent` and a comma-separated list of agent names to choose:',
         },
         {
           type: 'code',
           lang: 'bash',
-          code: 'astryx init --user',
-        },
-        {
-          type: 'prose',
-          text: "It writes one skill file to the two folders coding agents read skills from, `~/.agents/skills/astryx/SKILL.md` and `~/.claude/skills/astryx/SKILL.md`, and nothing else. It works in any folder: inside a project it is never handed to the project's own CLI, because it writes to your computer, not the project. The text is the same guide `init` writes into a project, without a version, and it tells agents to follow a project's own agent docs inside that project, because those match the project's release. Its commands start with `astryx`, so install the CLI for your computer first; when no `astryx` command runs the Astryx CLI, `init --user` still writes the text and warns.",
+          code: 'astryx init --user\nastryx init --user --agent claude,codex',
         },
         {
           type: 'list',
           style: 'unordered',
           items: [
-            'Run it again after a new release to refresh the text. Outside a project, `astryx doctor` says whether the text is there and matches the release that answered.',
-            'A file at either path that Astryx did not write, or a symlink, is left as it is.',
-            '`astryx init --user --remove-agents` removes both files.',
-            'Nothing else writes these files: not installing the CLI, not `init` in a project, not `upgrade`.',
+            '`astryx init --user --remove-agents` removes the guide and turns it off: the CLI installed for your computer writes nothing until you run `astryx init --user` again.',
+            "Your choices live in `astryx/settings.json` in your platform's configuration folder: `~/.config/astryx` on Linux (or `$XDG_CONFIG_HOME/astryx`), `~/Library/Application Support/astryx` on macOS, and `%APPDATA%\\astryx` on Windows. `computerAgentText.install` is `false` after `--remove-agents`, and `computerAgentText.agents` lists the agents you chose.",
+            'Each file records a hash of its text. A file you edited is never overwritten or removed; delete it to get the current guide. A file Astryx did not write, or a symlink, is left as it is.',
+            "`init --user` works in any folder. Inside a project it is never handed to the project's own CLI, because it writes to your computer, not the project.",
+            'When no `astryx` command runs the Astryx CLI, `init --user` still writes the guide and warns. Outside a project, `astryx doctor` says whether the guide is there, matches the release that answered, or is turned off.',
           ],
         },
       ],

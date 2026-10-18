@@ -534,8 +534,13 @@ describe('init outside a project (own)', () => {
         expect(r.status).toBe(0);
         expect(r.written).toEqual([]);
         expect(r.envelope.type).toBe('init.user');
-        // The per-user cache may also live under this home folder.
-        expect(filesIn(home).filter(f => !f.startsWith('.cache'))).toEqual([
+        // The per-user cache and settings may also live under this home
+        // folder.
+        expect(
+          filesIn(home).filter(
+            f => !f.startsWith('.cache') && !f.startsWith('.config'),
+          ),
+        ).toEqual([
           path.join('.agents', 'skills', 'astryx', 'SKILL.md'),
           path.join('.claude', 'skills', 'astryx', 'SKILL.md'),
         ]);

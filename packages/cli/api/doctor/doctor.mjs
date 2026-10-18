@@ -61,6 +61,7 @@ import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {answeredBy} from '../../foundation/release/run-context.mjs';
 import {knownLatestRelease} from '../../foundation/release/global-state.mjs';
 import {displayHomePath, inspectComputerAgentText} from '../../foundation/agent-docs/computer-agent-text.mjs';
+import {computerAgentTextSettings} from '../../foundation/env/user-settings.mjs';
 
 /**
  * @typedef {'pass'|'warn'|'fail'|'info'} DoctorStatus
@@ -1340,7 +1341,9 @@ export function checkCliCommand(ctx) {
  * @property {{cli: string, core: string | null, copy: string}} answeredBy
  * @property {string | null} latest the newest release known, or null
  * @property {Array<{path: string, state: import('../../foundation/agent-docs/computer-agent-text.mjs').ComputerAgentTextState}>} [agentText]
- *   each file of the computer-level agent text against this release's rendering
+  *   each file of the computer-level agent text against this release's rendering
+ * @property {import('../../foundation/env/user-settings.mjs').ComputerAgentTextSettings} [agentTextSettings]
+ *   the person's choices about the computer-level agent text
  * @property {string} [cwd] the folder doctor runs in, for the printed fix
  */
 
@@ -1389,49 +1392,59 @@ export function checkNewestRelease(ctx) {
 }
 
 /**
- * The computer-level agent text (spec AST-081 FR4, FR8): present and equal to
- * this release's rendering, present but different, or absent. Always `info`:
- * the text is optional, so it never warns or fails. A file Astryx did not
- * write counts as absent, and `init --user` keeps it.
+ * The computer-level agent text (spec AST-081 FR4, FR8): turned off, present
+ * and equal to this release's rendering, present but different, or absent,
+ * for the files the chosen agents read. Always `info`: the text is optional,
+ * so it never warns or fails. A file Astryx did not write counts as absent,
+ * and a file a person edited is named; both are kept as they are.
  * @param {ComputerContext} ctx
  * @returns {DoctorCheck}
  */
 export function checkComputerAgentText(ctx) {
-  const files = ctx.agentText ?? inspectComputerAgentText();
+  const settings = ctx.agentTextSettings ?? computerAgentTextSettings();
   const base = {
     id: 'computer-agent-text',
     label: 'Computer-level agent text',
     status: /** @type {const} */ ('info'),
   };
+  if (!settings.install) {
+    return {
+      ...base,
+      message: 'The computer-level agent text is turned off (`astryx init --user --remove-agents`), so the CLI installed for the computer does not write it.',
+      fix: `To turn it back on, run \`${formatCliCommand('astryx init --user', ctx.cwd)}\`.`,
+    };
+  }
+  const files = ctx.agentText ?? inspectComputerAgentText({agents: settings.agents});
   const fix = `Run \`${formatCliCommand('astryx init --user', ctx.cwd)}\`.`;
   const ours = files.filter(f => f.state === 'current' || f.state === 'differs');
-  const kept = files
-    .filter(f => f.state === 'foreign')
-    .map(f => displayHomePath(f.path));
+  const listOf = (/** @type {string} */ state) => files.filter(f => f.state === state).map(f => displayHomePath(f.path));
+  const kept = listOf('foreign');
+  const edited = listOf('edited');
   const keptNote =
-    kept.length > 0
-      ? ` Not written by Astryx, so left as they are: ${kept.join(', ')}.`
-      : '';
+    (kept.length > 0 ? ` Not written by Astryx, so left as they are: ${kept.join(', ')}.` : '') +
+    (edited.length > 0 ? ` Edited since Astryx wrote them, so left as they are (delete one to get the current text): ${edited.join(', ')}.` : '');
+  const agentsNote = settings.agents ? ` Chosen agents: ${settings.agents.join(', ')}.` : '';
   if (ours.length === 0) {
     return {
       ...base,
-      message: `No computer-level agent text: agents outside a project with Astryx agent docs are not told how to use Astryx.${keptNote}`,
-      fix,
+      message: `No computer-level agent text: agents outside a project with Astryx agent docs are not told how to use Astryx.${agentsNote}${keptNote}`,
+      ...(edited.length === files.length ? {} : {fix}),
     };
   }
   if (files.every(f => f.state === 'current')) {
     return {
       ...base,
-      message: `The computer-level agent text matches this release: ${files.map(f => displayHomePath(f.path)).join(', ')}.`,
+      message: `The computer-level agent text matches this release: ${files.map(f => displayHomePath(f.path)).join(', ')}.${agentsNote}`,
     };
   }
-  const stale = files
-    .filter(f => f.state === 'differs' || f.state === 'absent')
-    .map(f => displayHomePath(f.path));
+  const stale = files.filter(f => f.state === 'differs' || f.state === 'absent').map(f => displayHomePath(f.path));
   return {
     ...base,
-    message: `The computer-level agent text differs from this release's: ${stale.join(', ')}.${keptNote}`,
-    fix,
+    message:
+      stale.length > 0
+        ? `The computer-level agent text differs from this release's: ${stale.join(', ')}.${agentsNote}${keptNote}`
+        : `The computer-level agent text matches this release where Astryx keeps it.${agentsNote}${keptNote}`,
+    ...(stale.length > 0 ? {fix} : {}),
   };
 }
 
@@ -1463,7 +1476,7 @@ function runComputerChecks(cwd) {
     nodeVersion: process.versions.node,
     answeredBy: answeredBy(cwd),
     latest: knownLatestRelease(),
-    agentText: inspectComputerAgentText(),
+    agentTextSettings: computerAgentTextSettings(),
     cwd,
   };
   const checks = COMPUTER_CHECKS.map(fn => fn(ctx));

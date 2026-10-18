@@ -59,7 +59,7 @@ npx @astryxdesign/cli init --features agents --agent all       # every agent fil
         },
         {
           type: 'prose',
-          text: "For agents that work outside any one project, `astryx init --user` writes the same guide once for your computer, as a skill in `~/.agents/skills/astryx/` and `~/.claude/skills/astryx/`. Inside a project, agents follow that project's own agent docs. See `astryx docs cli/install-once`.",
+          text: "For agents that work outside any one project, the CLI installed for your computer keeps the same guide in the skill folders agent tools read, such as `~/.agents/skills/astryx/` and `~/.claude/skills/astryx/`; `astryx init --user` writes it now or limits it to some agents. Inside a project, agents follow that project's own agent docs. See `astryx docs cli/install-once`.",
         },
       ],
     },

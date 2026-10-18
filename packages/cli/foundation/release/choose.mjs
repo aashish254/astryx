@@ -179,7 +179,9 @@ export function chooseRelease({
 
   if (!facts.inProject) {
     if (isGlobalCopy(self.root, cacheDir)) {
-      const current = currentGlobalRelease(cacheDir);
+      const current = currentGlobalRelease(cacheDir, {
+        selfVersion: self.version,
+      });
       if (current && current.version !== self.version) {
         return {
           copy: 'carried',

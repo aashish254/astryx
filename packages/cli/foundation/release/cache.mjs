@@ -40,28 +40,15 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {satisfiesRange} from '../env/semver.mjs';
 import {readJson} from './project.mjs';
+import {userCacheDir as userCacheDirFor} from '../env/user-dirs.mjs';
 
 /**
  * The per-user cache directory every Astryx cache lives in, never inside a
- * project. Standard platform locations only.
+ * project (`foundation/env/user-dirs.mjs`).
  * @returns {string}
  */
 export function userCacheDir() {
-  const home = os.homedir();
-  if (process.platform === 'win32') {
-    return path.join(
-      process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'),
-      'astryx',
-      'Cache',
-    );
-  }
-  if (process.platform === 'darwin') {
-    return path.join(home, 'Library', 'Caches', 'astryx');
-  }
-  return path.join(
-    process.env.XDG_CACHE_HOME || path.join(home, '.cache'),
-    'astryx',
-  );
+  return userCacheDirFor();
 }
 
 /**
@@ -238,6 +225,36 @@ function verifyRelease(version, cacheDir) {
     return null;
   }
   return {version, dir, cliDir, coreDir, bin};
+}
+
+/**
+ * Whether a cached release runs on this Node: its CLI declares no Node
+ * range, or the range admits `nodeVersion`. A release installed under one
+ * Node can be started under another after a version manager switches it.
+ * @param {CachedRelease} release
+ * @param {string} [nodeVersion]
+ * @returns {boolean}
+ */
+export function releaseSupportsNode(
+  release,
+  nodeVersion = process.versions.node,
+) {
+  const engine = readJson(path.join(release.cliDir, 'package.json'))?.engines
+    ?.node;
+  return typeof engine !== 'string' || satisfiesRange(nodeVersion, engine);
+}
+
+/**
+ * The versions with a folder in the release cache, verified or not.
+ * @param {string} [cacheDir]
+ * @returns {string[]}
+ */
+export function keptReleaseVersions(cacheDir = userCacheDir()) {
+  try {
+    return fs.readdirSync(releasesDir(cacheDir)).filter(isReleaseVersion);
+  } catch {
+    return [];
+  }
 }
 
 /**

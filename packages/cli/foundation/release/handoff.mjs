@@ -32,6 +32,8 @@ import {
 } from './choose.mjs';
 import {ensureRelease, userCacheDir} from './cache.mjs';
 import {
+  currentGlobalRelease,
+  maybeKeepAgentText,
   maybeStartCheck,
   readGlobalState,
   updateGlobalState,
@@ -155,6 +157,21 @@ export async function startRun({cliRoot, argv}) {
       maybeStartCheck({cacheDir});
     } catch {
       // A check that cannot start never fails a run.
+    }
+    try {
+      // The release that answers outside a project keeps the computer-level
+      // agent text on its own text (FR8).
+      const answering = currentGlobalRelease(cacheDir, {
+        selfVersion: self.version,
+      });
+      maybeKeepAgentText({
+        cacheDir,
+        release: answering
+          ? {version: answering.version, root: answering.cliDir}
+          : self,
+      });
+    } catch {
+      // Nor does the agent text.
     }
   }
 
