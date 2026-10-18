@@ -587,6 +587,7 @@ describe.skipIf(!POSIX)(
           '9.0.5',
         );
         const dir = makeProject({core: '9.0.1', cli: '9.0.1'});
+        writeJson(path.join(dir, 'package-lock.json'), {lockfileVersion: 3});
         const json = run(g.bin, ['--version', '--json'], {cwd: dir, pc, env});
         expect(json.stderr).not.toContain('this project uses');
         const first = run(g.bin, ['--version'], {cwd: dir, pc, env});
@@ -741,7 +742,11 @@ describe.skipIf(!POSIX)(
         cwd: dir,
         encoding: 'utf8',
         env: {
-          ...process.env,
+          ...Object.fromEntries(
+            Object.entries(process.env).filter(
+              ([key]) => !/^(npm_|XDG_)/iu.test(key),
+            ),
+          ),
           HOME: pc.home,
           XDG_CACHE_HOME: pc.cache,
           XDG_CONFIG_HOME: path.join(pc.home, '.config'),
