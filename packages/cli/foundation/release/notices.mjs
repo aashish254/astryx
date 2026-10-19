@@ -47,7 +47,7 @@ import {
   getRunPrefix,
 } from '../env/package-manager.mjs';
 import {satisfiesRange, semverCompare} from '../env/semver.mjs';
-import {isReleaseVersion} from './cache.mjs';
+import {isInReleaseCache, isReleaseVersion} from './cache.mjs';
 import {
   knownLatest,
   readGlobalState,
@@ -312,7 +312,11 @@ export function noticeLines({
   env = process.env,
   searchPath,
 }) {
-  if (json || updateNoticesOff(env)) return [];
+  // A run inside the release cache is the CLI checking a release it
+  // installed, never a person's run.
+  if (json || updateNoticesOff(env) || isInReleaseCache(cwd, cacheDir)) {
+    return [];
+  }
   /** @type {string[]} */
   const lines = [];
   const take = (/** @type {string} */ key) => takeNotice(key, {stateDir, now});

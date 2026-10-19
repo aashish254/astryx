@@ -281,6 +281,26 @@ describe.skipIf(process.platform === 'win32')('noticeLines', () => {
     ]);
   });
 
+  it('says nothing in a run inside the release cache, the CLI checking a release it installed', () => {
+    const cacheDir = tempDir('cache');
+    const tmp = path.join(cacheDir, 'releases', '.tmp-0.7.2-1-abc');
+    fs.mkdirSync(tmp, {recursive: true});
+    const stateDir = checked('0.7.3');
+    const old = cliOnPath('0.7.1');
+    const input = {
+      cwd: tmp,
+      self: {version: '0.7.2', root: tempDir('self')},
+      choice: {inProject: true, version: '0.7.2'},
+      cacheDir,
+      stateDir,
+      searchPath: old.bin,
+      env: {},
+      now: 10,
+    };
+    expect(noticeLines(input)).toEqual([]);
+    expect(readGlobalState(stateDir).notifiedAt).toBeUndefined();
+  });
+
   it('says nothing about a copy that is not the global copy outside a project', () => {
     const runner = {
       ...outside(),
