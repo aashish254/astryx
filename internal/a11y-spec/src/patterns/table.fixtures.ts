@@ -46,6 +46,11 @@ interface Options {
   readonly cellAsHeader?: boolean;
   /** Designate a data cell that sits outside the table. */
   readonly cellOutside?: boolean;
+  /**
+   * Move one designated part into a second, separately labelled data table,
+   * keeping its role and name, so only its place in the subject table is wrong.
+   */
+  readonly otherTable?: 'row' | 'column-header' | 'row-header' | 'cell';
   /** `aria-sort` per column header index, as authored. */
   readonly ariaSort?: Readonly<Record<number, string>>;
 }
@@ -67,7 +72,11 @@ function html(options: Options = {}): string {
     const rename =
       index === 1 ? attr('aria-label', options.columnHeaderRename) : '';
     const sort = attr('aria-sort', options.ariaSort?.[index]);
-    return `<th data-a11y-table-column-header scope="col" ${role} ${rename} ${sort}>${column}</th>`;
+    const designated =
+      index === 2 && options.otherTable === 'column-header'
+        ? ''
+        : 'data-a11y-table-column-header';
+    return `<th ${designated} scope="col" ${role} ${rename} ${sort}>${column}</th>`;
   }).join('');
   const body = ROWS.map((row, rowIndex) => {
     const cells = row
@@ -76,10 +85,17 @@ function html(options: Options = {}): string {
           const scope = rowHeaderTag === 'th' ? 'scope="row"' : '';
           const rename =
             rowIndex === 0 ? attr('aria-label', options.rowHeaderRename) : '';
-          return `<${rowHeaderTag} data-a11y-table-row-header ${scope} ${rename}>${value}</${rowHeaderTag}>`;
+          const designated =
+            rowIndex === 1 && options.otherTable === 'row-header'
+              ? ''
+              : 'data-a11y-table-row-header';
+          return `<${rowHeaderTag} ${designated} ${scope} ${rename}>${value}</${rowHeaderTag}>`;
         }
         const designated =
-          rowIndex === 0 && cellIndex === 1 && !options.cellOutside;
+          rowIndex === 0 &&
+          cellIndex === 1 &&
+          !options.cellOutside &&
+          options.otherTable !== 'cell';
         if (designated && options.cellAsHeader) {
           return `<th data-a11y-table-cell scope="col">${value}</th>`;
         }
@@ -87,11 +103,38 @@ function html(options: Options = {}): string {
       })
       .join('');
     const role = rowIndex === 0 ? attr('role', options.rowRole) : '';
-    return `<tr data-a11y-table-row ${role}>${cells}</tr>`;
+    const designated =
+      rowIndex === 1 && options.otherTable === 'row'
+        ? ''
+        : 'data-a11y-table-row';
+    return `<tr ${designated} ${role}>${cells}</tr>`;
   }).join('');
   const outside = options.cellOutside
     ? '<div data-a11y-table-cell>Engineer</div>'
     : '';
+  const other = options.otherTable;
+  // The second table keeps a header cell so the browser treats it as a data
+  // table rather than a layout table; its moved part keeps its role and name.
+  const otherTable =
+    other == null
+      ? ''
+      : `
+    <table aria-label="Other team">
+      <thead><tr>${
+        other === 'column-header'
+          ? '<th data-a11y-table-column-header scope="col">Location</th>'
+          : '<th scope="col">Team</th>'
+      }<th scope="col">Note</th></tr></thead>
+      <tbody><tr ${other === 'row' ? 'data-a11y-table-row' : ''}>${
+        other === 'row-header'
+          ? '<th data-a11y-table-row-header scope="row">Grace</th>'
+          : '<td>Other</td>'
+      }${
+        other === 'cell'
+          ? '<td data-a11y-table-cell>Engineer</td>'
+          : '<td>Note</td>'
+      }</tr></tbody>
+    </table>`;
   return `
     ${heading}
     <table data-a11y-table ${attr('role', role)} ${attr('aria-label', label)} ${
@@ -101,6 +144,7 @@ function html(options: Options = {}): string {
       <tbody>${body}</tbody>
     </table>
     ${outside}
+    ${otherTable}
   `;
 }
 
@@ -194,6 +238,30 @@ export const TABLE_FIXTURES: readonly TableFixture[] = [
     html: html({rowRole: 'group'}),
   },
   {
+    id: 'violating-row-other-table',
+    summary: 'a designated row that belongs to a second table',
+    facts: facts(),
+    html: html({otherTable: 'row'}),
+  },
+  {
+    id: 'violating-column-header-other-table',
+    summary: 'a correctly named column header that belongs to a second table',
+    facts: facts(),
+    html: html({otherTable: 'column-header'}),
+  },
+  {
+    id: 'violating-row-header-other-table',
+    summary: 'a correctly named row header that belongs to a second table',
+    facts: facts({rowHeaders: ROW_HEADERS}),
+    html: html({rowHeaders: true, otherTable: 'row-header'}),
+  },
+  {
+    id: 'violating-cell-other-table',
+    summary: 'a data cell that belongs to a second table',
+    facts: facts(),
+    html: html({otherTable: 'cell'}),
+  },
+  {
     id: 'violating-row-header-td',
     summary: 'row titles rendered as ordinary data cells',
     facts: facts({rowHeaders: ROW_HEADERS}),
@@ -247,13 +315,23 @@ export const TABLE_MUTATIONS: Readonly<Record<string, readonly string[]>> = {
   'table.column-headers.exposed': [
     'violating-column-header-cell',
     'violating-column-header-name',
+    'violating-column-header-other-table',
   ],
-  'table.rows.exposed': ['violating-row-group', 'violating-cell-outside'],
+  'table.rows.exposed': [
+    'violating-row-group',
+    'violating-row-other-table',
+    'violating-cell-outside',
+  ],
   'table.row-headers.exposed': [
     'violating-row-header-td',
     'violating-row-header-name',
+    'violating-row-header-other-table',
   ],
-  'table.cells.exposed': ['violating-cell-as-header', 'violating-cell-outside'],
+  'table.cells.exposed': [
+    'violating-cell-as-header',
+    'violating-cell-outside',
+    'violating-cell-other-table',
+  ],
   'table.sort.exposed': [
     'violating-sort-missing',
     'violating-sort-direction',
