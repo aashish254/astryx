@@ -30,6 +30,7 @@ import {
 import {TABLE_A11Y_STATES, type TableA11yRow} from './Table.a11y.states';
 
 const SUBJECT_SELECTOR = '[data-a11y-table]';
+const ROWS = `${SUBJECT_SELECTOR} > thead > tr, ${SUBJECT_SELECTOR} > tbody > tr`;
 const COLUMN_HEADERS = `${SUBJECT_SELECTOR} > thead > tr > th`;
 const ROW_HEADERS = `${SUBJECT_SELECTOR} > tbody > tr > th`;
 const FIRST_ROW_CELLS = `${SUBJECT_SELECTOR} > tbody > tr:first-child > td`;
@@ -55,6 +56,7 @@ function relatedFor(page: Page, state: TableA11yRow): Record<string, Locator> {
       related[`${prefix}-${index}`] = elements.nth(index);
     }
   };
+  designate(ROWS, 'row', state.facts.rows);
   designate(COLUMN_HEADERS, 'column-header', state.facts.columnHeaders.length);
   designate(ROW_HEADERS, 'row-header', state.facts.rowHeaders.length);
   designate(FIRST_ROW_CELLS, 'cell', state.facts.cells);
@@ -77,6 +79,7 @@ async function runState(
       const subject = page.locator(SUBJECT_SELECTOR);
       await subject.waitFor({state: 'attached'});
       await expect(subject).toHaveCount(1);
+      await expect(page.locator(ROWS)).toHaveCount(state.facts.rows);
       await expect(page.locator(COLUMN_HEADERS)).toHaveCount(
         state.facts.columnHeaders.length,
       );

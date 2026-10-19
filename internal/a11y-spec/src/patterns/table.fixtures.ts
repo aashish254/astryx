@@ -6,6 +6,7 @@ import type {TableSortDirection, TableStateFacts} from './table';
 
 export const TABLE_SUBJECT_SELECTOR = '[data-a11y-table]';
 export const TABLE_COLUMN_HEADER_SELECTOR = '[data-a11y-table-column-header]';
+export const TABLE_ROW_SELECTOR = '[data-a11y-table-row]';
 export const TABLE_ROW_HEADER_SELECTOR = '[data-a11y-table-row-header]';
 export const TABLE_CELL_SELECTOR = '[data-a11y-table-cell]';
 
@@ -33,6 +34,8 @@ interface Options {
   readonly columnHeaderRole?: string;
   /** An `aria-label` that replaces the second column header's name. */
   readonly columnHeaderRename?: string;
+  /** An explicit role that overrides the first body row's native role. */
+  readonly rowRole?: string;
   /** Render each body row's first cell as a row header. */
   readonly rowHeaders?: boolean;
   /** Element used for row header cells. */
@@ -83,7 +86,8 @@ function html(options: Options = {}): string {
         return `<td ${designated ? 'data-a11y-table-cell' : ''}>${value}</td>`;
       })
       .join('');
-    return `<tr>${cells}</tr>`;
+    const role = rowIndex === 0 ? attr('role', options.rowRole) : '';
+    return `<tr data-a11y-table-row ${role}>${cells}</tr>`;
   }).join('');
   const outside = options.cellOutside
     ? '<div data-a11y-table-cell>Engineer</div>'
@@ -93,7 +97,7 @@ function html(options: Options = {}): string {
     <table data-a11y-table ${attr('role', role)} ${attr('aria-label', label)} ${
       options.labelledBy == null ? '' : 'aria-labelledby="a11y-table-heading"'
     }>
-      <thead><tr>${headers}</tr></thead>
+      <thead><tr data-a11y-table-row>${headers}</tr></thead>
       <tbody>${body}</tbody>
     </table>
     ${outside}
@@ -104,6 +108,7 @@ function facts(overrides: Partial<TableStateFacts> = {}): TableStateFacts {
   return {
     label: 'Team members',
     columnHeaders: [...COLUMNS],
+    rows: 3,
     rowHeaders: [],
     cells: 1,
     sort: [],
@@ -183,6 +188,12 @@ export const TABLE_FIXTURES: readonly TableFixture[] = [
     html: html({columnHeaderRename: 'Column 2'}),
   },
   {
+    id: 'violating-row-group',
+    summary: 'a body row whose row role is overridden to a group',
+    facts: facts(),
+    html: html({rowRole: 'group'}),
+  },
+  {
     id: 'violating-row-header-td',
     summary: 'row titles rendered as ordinary data cells',
     facts: facts({rowHeaders: ROW_HEADERS}),
@@ -237,6 +248,7 @@ export const TABLE_MUTATIONS: Readonly<Record<string, readonly string[]>> = {
     'violating-column-header-cell',
     'violating-column-header-name',
   ],
+  'table.rows.exposed': ['violating-row-group', 'violating-cell-outside'],
   'table.row-headers.exposed': [
     'violating-row-header-td',
     'violating-row-header-name',

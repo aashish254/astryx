@@ -29,6 +29,7 @@ export const TABLE_A11Y_STATES = [
     facts: {
       label: 'Team members',
       columnHeaders: ['Name', 'Role', 'Location'],
+      rows: 3,
       rowHeaders: [],
       cells: 3,
       sort: [],
@@ -47,6 +48,7 @@ export const TABLE_A11Y_STATES = [
         'Sort by Role',
         'Sort by Location',
       ],
+      rows: 3,
       rowHeaders: [],
       cells: 3,
       sort: [{column: 0, direction: 'descending'}],
@@ -61,6 +63,7 @@ export const TABLE_A11Y_STATES = [
     facts: {
       label: 'Quarterly totals',
       columnHeaders: ['Region', 'Q1', 'Q2'],
+      rows: 3,
       rowHeaders: ['North', 'South'],
       cells: 2,
       sort: [],
@@ -75,6 +78,7 @@ export const TABLE_A11Y_STATES = [
     facts: {
       label: 'Team members',
       columnHeaders: ['Name', 'Role', 'Location'],
+      rows: 2,
       rowHeaders: [],
       cells: 1,
       sort: [],
@@ -104,6 +108,11 @@ export const TABLE_A11Y_EXCLUSIONS = [
     owner: 'useTableSortable tests',
     reason:
       'Sort header buttons, their click and keyboard cycling, multi-sort priority, and sort context-menu actions stay with the module; this binding checks only the header role, name, and aria-sort it produces.',
+  },
+  {
+    owner: 'useTableFiltering and useTableColumnResize tests',
+    reason:
+      'The filter button and the resize separator render inside header cells and can change the header names this contract checks; each module keeps its own control semantics, and its header states bind separately.',
   },
   {
     owner: 'TableScroll real-browser spec (component:Table FR1)',

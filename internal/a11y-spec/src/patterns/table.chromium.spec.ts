@@ -23,6 +23,7 @@ import {
   TABLE_COLUMN_HEADER_SELECTOR,
   TABLE_MUTATIONS,
   TABLE_ROW_HEADER_SELECTOR,
+  TABLE_ROW_SELECTOR,
   TABLE_SUBJECT_SELECTOR,
   tableFixture,
   type TableFixture,
@@ -54,6 +55,7 @@ async function results(
           related[`${prefix}-${index}`] = elements.nth(index);
         }
       };
+      designate(TABLE_ROW_SELECTOR, 'row', target.facts.rows);
       designate(
         TABLE_COLUMN_HEADER_SELECTOR,
         'column-header',

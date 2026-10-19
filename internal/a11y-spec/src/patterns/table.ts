@@ -3,8 +3,8 @@
 /**
  * @file table.ts
  * @input WCAG 2.2 A/AA success criteria and the APG Table pattern's roles, name, and sort-state requirements
- * @output TABLE_PATTERN, TableSortDirection, and TableStateFacts — the reusable contract a static data table binds to: its table role and name, its column headers, row headers, and data cells, and the sort state on its headers
- * @position Pattern contract; bound by Table (`spec:AST-020/FR15`: Table plays the table role, so it adopts the pattern's role, name, cell roles, and sort state; the APG Table pattern defines no keyboard interaction, so nothing is adopted there)
+ * @output TABLE_PATTERN, TableSortDirection, and TableStateFacts — the reusable contract a static data table binds to: its table role and name, its rows, column headers, row headers, and data cells, and the sort state on its headers
+ * @position Pattern contract; bound by Table (`spec:AST-020/FR15`: Table plays the table role, so it adopts the pattern's role, name, row and cell roles, and sort state; the APG Table pattern defines no keyboard interaction, so nothing is adopted there)
  */
 
 import type {Harness, Subject} from '../harness';
@@ -34,6 +34,9 @@ const apgReq = (requirement: string): ApgRequirement => ({
   url: `${APG_URL}#wai-ariaroles,states,andproperties`,
 });
 const APG_ROLE = apgReq('The table container has role table.');
+const APG_ROWS = apgReq(
+  'Each row container has role row and is either a DOM descendant of or owned by the table element or an element with role rowgroup.',
+);
 const APG_CELLS = apgReq(
   'Each cell is either a DOM descendant of or owned by a row element and has one of the following roles: columnheader if the cell contains a title or header information for the column. rowheader if the cell contains title or header information for the row. cell if the cell does not contain column or row header information.',
 );
@@ -66,13 +69,16 @@ export type TableSortDirection = 'ascending' | 'descending';
 
 /**
  * What a binding knows about one table (the subject). The binding also
- * designates related subjects: `column-header-<i>` for each entry of
- * `columnHeaders`, `row-header-<i>` for each entry of `rowHeaders`, and
- * `cell-<i>` for `cells` ordinary data cells.
+ * designates related subjects: `row-<i>` for `rows` rows,
+ * `column-header-<i>` for each entry of `columnHeaders`, `row-header-<i>` for
+ * each entry of `rowHeaders`, and `cell-<i>` for `cells` ordinary data cells.
+ * Every designated header and cell sits in one of the designated rows.
  */
 export interface TableStateFacts {
   /** The accessible name the binding declares, or null when it declares none. */
   readonly label: string | null;
+  /** How many rows the binding designates. */
+  readonly rows: number;
   /**
    * The accessible name the binding declares for each designated column
    * header, in order. A header that holds a control (a sort button) computes
@@ -135,7 +141,7 @@ export const TABLE_PATTERN: PatternContract<TableStateFacts> =
     pattern: 'table',
     url: APG_URL,
     scope:
-      "A static data table's role and name, the roles of its column headers, row headers, and data cells, and the sort state on its column headers. Interactive content inside cells binds its own patterns.",
+      "A static data table's role and name, the roles of its rows, column headers, row headers, and data cells, and the sort state on its column headers. Interactive content inside cells binds its own patterns.",
     expectations: [
       {
         id: 'table.role.exposed',
@@ -178,6 +184,68 @@ export const TABLE_PATTERN: PatternContract<TableStateFacts> =
             throw new Error(
               `the table should be named "${facts.label}", but the browser computes ${describeName(name)}`,
             );
+          }
+        },
+      },
+      {
+        id: 'table.rows.exposed',
+        outcome:
+          'Each row is a row inside the table and holds the headers and cells shown in it, so people can move row by row and hear each row’s values together.',
+        sources: [WCAG_1_3_1, APG_ROWS],
+        covers: ['1.3.1-info-and-relationships', 'apg-interaction'],
+        appliesWhen: {
+          condition: 'the binding designates rows',
+          test: facts => facts.rows > 0,
+        },
+        evidenceLayer: 'accessibility-tree',
+        enforcement: 'required',
+        run: async ({harness, subject, facts}) => {
+          const rows: Subject[] = [];
+          for (let index = 0; index < facts.rows; index += 1) {
+            const row = await harness.related(`row-${index}`);
+            const {role} = await row.computed();
+            if (role !== 'row') {
+              throw new Error(
+                `row ${index + 1} is exposed as ${describeRole(role)}, not as a row`,
+              );
+            }
+            if (!(await harness.containsSemantically(subject, row))) {
+              throw new Error(
+                `row ${index + 1} is not part of the table's accessibility subtree`,
+              );
+            }
+            rows.push(row);
+          }
+          const parts = [
+            ...facts.columnHeaders.map(
+              (title, index) =>
+                [
+                  `column-header-${index}`,
+                  `the "${title}" column header`,
+                ] as const,
+            ),
+            ...facts.rowHeaders.map(
+              (title, index) =>
+                [`row-header-${index}`, `the "${title}" row header`] as const,
+            ),
+            ...Array.from(
+              {length: facts.cells},
+              (_, index) =>
+                [`cell-${index}`, `data cell ${index + 1}`] as const,
+            ),
+          ];
+          for (const [relation, description] of parts) {
+            const part = await harness.related(relation);
+            let inRow = false;
+            for (const row of rows) {
+              if (await harness.containsSemantically(row, part)) {
+                inRow = true;
+                break;
+              }
+            }
+            if (!inRow) {
+              throw new Error(`${description} sits in no row of the table`);
+            }
           }
         },
       },
@@ -305,7 +373,7 @@ export const TABLE_PATTERN: PatternContract<TableStateFacts> =
         verifiedBy:
           'Each module’s own tests and later bindings of those modules to this contract',
         reason:
-          'This contract encodes the table, header, and cell roles, the table name, and sort state. Captions and descriptions, cell spans, column and row counts and indexes, detail and group rows, and header association in tables with irregular headers are not encoded here.',
+          'This contract encodes the table, row, header, and cell roles, the table name, and sort state. Captions and descriptions, cell spans, column and row counts and indexes, detail and group rows, and header association in tables with irregular headers are not encoded here.',
         coversRemainderOnly: true,
       },
       '1.3.2-meaningful-sequence': {

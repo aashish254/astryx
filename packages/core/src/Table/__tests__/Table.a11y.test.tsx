@@ -21,6 +21,7 @@ import {
 } from './Table.a11y.states';
 
 const SUBJECT_SELECTOR = '[data-a11y-table]';
+const ROWS = ':scope > thead > tr, :scope > tbody > tr';
 const COLUMN_HEADERS = ':scope > thead > tr > th';
 const ROW_HEADERS = ':scope > tbody > tr > th';
 const FIRST_ROW_CELLS = ':scope > tbody > tr:first-child > td';
@@ -49,6 +50,7 @@ function relatedFor(state: TableA11yRow): Record<string, Element> {
       related[`${prefix}-${index}`] = elements[index]!;
     }
   };
+  designate(ROWS, 'row', state.facts.rows);
   designate(COLUMN_HEADERS, 'column-header', state.facts.columnHeaders.length);
   designate(ROW_HEADERS, 'row-header', state.facts.rowHeaders.length);
   designate(FIRST_ROW_CELLS, 'cell', state.facts.cells);
@@ -135,10 +137,13 @@ describe('the Table binding inventory', () => {
     );
   });
 
-  it('declares exactly the headers and first-row cells each state renders', () => {
+  it('declares exactly the rows, headers, and first-row cells each state renders', () => {
     for (const state of TABLE_A11Y_STATES) {
       render(TABLE_A11Y_RENDERS[state.id]());
       const table = subjectFor();
+      expect(table.querySelectorAll(ROWS).length, state.id).toBe(
+        state.facts.rows,
+      );
       expect(table.querySelectorAll(COLUMN_HEADERS).length, state.id).toBe(
         state.facts.columnHeaders.length,
       );
