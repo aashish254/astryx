@@ -25,12 +25,6 @@ affects_consumer_docs: [theme]
 
 ## Amendment — Prebuilt data-variable availability
 
-This draft amendment covers the distribution clauses of FR2, FR3, FR5, and FR12
-and their verification. Approval of the amended exact head by the spec owner,
-`cixzhang`, is required before this text becomes current. The canonical StyleX
-source, sparse theme output, inheritance, and source-compiled zero-or-56 contract
-are unchanged.
-
 The public `dataVars` entry in prebuilt mode contains compiled `var()` references,
 not a `defineVars()` call. An application using that entry and the shipped Core
 CSS has no StyleX extraction step that can materialize the referenced defaults.
@@ -540,7 +534,7 @@ this decision removes and make runtime/static ownership mode-dependent.
 ### DEC-9 — Prebuilt Core CSS defines the public data-variable entry
 
 **Reference:** `spec:AST-066/DEC-9`
-**Status:** Draft amendment; exact-head approval required from `cixzhang`.
+**Decider:** `cixzhang`, `<pending>`
 
 The prebuilt public `dataVars` entry contains CSS `var()` references with no
 surviving `defineVars()` call. A prebuilt-CSS consumer cannot retain defaults by
