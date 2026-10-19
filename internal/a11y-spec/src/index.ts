@@ -172,3 +172,8 @@ export {
   type LinkCurrentToken,
   type LinkStateFacts,
 } from './patterns/link';
+export {
+  TABLE_PATTERN,
+  type TableSortDirection,
+  type TableStateFacts,
+} from './patterns/table';

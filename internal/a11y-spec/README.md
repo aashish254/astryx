@@ -63,7 +63,8 @@ src/
     ├── breadcrumb.*         landmark, list-trail, current-page, and separator semantics
     ├── combobox.*           control identity, state, popup, and active-descendant semantics
     ├── landmark.*           one component-owned landmark region's role, name, and content boundary
-    └── link.*               one available link's role, name, current state, focus, and activation
+    ├── link.*               one available link's role, name, current state, focus, and activation
+    └── table.*              a static data table's role and name, header and cell roles, and header sort state
 ```
 
 ## The patterns
@@ -95,6 +96,7 @@ src/
 | `grid`           | [APG Grid](https://www.w3.org/WAI/ARIA/apg/patterns/grid/) role, structure, name, selection and data-grid keys                                          | Calendar month grids: grid role/name, row and gridcell/columnheader structure, one Tab stop, aria-selected/aria-multiselectable, arrows in reading order, Home/End, Enter selects (advisory)                                                                                                             |
 | `windowsplitter` | [APG Window Splitter](https://www.w3.org/WAI/ARIA/apg/patterns/windowsplitter/) role, values, name, relationship and keys                               | ResizeHandle: separator role/name, now/min/max, orientation, aria-controls to the pane, arrows, Enter collapse/restore, Home/End, disabled keeps position                                                                                                                                                |
 | `link`           | WCAG 2.2 semantics; [APG Link](https://www.w3.org/WAI/ARIA/apg/patterns/link/) role and Enter mechanics                                                 | Link, including LinkProvider and `as` router components                                                                                                                                                                                                                                                  |
+| `table`          | [APG Table](https://www.w3.org/WAI/ARIA/apg/patterns/table/) roles, name, and sort state per AST-020 FR15; no keyboard (the pattern defines none)       | Table, in data-driven and children mode: table role and name, `columnheader`/`rowheader`/`cell` roles inside the table, `aria-sort` on sorted headers only                                                                                                                                               |
 
 The toggle-button contract owns the persistent-action extension of button
 semantics: the pressed state must be exposed, reversible by pointer, Enter, and
@@ -161,6 +163,20 @@ Destination safety stays with `family:navigation-destinations`, disabled links
 keep their member-owned semantics, and navigation aggregates such as
 breadcrumbs, side and top navigation, citations, and clickable cards bind
 separately.
+
+The table contract owns a static data table: the table role, the label its
+binding declares, the `columnheader`, `rowheader`, and `cell` roles of the
+headers and cells the binding designates, their place in the table's
+accessibility subtree, and `aria-sort` on exactly the sorted column headers.
+`spec:AST-020/FR15` adopts the APG Table pattern's role, name, cell roles, and
+sort state because Table already plays the table role; the pattern defines no
+keyboard interaction, so none is adopted. Its first binding covers a labelled
+data-driven table, a table sorted through `useTableSortable`, a composed
+right-to-left table named by a visible heading with row headers, and the default
+empty state. Captions, spans, row and column counts and indexes, and the rows and
+controls that selection, expansion, grouping, and tree modules add stay with
+their modules and later bindings; the Scroll region keeps its own browser
+evidence.
 
 The `listbox` contract is a bounded semantic migration, not blanket APG
 interaction adoption. Its first bindings cover 21 existing scenarios across
