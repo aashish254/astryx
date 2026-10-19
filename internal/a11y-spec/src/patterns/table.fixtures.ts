@@ -150,9 +150,12 @@ export const TABLE_FIXTURES: readonly TableFixture[] = [
   },
   {
     id: 'violating-role-presentation',
-    summary: 'a table whose semantics are removed with role="presentation"',
+    // Unlabelled: a global ARIA attribute such as aria-label makes the browser
+    // ignore a presentational role, so a labelled table keeps its semantics.
+    summary:
+      'an unlabelled table whose semantics are removed with role="presentation"',
     facts: facts(),
-    html: html({role: 'presentation'}),
+    html: html({role: 'presentation', label: null}),
   },
   {
     id: 'violating-name-missing',
