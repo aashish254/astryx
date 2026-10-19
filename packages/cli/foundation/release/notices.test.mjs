@@ -9,6 +9,7 @@
 import {afterEach, describe, expect, it} from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {spawn} from 'node:child_process';
 import {
   NOTICE_INTERVAL_MS,
   availableLine,
@@ -88,6 +89,37 @@ describe('takeNotice', () => {
       a: 1000 + NOTICE_INTERVAL_MS,
       b: 2000,
     });
+  });
+
+  it('lets exactly one of many runs finishing at once take a notice (b18)', async () => {
+    const stateDir = tempDir('state');
+    const notices = new URL('./notices.mjs', import.meta.url).href;
+    const source = `
+      const {takeNotice} = await import(${JSON.stringify(notices)});
+      const at = Number(process.argv[1]);
+      while (Date.now() < at) {}
+      process.stdout.write(takeNotice('global', {stateDir: ${JSON.stringify(stateDir)}}) ? 'took' : 'skip');
+    `;
+    const at = String(Date.now() + 1500);
+    const runs = await Promise.all(
+      Array.from(
+        {length: 10},
+        () =>
+          new Promise(resolve => {
+            const child = spawn(
+              process.execPath,
+              ['--input-type=module', '-e', source, at],
+              {stdio: ['ignore', 'pipe', 'inherit']},
+            );
+            let out = '';
+            child.stdout.on('data', d => (out += d));
+            child.on('close', () => resolve(out));
+          }),
+      ),
+    );
+    expect(runs.filter(r => r === 'took')).toHaveLength(1);
+    expect(runs.filter(r => r === 'skip')).toHaveLength(9);
+    expect(fs.existsSync(path.join(stateDir, '.lock-state'))).toBe(false);
   });
 
   it('prints nothing when the time cannot be recorded', () => {
