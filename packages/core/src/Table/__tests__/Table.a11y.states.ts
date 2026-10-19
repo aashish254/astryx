@@ -1,0 +1,118 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+/** AST-021 state inventory for the Table binding to the shared Table contract. */
+
+import type {TableStateFacts} from '@astryxdesign/a11y-spec';
+
+export interface TableA11yState {
+  readonly id:
+    | 'data-columns'
+    | 'sorted-descending'
+    | 'children-row-headers-rtl'
+    | 'empty-data';
+  readonly mode: 'data-driven' | 'children';
+  readonly summary: string;
+  readonly facts: TableStateFacts;
+  readonly storyId: string;
+}
+
+export type TableA11yRow = (typeof TABLE_A11Y_STATES)[number];
+
+const story = (id: string) => `a11y-table-pattern--${id}`;
+
+export const TABLE_A11Y_STATES = [
+  {
+    id: 'data-columns',
+    mode: 'data-driven',
+    summary:
+      'a labelled data-driven table with three column headers and data rows',
+    facts: {
+      label: 'Team members',
+      columnHeaders: ['Name', 'Role', 'Location'],
+      rowHeaders: [],
+      cells: 3,
+      sort: [],
+    },
+    storyId: story('data-columns'),
+  },
+  {
+    id: 'sorted-descending',
+    mode: 'data-driven',
+    summary:
+      'every column sortable through useTableSortable, sorted by Name descending',
+    facts: {
+      label: 'Team members',
+      columnHeaders: [
+        'Sort by Name, sorted descending',
+        'Sort by Role',
+        'Sort by Location',
+      ],
+      rowHeaders: [],
+      cells: 3,
+      sort: [{column: 0, direction: 'descending'}],
+    },
+    storyId: story('sorted-descending'),
+  },
+  {
+    id: 'children-row-headers-rtl',
+    mode: 'children',
+    summary:
+      'a composed right-to-left table named by a visible heading, with a row header per row',
+    facts: {
+      label: 'Quarterly totals',
+      columnHeaders: ['Region', 'Q1', 'Q2'],
+      rowHeaders: ['North', 'South'],
+      cells: 2,
+      sort: [],
+    },
+    storyId: story('children-row-headers-rtl'),
+  },
+  {
+    id: 'empty-data',
+    mode: 'data-driven',
+    summary:
+      'a labelled data-driven table with no rows, whose default empty state is one spanning data cell',
+    facts: {
+      label: 'Team members',
+      columnHeaders: ['Name', 'Role', 'Location'],
+      rowHeaders: [],
+      cells: 1,
+      sort: [],
+    },
+    storyId: story('empty-data'),
+  },
+] as const satisfies ReadonlyArray<TableA11yState>;
+
+export const TABLE_A11Y_EXCLUSIONS = [
+  {
+    owner: 'useTableSelection tests and the checkbox contract',
+    reason:
+      'Selection controls, their labels, and row aria-selected are module behavior under component:Table FR6; this binding does not add the selection column.',
+  },
+  {
+    owner:
+      'useTableRowExpansion, useTableGroupedRows, and useTableTreeData tests',
+    reason:
+      'Expansion detail rows, group header rows, and tree rows add rows and cells with their own semantics; each module binds separately.',
+  },
+  {
+    owner: 'BaseTable row-index tests',
+    reason:
+      'aria-rowcount and aria-rowindex for paged or windowed views are not encoded by the Table contract yet.',
+  },
+  {
+    owner: 'useTableSortable tests',
+    reason:
+      'Sort header buttons, their click and keyboard cycling, multi-sort priority, and sort context-menu actions stay with the module; this binding checks only the header role, name, and aria-sort it produces.',
+  },
+  {
+    owner: 'TableScroll real-browser spec (component:Table FR1)',
+    reason:
+      'The named Scroll region, its conditional Tab stop, and overflow containment have their own browser evidence.',
+  },
+  {
+    owner: 'AST-009',
+    reason:
+      'This binding claims DOM and browser accessibility-tree exposure, not table navigation, speech, braille, or virtual-cursor behavior.',
+  },
+] as const;
