@@ -149,6 +149,7 @@ export async function run(options = {}, {cwd = process.cwd(), origin} = {}) {
   // folder it searched (spec:AST-040 FR12).
   if (origin != null) {
     logger.log(`Project root: ${path.relative(origin, cwd) || '.'}`);
+    logger.log(`Source folder: ${path.relative(origin, path_) || '.'}`);
   }
   const installed = detectInstalledTargetVersion(cwd);
   if (!installed) {

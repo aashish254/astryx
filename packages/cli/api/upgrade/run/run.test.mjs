@@ -463,6 +463,27 @@ describe('upgrade.run — the project is the nearest folder that declares Astryx
     expect(res.data.modifiedFiles).toEqual(['../../src/App.tsx']);
   }, SLOW);
 
+  it('names the project root and the folder it scans before a dry run in a folder that installs Core without declaring it', async () => {
+    seedOldPropProject(home);
+    const tool = path.join(home, 'tools', 'codegen');
+    const core = path.join(tool, 'node_modules', '@astryxdesign', 'core');
+    fs.mkdirSync(core, {recursive: true});
+    fs.writeFileSync(path.join(tool, 'package.json'), JSON.stringify({name: 'codegen'}));
+    fs.writeFileSync(path.join(core, 'package.json'), JSON.stringify({name: '@astryxdesign/core', version: '0.9.0'}));
+    const log = vi.spyOn(logger, 'log');
+    try {
+      const res = await upgrade({from: '0.6.8'}, {cwd: tool});
+
+      expect(res.type).toBe('upgrade.run');
+      const lines = log.mock.calls.map(([line]) => String(line));
+      expect(lines).toContain('Project root: ../..');
+      expect(lines).toContain(`Source folder: ${path.join('..', '..', 'src')}`);
+      expect(fs.readFileSync(path.join(home, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
+    } finally {
+      log.mockRestore();
+    }
+  }, SLOW);
+
   it('upgrades the home folder as a folder outside any project, when run there', async () => {
     seedOldPropProject(home);
 
