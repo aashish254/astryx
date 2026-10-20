@@ -1375,9 +1375,11 @@ export function checkAnsweringRelease(ctx) {
     id: 'answering-release',
     label: 'Release that answered',
     status: core ? 'pass' : 'info',
-    message: core
-      ? `CLI ${cli} with Core ${core} answered, outside a project.`
-      : `CLI ${cli} answered, outside a project. It installs Core ${cli} into the per-user cache the first time a command needs it.`,
+    message: `${
+      core
+        ? `CLI ${cli} with Core ${core} answered, outside a project.`
+        : `CLI ${cli} answered, outside a project. It installs Core ${cli} into the per-user cache the first time a command needs it.`
+    } How each folder is answered: \`${formatCliCommand('astryx docs cli/global', ctx.cwd)}\`.`,
   };
 }
 

@@ -88,4 +88,10 @@ export const doc = {
     },
   ],
   related: ['component', 'search', 'template'],
+  notes: [
+    {
+      type: 'prose',
+      text: "In global mode: outside a project, integrations installed for your computer are listed as installed and their items show up; inside a project only the project's integrations are, and the ones installed for your computer are listed as available with the project's install command. Inside a project, the release equal to the project's Core runs it, whichever copy of the CLI you start. See {@link namespace:global} and {@link generic:computer-integrations}.",
+    },
+  ],
 };

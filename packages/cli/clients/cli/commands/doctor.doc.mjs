@@ -51,4 +51,10 @@ export const doc = {
     {code: 1, when: 'one or more checks failed'},
   ],
   related: ['init', 'upgrade'],
+  notes: [
+    {
+      type: 'prose',
+      text: "In global mode: outside a project, doctor checks your computer instead of a folder: the Node version, the release that answered, the newest release it knows of, every astryx command on your search path, the integrations installed for your computer, and the agent guide for your computer. It never fails a check because the folder has no project. Inside a project, the release equal to the project's Core runs it, whichever copy of the CLI you start. See {@link namespace:global} and {@link generic:who-answers}.",
+    },
+  ],
 };
