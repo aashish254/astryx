@@ -194,6 +194,43 @@ function readState(pc) {
   }
 }
 
+/**
+ * An `@acme/widgets` integration installed in `root`'s node_modules, with one
+ * doc topic.
+ * @param {string} root
+ * @param {{topic: string, peers?: Record<string, string>}} options
+ */
+function acmeWidgets(root, {topic, peers}) {
+  const dir = path.join(root, 'node_modules', '@acme', 'widgets');
+  writeJson(path.join(dir, 'package.json'), {
+    name: '@acme/widgets',
+    version: '1.0.0',
+    ...(peers ? {peerDependencies: peers} : {}),
+  });
+  fs.writeFileSync(
+    path.join(dir, 'astryx.integration.mjs'),
+    "export default {docs: './docs'};\n",
+  );
+  fs.mkdirSync(path.join(dir, 'docs'), {recursive: true});
+  fs.writeFileSync(
+    path.join(dir, 'docs', `${topic}.doc.mjs`),
+    `export const docs = ${JSON.stringify({
+      type: 'generic',
+      name: topic,
+      title: 'Deploying',
+      description: 'How to ship an app built with Acme widgets.',
+      category: 'guide',
+      sections: [
+        {
+          title: 'Overview',
+          content: [{type: 'prose', text: 'Push the button.'}],
+        },
+      ],
+    })};\n`,
+  );
+  return dir;
+}
+
 /** The two lines of a newer-release notice. */
 const available = (/** @type {string} */ cur, /** @type {string} */ next) =>
   `A new release of Astryx is available: ${cur} → ${next}`;
@@ -929,6 +966,161 @@ describe.skipIf(!POSIX)(
         expect(readState(pc).notifiedAt).toBeUndefined();
       }
     });
+
+    it('G35 outside a project: an integration installed beside the global copy contributes its docs, components, and discover entry', () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      acmeWidgets(path.resolve(g.dir, '..', '..', '..'), {
+        topic: 'acme-deploying',
+      });
+      const empty = tempDir('empty');
+      const docs = JSON.parse(
+        run(g.bin, ['docs', '--json'], {cwd: empty, pc}).stdout,
+      );
+      expect(
+        docs.data.find((/** @type {any} */ t) => t.topic === 'acme-deploying'),
+      ).toMatchObject({package: '@acme/widgets'});
+      const discover = JSON.parse(
+        run(g.bin, ['discover', '--json'], {cwd: empty, pc}).stdout,
+      );
+      expect(discover.data.map((/** @type {any} */ p) => p.name)).toContain(
+        '@acme/widgets',
+      );
+      const doctor = JSON.parse(
+        run(g.bin, ['doctor', '--json'], {cwd: empty, pc}).stdout,
+      );
+      expect(
+        doctor.data.checks.find(
+          (/** @type {any} */ c) => c.id === 'computer-integrations',
+        ),
+      ).toMatchObject({
+        status: 'pass',
+        message: 'Used outside a project: @acme/widgets@1.0.0.',
+      });
+    });
+
+    it("G36 inside a project: an integration installed for the computer adds nothing, and discover and doctor list it as available with the project's install command", () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      acmeWidgets(path.resolve(g.dir, '..', '..', '..'), {
+        topic: 'acme-deploying',
+      });
+      // The global copy is on the search path, as it is once installed.
+      pc.path.unshift(g.binDir);
+      const dir = makeProject({core: '9.0.0', cli: '9.0.0'});
+      writeJson(path.join(dir, 'package-lock.json'), {lockfileVersion: 3});
+      const docs = JSON.parse(
+        run(g.bin, ['docs', '--json'], {cwd: dir, pc}).stdout,
+      );
+      expect(
+        docs.data.some((/** @type {any} */ t) => t.topic === 'acme-deploying'),
+      ).toBe(false);
+      const discover = JSON.parse(
+        run(g.bin, ['discover', '--json'], {cwd: dir, pc}).stdout,
+      );
+      expect(discover.data).toEqual([]);
+      expect(discover.meta.available).toEqual([
+        {
+          name: '@acme/widgets',
+          components: [],
+          version: '1.0.0',
+          source: 'installed for this computer',
+          install: 'npm install @acme/widgets',
+        },
+      ]);
+      const doctor = JSON.parse(
+        run(g.bin, ['doctor', '--json'], {cwd: dir, pc}).stdout,
+      );
+      expect(
+        doctor.data.checks.find(
+          (/** @type {any} */ c) => c.id === 'computer-integrations',
+        ),
+      ).toMatchObject({
+        status: 'info',
+        fix: 'To use one in this project, run `npm install @acme/widgets`.',
+      });
+    });
+
+    it("G37 a project that installs the same integration uses only its own copy, outside the project's folder rules too", () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      acmeWidgets(path.resolve(g.dir, '..', '..', '..'), {
+        topic: 'acme-global',
+      });
+      // The global copy is on the search path, as it is once installed.
+      pc.path.unshift(g.binDir);
+      const dir = makeProject({core: '9.0.0', cli: '9.0.0'});
+      const pkg = JSON.parse(
+        fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
+      );
+      writeJson(path.join(dir, 'package.json'), {
+        ...pkg,
+        dependencies: {...pkg.dependencies, '@acme/widgets': '1.0.0'},
+      });
+      acmeWidgets(dir, {topic: 'acme-project'});
+      const docs = JSON.parse(
+        run(g.bin, ['docs', '--json'], {cwd: dir, pc}).stdout,
+      );
+      const topics = docs.data.map((/** @type {any} */ t) => t.topic);
+      expect(topics).toContain('acme-project');
+      expect(topics).not.toContain('acme-global');
+      const discover = JSON.parse(
+        run(g.bin, ['discover', '--json'], {cwd: dir, pc}).stdout,
+      );
+      expect(discover.meta?.available ?? []).toEqual([]);
+    });
+
+    it('G38 an integration whose peer range excludes the answering release is skipped outside a project, and doctor warns', () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      acmeWidgets(path.resolve(g.dir, '..', '..', '..'), {
+        topic: 'acme-deploying',
+        peers: {'@astryxdesign/core': '>=10.0.0'},
+      });
+      const empty = tempDir('empty');
+      const docs = JSON.parse(
+        run(g.bin, ['docs', '--json'], {cwd: empty, pc}).stdout,
+      );
+      expect(
+        docs.data.some((/** @type {any} */ t) => t.topic === 'acme-deploying'),
+      ).toBe(false);
+      const doctor = JSON.parse(
+        run(g.bin, ['doctor', '--json'], {cwd: empty, pc}).stdout,
+      );
+      expect(
+        doctor.data.checks.find(
+          (/** @type {any} */ c) => c.id === 'computer-integrations',
+        ),
+      ).toMatchObject({
+        status: 'warn',
+        message:
+          "Skipped @acme/widgets@1.0.0: it needs @astryxdesign/core >=10.0.0, and this computer's CLI is 9.0.0.",
+      });
+    });
+
+    it("G39 a door's package set: integrations installed with the CLI in one root count, with no host entry", () => {
+      const pc = computer();
+      const root = tempDir('runtime');
+      writeJson(path.join(root, 'package.json'), {
+        name: 'door-runtime',
+        private: true,
+        dependencies: {
+          '@astryxdesign/cli': '9.0.0',
+          '@acme/widgets': '1.0.0',
+        },
+      });
+      const cli = placeCli(
+        path.join(root, 'node_modules', '@astryxdesign', 'cli'),
+        '9.0.0',
+      );
+      acmeWidgets(root, {topic: 'acme-door'});
+      const docs = JSON.parse(
+        run(cli.bin, ['docs', '--json'], {cwd: tempDir('empty'), pc}).stdout,
+      );
+      expect(
+        docs.data.find((/** @type {any} */ t) => t.topic === 'acme-door'),
+      ).toMatchObject({package: '@acme/widgets'});
+    });
   },
 );
 
@@ -937,6 +1129,6 @@ it('names every row of the table exactly once', () => {
   const rows = [
     ...text.matchAll(/^\s+it(?:\.skipIf\([^)]*\)\()?\(?\s*['"](G\d+) /gmu),
   ].map(m => m[1]);
-  expect(rows).toEqual(Array.from({length: 34}, (_, i) => `G${i + 1}`));
+  expect(rows).toEqual(Array.from({length: 39}, (_, i) => `G${i + 1}`));
   expect(os.EOL).toBeTypeOf('string');
 });
