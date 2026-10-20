@@ -27,7 +27,10 @@
  * the invocation stays the renderer's job.
  */
 
-import {search, searchedComponents} from '../../search/search.mjs';
+import {
+  searchCore as search,
+  searchedComponents,
+} from '../../search/search.mjs';
 import {findCoreDir} from '../../../foundation/fs/paths.mjs';
 import {AstryxError} from '../../error.mjs';
 import {ERROR_CODES} from '../../../foundation/response/error-codes.mjs';
