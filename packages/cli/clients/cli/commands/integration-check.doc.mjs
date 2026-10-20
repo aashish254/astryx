@@ -35,7 +35,8 @@ export const doc = {
     '`integration check` on every build; run ' +
     '`integration verify` before you publish, to check that the packed package ' +
     'works in an app. To check an installed integration by name, run the ' +
-    '`doctor integration` subcommands with its package name.',
+    '`doctor integration` subcommands with its package name. Outside a package, ' +
+    'it writes nothing, `validate` reports one `no_package` issue, and it exits 1.',
   fn: 'integrationCheck',
   options: [
     {
@@ -65,6 +66,7 @@ export const doc = {
       cli: 'integration verify',
     },
   ],
+  outsideProject: 'own',
   exitCodes: [
     {
       code: 0,
@@ -81,5 +83,11 @@ export const doc = {
     'doctor integration components',
     'doctor integration templates',
     'doctor integration docs',
+  ],
+  notes: [
+    {
+      type: 'prose',
+      text: "In global mode: outside an integration package, integration check writes nothing, `validate` reports one `no_package` issue, and it exits 1. Inside a project, the release equal to the project's Core runs it, whichever copy of the CLI you start. See {@link namespace:global} and {@link generic:global-integrations}.",
+    },
   ],
 };
