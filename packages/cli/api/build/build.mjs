@@ -10,14 +10,19 @@
  * api/index.mjs and the CLI consumer stay unchanged.
  *
  *   no query  → build.help  (api/build/help/help.mjs)
- *   a query   → build.kit   (api/build/tree.mjs → api/build/kit/kit.mjs)
+ *   a query   → build.kit   (api/build/tree.mjs: kit/signals.mjs, the block
+ *               picker in blocks/blocks.mjs, then kit/answer.mjs)
  */
 
 import {AstryxError} from '../error.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
 import {buildHelp} from './help/help.mjs';
 import {buildKit} from './kit/kit.mjs';
-import {loadTreeWeights, withListingCache} from './_adapter.mjs';
+import {
+  loadBlockPicker,
+  loadTreeWeights,
+  withListingCache,
+} from './_adapter.mjs';
 import {runTree} from '../../foundation/route/route.mjs';
 import {BUILD_TREE} from './tree.mjs';
 
@@ -36,7 +41,10 @@ export async function build(query, options = {}) {
   if (!query || !String(query).trim()) {
     return buildHelp();
   }
-  if (options.limit != null && (!Number.isInteger(options.limit) || options.limit <= 0)) {
+  if (
+    options.limit != null &&
+    (!Number.isInteger(options.limit) || options.limit <= 0)
+  ) {
     throw new AstryxError(
       `Invalid limit "${options.limit}". Must be a positive integer.`,
       undefined,
@@ -51,7 +59,7 @@ export async function build(query, options = {}) {
         await runTree(
           BUILD_TREE,
           {query, options},
-          {weights: loadTreeWeights()},
+          {weights: loadTreeWeights(), blocks: loadBlockPicker()},
         )
       ),
   );
