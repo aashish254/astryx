@@ -23,7 +23,7 @@ affects_consumer_docs: [theme]
 
 # StyleX data-token ownership system spec
 
-## Amendment — Prebuilt data-variable availability
+## Prebuilt Core CSS carries the data-token defaults
 
 The public `dataVars` entry in prebuilt mode contains compiled `var()` references,
 not a `defineVars()` call. An application using that entry and the shipped Core
