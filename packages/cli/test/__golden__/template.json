@@ -8,6 +8,13 @@
     "type": "block",
     "components": [],
     "source": "export default function Hero() { return <section>zorblax</section>; }\n",
-    "demoMediaReplaced": 0
+    "demoMediaReplaced": 0,
+    "icons": {
+      "status": "none",
+      "set": null,
+      "reason": "No icon set is installed.",
+      "mapped": [],
+      "kept": []
+    }
   }
 }

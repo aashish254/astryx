@@ -1,0 +1,13 @@
+---
+'@astryxdesign/cli': minor
+---
+
+[feat] Icon sets: an integration can ship an icon set, and agents find icons by meaning and get the exact import line.
+
+- **Authoring.** The integration manifest's new `iconSets` field points at a folder with one folder per set. Each set has a typed `<name>.doc.mjs` (`IconSetDoc`) and a `<name>.icons.json` data file that lists every icon's export, the words people search for, and the shared icon names (`IconName`) it draws. `@astryxdesign/cli/authoring` exports `IconSetDoc`, `IconSetData`, `parseIconSet`, and `parseIconSetData`. Discovery reads the descriptor and data file without running the icon module. It withdraws a set whose data is invalid or whose module does not resolve from the project.
+- **`astryx icon`.** `astryx icon <words>` ranks icons across the installed sets (`icon.search`): first a shared icon name the icon fills, then its id, then one of its words, then a word that starts with the query, then partial matches. `astryx icon <set>/<id>` reads one icon with every variant's import line (`icon.detail`). `astryx icon --list` lists the sets and which shared icon names each one fills (`icon.list`). `--set` and `--limit` (default 10) narrow the search.
+- **`astryx search`.** Results now include installed icons under the new `icon` domain (`--type icon`). An icon ranks below a component or doc match of equal score.
+- **Project icon set.** The new `iconSet` field in `astryx.config` (`"<set>"` or `"<package>/<set>"`) picks the project's set. Without it, the only installed set is used. `astryx template` (printed or copied) rewrites icon imports to the project's set by meaning, and keeps any icon that has no match. `template.show` and `template.copy` gain an `icons` report that lists each icon as `mapped` or `kept`. Printed source reports the same lines on stderr.
+- **Checks.** `astryx integration check` (and `doctor integration validate`) adds these icon-set codes. Errors: `invalid_icon_set`, `icon_export_missing` (exports are read statically and re-exports followed), and `icon_theme_map_mismatch`. Warnings: `icon_source_version_drift` and `icon_license_notice_missing`. `astryx doctor` adds an `icon-sets` check. It fails when `iconSet` names a set that is not installed. It warns when two sets are installed and none is chosen, and for each withdrawn set.
+
+@josephfarina
