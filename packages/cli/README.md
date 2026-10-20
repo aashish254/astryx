@@ -376,6 +376,30 @@ try {
 
 The CLI command handlers are thin wrappers around these functions: they parse args, call the API, then format the output (JSON or text). This guarantees that `@astryxdesign/cli/api` and `astryx --json` always return identical data.
 
+### Host entry
+
+A tool that carries this CLI and runs it for its own users starts it through `@astryxdesign/cli/host`, once per process. The run behaves as the `astryx` bin does with the same arguments in the same folder: it finds the project there, hands a project's run to the project's own CLI, and owns the process's working folder, arguments, standard streams, and exit.
+
+```javascript
+import {runHostedCli} from '@astryxdesign/cli/host';
+
+const {status} = await runHostedCli({
+  argv: process.argv.slice(2),
+  cwd: process.cwd(),
+  cliCommand: 'acme astryx',
+});
+process.exitCode = status;
+```
+
+| Option               | Default                           | Meaning                                                                                                                                                                                                                                       |
+| -------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `argv`               | none                              | The arguments after `astryx`.                                                                                                                                                                                                                 |
+| `cwd`                | the process's working folder      | The folder the run works in. It must exist.                                                                                                                                                                                                   |
+| `cliCommand`         | none (the package manager's name) | The command the tool's users type, such as `acme astryx`. Printed commands start with it unless the integrations the run loads declare their own `cliCommand`. A non-blank single line of at most 120 characters, with no surrounding spaces. |
+| `declinedProjectCli` | none                              | When the tool found the project's own CLI and did not run it, why, in its own words, such as `untrusted`. The run is then never handed to that CLI: this copy answers, with one warning line naming the reason when it is another release.    |
+
+It resolves with `{status}`, the exit status the bin would exit with; a run handed to another release, and some failures, end the process with that status instead. It rejects with a `TypeError` before anything runs for an unknown option or an invalid value, and with an `Error` before anything runs when a run already started in the process.
+
 ### Consumer utilities
 
 If you're spawning the CLI as a subprocess rather than importing the API directly:

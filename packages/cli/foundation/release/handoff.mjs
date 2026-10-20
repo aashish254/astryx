@@ -19,9 +19,16 @@
  * (notices.mjs); a global copy also starts the daily update check, which
  * installs nothing (global-state.mjs).
  *
- * @input  the running copy, argv, the working folder
+ * A programmatic host that found the project's own CLI and did not run it
+ * passes the reason (spec AST-081 FR1, FR2). That run is never handed to the
+ * project's CLI: this copy answers when it is that CLI's release, and
+ * otherwise answers as for a release that cannot be obtained, with the
+ * warning naming the reason.
+ *
+ * @input  the running copy, argv, the working folder, and a host's
+ *   declined-project-CLI reason
  * @output returns when this copy answers; otherwise never returns
- * @position foundation/release — called once by clients/cli/bin/astryx.mjs.
+ * @position foundation/release — called once per run by clients/cli/run.mjs.
  */
 
 import {spawn} from 'node:child_process';
@@ -42,6 +49,7 @@ import {
 } from './global-state.mjs';
 import {recordRunChoice} from './run-context.mjs';
 import {noticeLines} from './notices.mjs';
+import {cliDoor, runWithCliDoor} from '../env/cli-command.mjs';
 
 /** Where each release's notes are published. */
 
@@ -131,11 +139,22 @@ function failUnavailable(message, json) {
 }
 
 /**
+ * The fallback warning's reason for a project CLI a host declined.
+ * @param {string} reason the host's own words
+ * @returns {string}
+ */
+export function declinedReasonText(reason) {
+  return `project CLI skipped: ${reason}`;
+}
+
+/**
  * Choose who answers and hand off when it is not this copy.
- * @param {{cliRoot: string, argv: string[]}} input argv after `node astryx`
+ * @param {{cliRoot: string, argv: string[], declinedProjectCli?: string}} input
+ *   argv after `node astryx`; the reason a programmatic host declined the
+ *   project's own CLI, when it did
  * @returns {Promise<void>} resolves when this copy answers
  */
-export async function startRun({cliRoot, argv}) {
+export async function startRun({cliRoot, argv, declinedProjectCli}) {
   const json = argv.includes('--json');
   const self = runningCopy(cliRoot);
   const cacheDir = userCacheDir();
@@ -188,15 +207,43 @@ export async function startRun({cliRoot, argv}) {
     };
   }
 
-  if (choice.unavailable && choice.copy === 'project') {
+  // A host declined the project's own CLI (FR2): the run is never handed to
+  // it. The release equal to that CLI's version answers only when this copy
+  // is that release; otherwise this copy answers, announced as for a release
+  // that cannot be obtained, naming the reason.
+  let declined = null;
+  if (
+    declinedProjectCli &&
+    choice.copy === 'project' &&
+    choice.answer !== 'self'
+  ) {
+    if (choice.version === self.version) {
+      choice = {
+        ...choice,
+        copy: 'matched',
+        answer: 'self',
+        bin: null,
+        unavailable: null,
+      };
+    } else {
+      declined = declinedReasonText(declinedProjectCli);
+    }
+  }
+
+  if (!declined && choice.unavailable && choice.copy === 'project') {
     failUnavailable(
       `This project's CLI ${choice.version} could not be started: ${choice.unavailable}. Reinstall the project's dependencies.`,
       json,
     );
   }
 
+  // A host's door scopes this call (FR5); notices print as the process exits,
+  // outside that scope, so they re-enter it.
+  const door = cliDoor();
   /** FR10: after a successful command, at most once a day per notice. */
-  const notify = () => {
+  const notify = () =>
+    door ? runWithCliDoor(door, printNotices) : printNotices();
+  const printNotices = () => {
     try {
       for (const line of noticeLines({
         cwd: process.cwd(),
@@ -235,6 +282,11 @@ export async function startRun({cliRoot, argv}) {
       if (code === 0) notify();
     });
   };
+
+  if (declined) {
+    await fallBack(declined);
+    return;
+  }
 
   if (choice.unavailable) {
     await fallBack(choice.unavailable);
