@@ -82,7 +82,12 @@ set is installed.
 
   `name` MUST equal the directory name. `license` is an SPDX expression for the
   artwork. The descriptor holds only what a person writes about the set; it
-  never lists icons.
+  never lists icons. `astryx integration add icon-set <name>` writes a new set
+  the way it writes every other kind (`spec:AST-039`): the descriptor, a
+  data file whose `module` is the package's own name and whose icon list is
+  empty, the `iconSets` root on first use, and the root in an existing
+  package.json `files` list. It never overwrites a file, and a write that
+  fails is rolled back.
 
 - **FR3 — Each set has one data file, and every icon surface reads it.** The
   set's directory MUST contain `<name>.icons.json`. Search, the icon lookup
@@ -193,7 +198,7 @@ set is installed.
           "fills": [],
           "variants": [],
           "reason": "word \"delete\"",
-          "score": 80
+          "score": 90
         }
       ]
     }
@@ -205,15 +210,26 @@ set is installed.
   | Score | The query, lower-cased and trimmed                                                                                                         | `reason`                              |
   | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
   | 100   | equals an `IconName` the icon fills, ignoring case, spaces, `-`, and `_`                                                                   | `fills "<name>"`                      |
-  | 90    | equals its `id`, spaces read as `-`                                                                                                        | `id "<id>"`                           |
-  | 80    | equals one of its `words`                                                                                                                  | `word "<word>"`                       |
+  | 90    | is an exact match in the leading reading (below)                                                                                           | `id "<id>"` or `word "<word>"`        |
+  | 80    | is an exact match in the other reading                                                                                                     | `id "<id>"` or `word "<word>"`        |
   | 60    | starts one of its `words`                                                                                                                  | `word "<word>" starts with "<query>"` |
   | 40    | is inside its `id` or one of its `words`, or, for a query of several words, every query word starts a part of its `id` or one of its words | `partial "<text>"`                    |
 
-  Ties keep the set order (FR10) and then `id` order, so the same installation
-  always answers the same way. `--set <name>` keeps one set. `--limit <n>` caps
-  the list (default 10); `matchCount` counts every match. A query with no match
-  answers an empty list, not an error.
+  An exact match is a name match or a meaning match. It is a name match when
+  the query equals the icon's `id` (spaces read as `-`, reason `id "<id>"`)
+  or one of its `words` that is also a part of the `id` (`trash` for
+  `trash-2`). It is a meaning match when the query equals one of its other
+  `words`, its tags. Across the searched sets, when at least as many icons
+  have a meaning match as have a name match, meaning matches score 90 and
+  name matches 80; otherwise name matches score 90 and meaning matches 80.
+  Within one score, a match on a whole `id` comes before a match on a part of
+  one, and a meaning match comes before another when the query is earlier
+  among the icon's tags.
+
+  Remaining ties keep the set order (FR10) and then `id` order, so the same
+  installation always answers the same way. `--set <name>` keeps one set.
+  `--limit <n>` caps the list (default 10); `matchCount` counts every match. A
+  query with no match answers an empty list, not an error.
 
 - **FR7 — One icon and the installed sets have their own reads.**
   `astryx icon <set>/<id>` answers `icon.detail` with the same fields as a match
@@ -396,16 +412,15 @@ set is installed.
 ## Current-state impact
 
 - `architecture:cli-surface`: adds the `iconSets` manifest root and the
-  `icon-set` descriptor kind to INV24's discovered kinds, the `icon` command and
-  its three response types, the `icon` search domain, the `icon-sets` Doctor
-  check, and the icon-set checks of `integration check` (INV35).
+  `icon-set` descriptor kind to INV24's discovered kinds, the `icon-set` kind
+  of `integration add`, the `icon` command and its three response types, the
+  `icon` search domain, the `icon-sets` Doctor check, and the icon-set checks
+  of `integration check` (INV35).
 - The CLI implements FR1–FR3, FR5–FR10, FR11 and FR12 for `astryx template`,
-  and FR13–FR15. These are not yet in the CLI: icon mapping in `astryx build`
-  (FR11), icon sets in `astryx discover` (FR16), the wrapper generator and
-  wrapper package checks (FR4, FR17), and the TypeScript check of `IconSetDoc`
-  descriptors in `doctor integration validate`
-  (`architecture:cli-surface` INV34); the descriptor parser enforces its
-  shape.
+  and FR13–FR16, and `doctor integration validate` type-checks `IconSetDoc`
+  descriptors (`architecture:cli-surface` INV34). These are not yet in the
+  CLI: icon mapping in `astryx build` (FR11), and the wrapper generator and
+  wrapper package checks (FR4, FR17).
 - `contributing:cli-conventions`: lists `IconSetDoc` and the data file among the
   authoring types a new kind ships with.
 - Consumer docs: `cli/integrations` documents authoring an icon set;
@@ -417,20 +432,20 @@ set is installed.
 
 ## Verification
 
-| Contract  | Verification                                                                   | Representative states                                                                                                                                                                                          | Mutation or failure expectation                                                                       |
-| --------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| FR1–FR3   | descriptor and data-file parser tests; discovery tests                         | valid set; missing or misnamed descriptor; missing data file; unknown field; `schemaVersion: 2`; two sets in one package; a match with an unknown confidence; a match naming its own set                       | a set without its descriptor or data file is discovered, or the manifest lists icons and still passes |
-| FR4       | wrapper generator test                                                         | regenerate from the same upstream version; upstream adds an icon                                                                                                                                               | regenerating changes the file, or a new upstream icon is missing                                      |
-| FR5       | pack and discovery tests                                                       | module path escaping the package; nested notice file                                                                                                                                                           | an escaped path is accepted, or discovery imports the icon module                                     |
-| FR6–FR7   | `icon` command text and JSON tests                                             | exact `IconName`; exact id; exact word; prefix; no match; `--set`; `--limit`; unknown set or id; `--list` coverage                                                                                             | ranking order changes, a tie is order-dependent, or a missing icon is not `ERR_NOT_FOUND`             |
-| FR8       | search tests                                                                   | icon-only word; word matching a component and an icon; `--type icon`                                                                                                                                           | an icon outranks an equal component, or `--type icon` returns another domain                          |
-| FR9–FR10  | discovery and config tests                                                     | set installed but module missing; invalid data file; one set; two sets with and without `iconSet`                                                                                                              | a withdrawn set answers, or two sets pick one silently                                                |
-| FR11–FR12 | template print and copy tests over a fixture set and the bundled template data | reviewed exact or strong match; likely match suggested; match for another variant; icon filling a shared name; id match; word match; no match; solid variant; name collision; no set; two sets; printed source | an unmapped icon is dropped, a reference keeps the old name, or the receipt omits a kept icon         |
-| FR13      | integration check tests; theme fixture                                         | theme map equal to fills; extra key; missing key; wrong artwork                                                                                                                                                | a disagreeing theme map passes                                                                        |
-| FR14      | `integration check` tests, with and without `--strict`                         | every error listed in FR14; upstream version drift; missing notice                                                                                                                                             | an export the module lacks passes, or a warning fails without `--strict`                              |
-| FR15      | Doctor tests                                                                   | no sets; one set; two sets without `iconSet`; `iconSet` not installed; invalid data file                                                                                                                       | a missing configured set passes, or no sets warns                                                     |
-| FR16      | discover tests                                                                 | package adding a set; `--type icon-set`; item page                                                                                                                                                             | icon sets are not listed, or icons appear as discover items                                           |
-| FR17      | wrapper package tests                                                          | named re-exports; one-icon import bundle size; license text present                                                                                                                                            | a wrapper bundles artwork, drops a notice, or importing one icon pulls in the library                 |
+| Contract  | Verification                                                                    | Representative states                                                                                                                                                                                              | Mutation or failure expectation                                                                       |
+| --------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| FR1–FR3   | descriptor and data-file parser tests; discovery tests; `integration add` tests | valid set; missing or misnamed descriptor; missing data file; unknown field; `schemaVersion: 2`; two sets in one package; a match with an unknown confidence; a match naming its own set; added set; existing file | a set without its descriptor or data file is discovered, or the manifest lists icons and still passes |
+| FR4       | wrapper generator test                                                          | regenerate from the same upstream version; upstream adds an icon                                                                                                                                                   | regenerating changes the file, or a new upstream icon is missing                                      |
+| FR5       | pack and discovery tests                                                        | module path escaping the package; nested notice file                                                                                                                                                               | an escaped path is accepted, or discovery imports the icon module                                     |
+| FR6–FR7   | `icon` command text and JSON tests                                              | exact `IconName`; exact id; exact word; an id one icon is named and another is tagged; a word many icons are named for; prefix; no match; `--set`; `--limit`; unknown set or id; `--list` coverage                 | ranking order changes, a tie is order-dependent, or a missing icon is not `ERR_NOT_FOUND`             |
+| FR8       | search tests                                                                    | icon-only word; word matching a component and an icon; `--type icon`                                                                                                                                               | an icon outranks an equal component, or `--type icon` returns another domain                          |
+| FR9–FR10  | discovery and config tests                                                      | set installed but module missing; invalid data file; one set; two sets with and without `iconSet`                                                                                                                  | a withdrawn set answers, or two sets pick one silently                                                |
+| FR11–FR12 | template print and copy tests over a fixture set and the bundled template data  | reviewed exact or strong match; likely match suggested; match for another variant; icon filling a shared name; id match; word match; no match; solid variant; name collision; no set; two sets; printed source     | an unmapped icon is dropped, a reference keeps the old name, or the receipt omits a kept icon         |
+| FR13      | integration check tests; theme fixture                                          | theme map equal to fills; extra key; missing key; wrong artwork                                                                                                                                                    | a disagreeing theme map passes                                                                        |
+| FR14      | `integration check` tests, with and without `--strict`                          | every error listed in FR14; upstream version drift; missing notice                                                                                                                                                 | an export the module lacks passes, or a warning fails without `--strict`                              |
+| FR15      | Doctor tests                                                                    | no sets; one set; two sets without `iconSet`; `iconSet` not installed; invalid data file                                                                                                                           | a missing configured set passes, or no sets warns                                                     |
+| FR16      | discover tests                                                                  | package adding a set; `--type icon-set`; item page                                                                                                                                                                 | icon sets are not listed, or icons appear as discover items                                           |
+| FR17      | wrapper package tests                                                           | named re-exports; one-icon import bundle size; license text present                                                                                                                                                | a wrapper bundles artwork, drops a notice, or importing one icon pulls in the library                 |
 
 ## Decision log
 
@@ -479,6 +494,23 @@ A wrapper adds the data, theme map, and names Astryx needs without forking the
 library: artwork stays in the upstream package, under its license, and updates
 with it. Re-exports keep imports tree-shakeable, so an app pays only for the
 icons it uses.
+
+### DEC-5 — An exact query asks for a meaning unless the sets mostly use it as a name
+
+**Reference:** `spec:AST-084/DEC-5`
+**Decider:** `joeyfarina`, `2026-10-20`
+
+An icon's `id` names its artwork; its other words say what it is for. A
+library may name an icon for a key or an object (`delete` draws the Delete
+key) while the same word is what people type to find a different icon
+(`trash`, tagged `delete`). The searched sets decide which reading leads,
+from their own data: a word more icons are named for than tagged with
+(`user`) keeps name matches first; otherwise meaning matches lead. Ties go
+to meaning, because `words` are, by definition, what people search for.
+
+Rejected: ranking every id match above every word match, because it answers
+`delete` with the Delete key; and ranking every tag above every name,
+because it answers `user` with an icon only tagged `user`.
 
 ## Open questions
 
