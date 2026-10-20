@@ -44,6 +44,7 @@ import {
   validateInstalledIntegration,
   validateLocalIntegration,
 } from './validate-integration.mjs';
+import {rootProblem} from '../../foundation/integrations/validate-contributions.mjs';
 
 /** @param {string} value */
 export function shellArg(value) {
@@ -57,9 +58,25 @@ export function shellArg(value) {
  * @param {string} cwd
  */
 async function resolveIntegration(pkg, cwd) {
-  return pkg
-    ? validateInstalledIntegration(pkg, cwd)
-    : validateLocalIntegration(cwd);
+  const resolved = pkg
+    ? await validateInstalledIntegration(pkg, cwd)
+    : await validateLocalIntegration(cwd);
+  const integration = resolved.found ? resolved.integration : undefined;
+  if (!integration) return resolved;
+  // A root that is not a readable folder is reported in the issues; the
+  // checks read nothing from it rather than fail on it.
+  const usable = {...integration};
+  for (const kind of /** @type {const} */ ([
+    'components',
+    'templates',
+    'codemods',
+    'docs',
+    'themes',
+  ])) {
+    const root = usable[kind];
+    if (root != null && rootProblem(root)) usable[kind] = undefined;
+  }
+  return {...resolved, integration: usable};
 }
 
 /**

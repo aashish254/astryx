@@ -94,6 +94,14 @@ function findNearestPackageJson(cwd) {
   }
 }
 
+const ROOT_KINDS = /** @type {const} */ ([
+  'components',
+  'templates',
+  'codemods',
+  'docs',
+  'themes',
+]);
+
 const UNREACHABLE_SCAN_LIMIT = 5_000;
 const UNREACHABLE_SKIP_DIRS = new Set([
   'node_modules',
@@ -143,27 +151,51 @@ function unreadThemeFolderIssues(packageDir, loaded) {
  *
  * @param {string} packageDir
  * @param {import('../../foundation/integrations/integrations.mjs').LoadedIntegration} loaded
+ * @param {string[]} [reported] folders whose files another issue already covers
  * @returns {Promise<Issue[]>}
  */
-async function findUnreachableContributionIssues(packageDir, loaded) {
+async function findUnreachableContributionIssues(
+  packageDir,
+  loaded,
+  reported = [],
+) {
+  // A root that is not a readable folder holds nothing: a fix must never
+  // send a file into it.
+  const usable = {...loaded};
+  for (const kind of ROOT_KINDS) {
+    const root = usable[kind];
+    if (root != null && rootProblem(root)) usable[kind] = undefined;
+  }
+  // Every declared root is skipped, readable or not: one that cannot be read
+  // has its own issue.
   const roots = /** @type {string[]} */ (
-    [
-      loaded.components,
-      loaded.templates,
-      loaded.codemods,
-      loaded.docs,
-      loaded.themes,
-    ].filter(Boolean)
+    ROOT_KINDS.map(kind => loaded[kind]).filter(Boolean)
   );
+  // A folder a symlinked root points at is read through that root.
+  const realRoots = roots.map(root => {
+    try {
+      return fs.realpathSync(root);
+    } catch {
+      return root;
+    }
+  });
   /** @type {Issue[]} */
   const issues = [];
-  const context = createFixContext(packageDir, loaded);
+  const context = createFixContext(packageDir, usable);
   let scanned = 0;
   let truncated = false;
 
   /** @param {string} dir */
   async function walk(dir) {
     if (roots.some(root => pathIsInside(dir, root))) return;
+    if (reported.some(folder => pathIsInside(dir, folder))) return;
+    let realDir = dir;
+    try {
+      realDir = fs.realpathSync(dir);
+    } catch {
+      // Unreadable: reported below.
+    }
+    if (realRoots.some(root => pathIsInside(realDir, root))) return;
     let entries;
     try {
       entries = fs
@@ -293,9 +325,35 @@ async function validateAtPackageDir(
     return result;
   }
 
-  /** @param {string | null | undefined} value */
-  const resolveRoot = (value, kind = 'contribution root') => {
+  /** @type {string[]} absolute roots inside the package */
+  const absoluteRoots = [];
+  /**
+   * @param {string | null | undefined} value
+   * @param {string} key the manifest key that declares it
+   */
+  const resolveRoot = (value, key, kind = 'contribution root') => {
     if (value == null) return undefined;
+    if (path.isAbsolute(value)) {
+      // An absolute root names this machine's disk, which no install shares,
+      // even when it happens to point inside the package.
+      const inside = path.relative(packageDir, value);
+      const relative =
+        inside === '' || (!inside.startsWith('..') && !path.isAbsolute(inside))
+          ? `./${inside.split(path.sep).join('/')}`.replace(/\/$/u, '')
+          : null;
+      result.issues.push(
+        error(
+          'invalid_root',
+          `The ${key} root "${value}" is an absolute path, so Astryx reads nothing from it: a root is relative to the package, so it resolves the same wherever the package is installed.` +
+            (relative
+              ? ` Fix: set \`${key}: '${relative === './' ? '.' : relative}'\` in ${path.basename(manifestFile)}.`
+              : ` It also points outside the package. Fix: move the files into the package and set \`${key}\` to their folder relative to package.json, such as './${key}'.`),
+        ),
+      );
+      // Its files are reported through this issue, not one by one.
+      if (relative) absoluteRoots.push(path.resolve(value));
+      return undefined;
+    }
     try {
       return assertWithin(value, packageDir, {label: kind});
     } catch {
@@ -312,11 +370,11 @@ async function validateAtPackageDir(
   const loaded = {
     name: identity.name,
     version: identity.version,
-    components: resolveRoot(manifest.components),
-    templates: resolveRoot(manifest.templates),
-    codemods: resolveRoot(manifest.codemods),
-    docs: resolveRoot(manifest.docs),
-    themes: resolveRoot(manifest.themes),
+    components: resolveRoot(manifest.components, 'components'),
+    templates: resolveRoot(manifest.templates, 'templates'),
+    codemods: resolveRoot(manifest.codemods, 'codemods'),
+    docs: resolveRoot(manifest.docs, 'docs'),
+    themes: resolveRoot(manifest.themes, 'themes'),
     issuesUrl: manifest.issuesUrl,
     agentDocs: manifest.agentDocs,
     __agentDocsError: agentDocsError,
@@ -334,7 +392,11 @@ async function validateAtPackageDir(
     issues.push(...unreadThemeFolderIssues(packageDir, loaded));
   if (scanUnreachable) {
     issues.push(
-      ...(await findUnreachableContributionIssues(packageDir, loaded)),
+      ...(await findUnreachableContributionIssues(
+        packageDir,
+        loaded,
+        absoluteRoots,
+      )),
     );
   }
 
@@ -361,7 +423,7 @@ export async function validateLocalIntegration(cwd = process.cwd()) {
     return {found: false, issues: []};
   }
 
-  /** @type {{name?: string, version?: string}} */
+  /** @type {{name?: string, version?: string, private?: boolean}} */
   let pkg;
   try {
     pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
@@ -380,14 +442,59 @@ export async function validateLocalIntegration(cwd = process.cwd()) {
     };
   }
 
-  return validateAtPackageDir(
+  // npm publishes nothing without a name and a version, and the name is the
+  // provider ID every reader keys the package's contributions on.
+  const fields = packageJsonFieldIssues(pkg, pkgJsonPath);
+  if (typeof pkg.name !== 'string' || pkg.name === '') {
+    return {
+      found: true,
+      name: '(local package)',
+      version: typeof pkg.version === 'string' ? pkg.version : undefined,
+      manifestFile: manifests[0],
+      issues: fields,
+    };
+  }
+
+  const result = await validateAtPackageDir(
     packageDir,
-    {
-      name: pkg.name ?? '(local package)',
-      version: pkg.version,
-    },
+    {name: pkg.name, version: pkg.version},
     {scanUnreachable: true},
   );
+  result.issues.unshift(...fields);
+  return result;
+}
+
+/**
+ * An error for each field npm needs that package.json lacks.
+ * @param {{name?: unknown, version?: unknown, private?: unknown}} pkg
+ * @param {string} pkgJsonPath
+ * @returns {Issue[]}
+ */
+function packageJsonFieldIssues(pkg, pkgJsonPath) {
+  /** @type {Issue[]} */
+  const issues = [];
+  const shown = path.basename(pkgJsonPath);
+  if (typeof pkg.name !== 'string' || pkg.name === '') {
+    issues.push(
+      error(
+        'invalid_package_json',
+        `${shown} has no "name", so npm cannot pack or publish the package and Astryx has no package to file its contributions under; nothing else was checked. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
+      ),
+    );
+  }
+  // A private package is never published, so it needs no version.
+  if (
+    pkg.private !== true &&
+    (typeof pkg.version !== 'string' || pkg.version === '')
+  ) {
+    issues.push(
+      error(
+        'invalid_package_json',
+        `${shown} has no "version", so npm cannot pack or publish the package. Fix: add "version": "0.1.0" to ${shown}.`,
+      ),
+    );
+  }
+  return issues;
 }
 
 /**

@@ -1240,8 +1240,16 @@ export function discoverThemeDirectory(
           : evidence.includes('/')
             ? `; "${evidence}" is in a subfolder`
             : ` beside "${evidence}"`;
+      const fix =
+        docs.length > 1
+          ? `Fix: keep the one descriptor that shares its stem with the theme's source and delete the rest.`
+          : evidence.includes('/')
+            ? `Fix: move "${evidence}" up into ${slug}/, beside where its descriptor goes.`
+            : THEME_SOURCE_RE.test(evidence)
+              ? `Fix: add ${evidence.replace(/\.[^.]+$/u, '')}${THEME_DOC_SUFFIX} beside it with type: 'theme' and name: '${slug}'; \`astryx docs authoring theme-doc\` lists its fields.`
+              : `Fix: add a descriptor that shares its stem with the theme's source, with type: 'theme' and name: '${slug}'; \`astryx docs authoring theme-doc\` lists its fields.`;
       throw new Error(
-        `${theme} must contain exactly one same-stem .doc.mjs descriptor; found ${docs.length}${detail}.`,
+        `${theme} must contain exactly one same-stem .doc.mjs descriptor; found ${docs.length}${detail}. ${fix}`,
       );
     }
     const nested = descriptors.find(file => file.includes('/'));
@@ -1266,9 +1274,31 @@ export function discoverThemeDirectory(
     const sources = THEME_MODULE_EXTENSIONS.map(
       extension => `${exportName}${extension}`,
     ).filter(file => listing.files.includes(file));
-    if (sources.length !== 1) {
+    // A descriptor named for the theme's built output rather than its
+    // `<name>Theme` source pairs with the build, and every later check then
+    // reads the wrong file.
+    const themeSources = listing.files.filter(
+      file =>
+        !file.includes('/') &&
+        THEME_SOURCE_RE.test(file) &&
+        !file.startsWith(`${exportName}.`),
+    );
+    if (
+      !THEME_SOURCE_RE.test(`${exportName}.ts`) &&
+      themeSources.length === 1
+    ) {
+      const stem = themeSources[0].replace(/\.[^.]+$/u, '');
       throw new Error(
-        `${theme} must contain exactly one same-stem source for ${docs[0]}; found ${sources.length}${sources.length > 1 ? `: ${quoted(sources)}` : ''}.`,
+        `${label} shares its stem with ${sources.length > 0 ? `"${sources[0]}"` : 'no source'}, but the theme's source is "${themeSources[0]}": a descriptor must share its stem with the source that calls defineTheme. Fix: rename ${docs[0]} to ${stem}${THEME_DOC_SUFFIX}.`,
+      );
+    }
+    if (sources.length !== 1) {
+      const fix =
+        sources.length > 1
+          ? `Fix: keep one of them; the theme's source is a single module.`
+          : `Fix: add ${exportName}.ts beside ${docs[0]}, exporting \`${exportName}\` from defineTheme.`;
+      throw new Error(
+        `${theme} must contain exactly one same-stem source for ${docs[0]}; found ${sources.length}${sources.length > 1 ? `: ${quoted(sources)}` : ''}. ${fix}`,
       );
     }
 
