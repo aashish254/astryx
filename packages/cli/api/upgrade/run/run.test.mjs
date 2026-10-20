@@ -10,12 +10,13 @@
  * target Core is the project's own.
  */
 
-import {describe, it, expect, beforeEach, afterEach} from 'vitest';
+import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {upgrade} from '../upgrade.mjs';
 import {relativeToOrigin} from '../_adapter.mjs';
+import {logger} from '../../logger.mjs';
 import {generateCompressedIndex} from '../../../foundation/agent-docs/agent-docs.mjs';
 
 const SLOW = 30_000;
@@ -200,6 +201,8 @@ describe('upgrade.run — the result names files relative to the folder it ran i
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-receipt-'));
     seedOldPropProject(dir);
     fs.writeFileSync(path.join(dir, 'src', 'Generated.tsx'), `// @generated\n${OLD_PROP_SOURCE}`);
+    fs.writeFileSync(path.join(dir, 'src', 'Vendored.tsx'), OLD_PROP_SOURCE);
+    fs.writeFileSync(path.join(dir, '.gitattributes'), 'src/Vendored.tsx linguist-generated\n');
     fs.writeFileSync(path.join(dir, 'AGENTS.md'), `# Agents\n\n${generateCompressedIndex('0.6.8')}\n`);
     fs.mkdirSync(path.join(dir, 'frontend'), {recursive: true});
   });
@@ -215,10 +218,17 @@ describe('upgrade.run — the result names files relative to the folder it ran i
 
     expect(res.type).toBe('upgrade.run');
     expect(res.data.modifiedFiles).toEqual([`${up}src/App.tsx`]);
-    expect(res.data.protectedFiles.map(item => item.file)).toEqual([`${up}src/Generated.tsx`]);
+    expect(res.data.protectedFiles.map(item => item.file)).toEqual([
+      `${up}src/Generated.tsx`,
+      `${up}src/Vendored.tsx`,
+    ]);
     for (const file of [...res.data.modifiedFiles, ...res.data.protectedFiles.map(item => item.file)]) {
       expect(fs.existsSync(path.join(cwd, file))).toBe(true);
     }
+    // The file a declaration names resolves from that folder too.
+    const vendored = res.data.protectedFiles.find(item => item.file.endsWith('Vendored.tsx'));
+    expect(vendored?.declarations).toEqual([`linguist-generated in ${up}.gitattributes:1`]);
+    expect(fs.existsSync(path.join(cwd, `${up}.gitattributes`))).toBe(true);
   }, SLOW);
 
   it('leaves a result from a run at the project root as it is', () => {
@@ -235,7 +245,20 @@ describe('upgrade.run — the result names files relative to the folder it ran i
         data: {
           agentDocs: {status: 'stale', files: ['AGENTS.md']},
           modifiedFiles: ['src/App.tsx'],
-          protectedFiles: [{file: 'src/Generated.tsx', codemods: ['a']}],
+          protectedFiles: [
+            {
+              file: 'src/Generated.tsx',
+              codemods: ['a'],
+              declarations: [
+                '@generated marker',
+                'excluded by .gitignore',
+                'excluded by src/.hgignore:3',
+                'linguist-generated in .gitattributes:1',
+                'symbolic link at src/linked',
+                'installed dependency metadata node_modules/x',
+              ],
+            },
+          ],
           declinedCandidates: [{file: 'src/Loose.tsx', reason: 'unproven'}],
           errors: [{file: '.', codemod: 'post-codemod-hook', error: 'failed'}],
           registryCompositions,
@@ -247,7 +270,20 @@ describe('upgrade.run — the result names files relative to the folder it ran i
     expect(result.data).toEqual({
       agentDocs: {status: 'stale', files: ['../../AGENTS.md']},
       modifiedFiles: ['../../src/App.tsx'],
-      protectedFiles: [{file: '../../src/Generated.tsx', codemods: ['a']}],
+      protectedFiles: [
+        {
+          file: '../../src/Generated.tsx',
+          codemods: ['a'],
+          declarations: [
+            '@generated marker',
+            'excluded by ../../.gitignore',
+            'excluded by ../../src/.hgignore:3',
+            'linguist-generated in ../../.gitattributes:1',
+            'symbolic link at ../../src/linked',
+            'installed dependency metadata node_modules/x',
+          ],
+        },
+      ],
       declinedCandidates: [{file: '../../src/Loose.tsx', reason: 'unproven'}],
       errors: [{file: '../..', codemod: 'post-codemod-hook', error: 'failed'}],
       registryCompositions,
@@ -293,6 +329,24 @@ describe("upgrade.run — the target Core is the project's own", () => {
     },
     SLOW,
   );
+
+  it('names the folder it searched before stopping on a missing Core, from a subfolder (AST-040 FR12)', async () => {
+    fs.rmSync(path.join(dir, 'node_modules'), {recursive: true, force: true});
+    const sub = path.join(dir, 'src', 'l1');
+    const log = vi.spyOn(logger, 'log');
+    try {
+      await expect(upgrade({from: '0.6.8'}, {cwd: sub})).rejects.toMatchObject({
+        code: 'ERR_VERSION_DETECT',
+      });
+      const lines = log.mock.calls.map(([line]) => String(line));
+      expect(lines).toContain('Project root: ../..');
+      expect(lines.indexOf('Project root: ../..')).toBeLessThan(
+        lines.indexOf('Aborted\n'),
+      );
+    } finally {
+      log.mockRestore();
+    }
+  }, SLOW);
 
   it('does not upgrade a nested project that declares a Core it has not installed to the Core above it', async () => {
     const nested = nestedProject({'@astryxdesign/core': '0.6.8'});

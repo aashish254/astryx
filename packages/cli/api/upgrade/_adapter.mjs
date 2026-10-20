@@ -133,13 +133,45 @@ export function relativeToOrigin(result, {cwd: root, origin}) {
   if (data.modifiedFiles) data.modifiedFiles = data.modifiedFiles.map(rebase);
   for (const key of ['protectedFiles', 'declinedCandidates', 'errors']) {
     if (data[key]) {
-      data[key] = data[key].map((/** @type {{file: string}} */ entry) => ({
-        ...entry,
-        file: rebase(entry.file),
-      }));
+      data[key] = data[key].map(
+        (/** @type {{file: string, declarations?: string[]}} */ entry) => ({
+          ...entry,
+          file: rebase(entry.file),
+          ...(Array.isArray(entry.declarations)
+            ? {declarations: entry.declarations.map(rebaseDeclaration(rebase))}
+            : {}),
+        }),
+      );
     }
   }
   return /** @type {T} */ ({...result, data});
+}
+
+/**
+ * The project-relative file a protection declaration names, and the text
+ * around it: the ignore or attributes file that protects a file (and its
+ * line), or the symbolic link on its path. Other declarations name no file.
+ */
+const DECLARATION_PATHS = [
+  /^(excluded by )(.+?)(:\d+)?$/u,
+  /^(linguist-(?:generated|vendored) in )(.+?)(:\d+)$/u,
+  /^(symbolic link at )(.+)()$/u,
+];
+
+/**
+ * A protection declaration with the file it names rebased, as `rebase` does
+ * for result paths.
+ * @param {(file: string) => string} rebase
+ * @returns {(declaration: string) => string}
+ */
+function rebaseDeclaration(rebase) {
+  return declaration => {
+    for (const pattern of DECLARATION_PATHS) {
+      const match = pattern.exec(declaration);
+      if (match) return `${match[1]}${rebase(match[2])}${match[3] ?? ''}`;
+    }
+    return declaration;
+  };
 }
 
 /**

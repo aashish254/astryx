@@ -145,6 +145,11 @@ export async function run(options = {}, {cwd = process.cwd(), origin} = {}) {
   const sourcePathFound = fs.existsSync(path_);
 
   const currentVersion = /** @type {string} */ (options.from);
+  // Named first, so a run that stops on the Core lookup below still says which
+  // folder it searched (spec:AST-040 FR12).
+  if (origin != null) {
+    logger.log(`Project root: ${path.relative(origin, cwd) || '.'}`);
+  }
   const installed = detectInstalledTargetVersion(cwd);
   if (!installed) {
     const msg = `Could not find installed @astryxdesign/core (or legacy @xds/core). Install the target version first, then rerun \`${getCliInvocation()} upgrade --from <old-version>\`.`;
@@ -175,9 +180,6 @@ export async function run(options = {}, {cwd = process.cwd(), origin} = {}) {
     return null;
   };
 
-  if (origin != null) {
-    logger.log(`Project root: ${path.relative(origin, cwd) || '.'}`);
-  }
   logger.log(`From version: ${currentVersion}`);
   logger.log(`Installed target: ${targetVersion} (${installed.packageName})`);
 

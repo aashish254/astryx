@@ -76,7 +76,7 @@ export const doc = {
       type: 'string',
       description:
         'Source directory to scan. A path you name, in any spelling, is relative to `ctx.cwd`. When it is omitted, the upgrade scans `./src` at the project root.',
-      default: './src',
+      default: './src at the project root',
     },
     {
       name: 'options.installDeps',
