@@ -408,7 +408,7 @@ describe.skipIf(!POSIX)(
       expect(r.lines).toEqual([]);
       expect(r.notice).toEqual([
         'The astryx command on this computer runs CLI 9.0.0, which answers every folder itself.',
-        'To upgrade, run: npm i -g @astryxdesign/cli@latest',
+        'To upgrade, run: npm i -g --prefix ~/.npm-global @astryxdesign/cli@latest',
       ]);
       expect(run(projectBin, ['--version'], {cwd: dir, pc}).notice).toEqual([]);
       const doctor = JSON.parse(
@@ -420,7 +420,7 @@ describe.skipIf(!POSIX)(
         ),
       ).toMatchObject({
         status: 'warn',
-        fix: 'To upgrade, run: `npm i -g @astryxdesign/cli@latest`.',
+        fix: 'To upgrade, run: `npm i -g --prefix ~/.npm-global @astryxdesign/cli@latest`.',
       });
     });
 
@@ -679,7 +679,7 @@ describe.skipIf(!POSIX)(
       expect(r.stdout).toBe('9.0.0');
       expect(r.notice).toEqual([
         available('9.0.0', '9.0.5'),
-        `To upgrade, install Node >=99 (this computer runs Node ${process.versions.node}), then run: npm i -g @astryxdesign/cli@latest`,
+        `To upgrade, install Node >=99 (this computer runs Node ${process.versions.node}), then run: npm i -g --prefix ~/.npm-global @astryxdesign/cli@latest`,
       ]);
       const doctor = JSON.parse(
         run(g.bin, ['doctor', '--json'], {cwd: empty, pc}).stdout,
@@ -690,7 +690,7 @@ describe.skipIf(!POSIX)(
         ),
       ).toMatchObject({
         status: 'info',
-        fix: `To upgrade, install Node >=99 (this computer runs Node ${process.versions.node}), then run: npm i -g @astryxdesign/cli@latest.`,
+        fix: `To upgrade, install Node >=99 (this computer runs Node ${process.versions.node}), then run: npm i -g --prefix ~/.npm-global @astryxdesign/cli@latest.`,
       });
     });
 
@@ -918,7 +918,9 @@ describe.skipIf(!POSIX)(
 
     it('G33 the global copy behind the newest release: the notice after the command names the package manager that installed it', () => {
       for (const [layout, command] of /** @type {const} */ ([
-        ['npm', 'npm i -g @astryxdesign/cli@latest'],
+        // The npm layout is a prefix in the home folder (`~/.npm-global`),
+        // so the upgrade names it.
+        ['npm', 'npm i -g --prefix ~/.npm-global @astryxdesign/cli@latest'],
         ['pnpm', 'pnpm add -g @astryxdesign/cli@latest'],
         ['volta', 'volta install @astryxdesign/cli@latest'],
       ])) {
@@ -1349,6 +1351,39 @@ describe.skipIf(!POSIX)(
         },
       ]);
     });
+
+    it("G44 npm's own prefix (npm i -g --prefix ~/.local): the upgrade names that prefix, integrations installed there apply outside a project, and doctor finds ~/.local/bin/astryx", () => {
+      const pc = computer();
+      const prefix = path.join(pc.home, '.local');
+      const cli = placeCli(
+        path.join(prefix, 'lib', 'node_modules', '@astryxdesign', 'cli'),
+        '9.0.0',
+      );
+      fs.mkdirSync(path.join(prefix, 'bin'), {recursive: true});
+      fs.symlinkSync(cli.bin, path.join(prefix, 'bin', 'astryx'));
+      pc.path.unshift(path.join(prefix, 'bin'));
+      acmeWidgets(path.join(prefix, 'lib'), {topic: 'acme-prefix'});
+      globalState(pc, {latest: '9.0.5', checkOkAt: Date.now(), firstRunAt: 0});
+      const empty = tempDir('empty');
+      const docs = run(cli.bin, ['docs', '--json'], {cwd: empty, pc});
+      expect(
+        JSON.parse(docs.stdout).data.map((/** @type {any} */ t) => t.topic),
+      ).toContain('acme-prefix');
+      // --json prints no notice; a text run does.
+      expect(docs.notice).toEqual([]);
+      expect(run(cli.bin, ['--version'], {cwd: empty, pc}).notice).toEqual([
+        available('9.0.0', '9.0.5'),
+        'To upgrade, run: npm i -g --prefix ~/.local @astryxdesign/cli@latest',
+      ]);
+      const doctor = JSON.parse(
+        run(cli.bin, ['doctor', '--json'], {cwd: empty, pc}).stdout,
+      );
+      const onPath = doctor.data.checks.find(
+        (/** @type {any} */ c) => c.id === 'cli-on-path',
+      );
+      expect(onPath.status).toBe('pass');
+      expect(onPath.message).toContain(path.join(prefix, 'bin', 'astryx'));
+    });
   },
 );
 
@@ -1357,6 +1392,6 @@ it('names every row of the table exactly once', () => {
   const rows = [
     ...text.matchAll(/^\s+it(?:\.skipIf\([^)]*\)\()?\(?\s*['"](G\d+) /gmu),
   ].map(m => m[1]);
-  expect(rows).toEqual(Array.from({length: 43}, (_, i) => `G${i + 1}`));
+  expect(rows).toEqual(Array.from({length: 44}, (_, i) => `G${i + 1}`));
   expect(os.EOL).toBeTypeOf('string');
 });

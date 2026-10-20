@@ -37,6 +37,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {userConfigDir} from '../env/user-dirs.mjs';
 import {astryxCommandsOnSearchPath} from '../env/search-path.mjs';
@@ -128,11 +129,17 @@ function isBehind(version, newest) {
 /**
  * The command that upgrades a CLI installed for the computer, by the package
  * manager whose global folder holds it (the Vercel CLI reads it the same
- * way); npm when none is recognized.
+ * way); npm when none is recognized. A CLI that npm installed under a prefix
+ * of its own (`npm i -g --prefix ~/.local`, `NPM_CONFIG_PREFIX`, or `prefix=`
+ * in an `.npmrc`) is upgraded into that same prefix, named with `--prefix`,
+ * so the upgrade lands where the running copy is whatever npm's settings are
+ * when it runs. pnpm, Yarn, and Bun read their global folder from their own
+ * settings, so their plain command reinstalls in place.
  * @param {string} cliRoot the CLI package's folder
+ * @param {{execPath?: string, home?: string, platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv}} [where]
  * @returns {string}
  */
-export function globalUpgradeCommand(cliRoot) {
+export function globalUpgradeCommand(cliRoot, where = {}) {
   let at = cliRoot;
   try {
     at = fs.realpathSync(cliRoot);
@@ -149,7 +156,52 @@ export function globalUpgradeCommand(cliRoot) {
   if (/[\\/]pnpm[\\/]|[\\/]global[\\/]v?\d+[\\/]/iu.test(at)) {
     return `pnpm add -g ${LATEST}`;
   }
-  return `npm i -g ${LATEST}`;
+  const prefix = npmOwnPrefix(at, where);
+  return prefix
+    ? `npm i -g --prefix ${prefix} ${LATEST}`
+    : `npm i -g ${LATEST}`;
+}
+
+/**
+ * The npm prefix that holds the CLI at `at`, as a person types it (`~` for
+ * the home folder outside Windows), when it is not one npm uses by default:
+ * Node's own prefix, `/usr/local` or `/usr`, or `%APPDATA%\\npm` on Windows.
+ * Null for any other layout.
+ * @param {string} at the CLI package's real path
+ * @param {{execPath?: string, home?: string, platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv}} where
+ * @returns {string | null}
+ */
+function npmOwnPrefix(at, where) {
+  const {
+    execPath = process.execPath,
+    home = os.homedir(),
+    platform = process.platform,
+    env = process.env,
+  } = where;
+  const win = platform === 'win32';
+  const paths = win ? path.win32 : path.posix;
+  const parts = at.split(/[\\/]/);
+  const n = parts.length;
+  if (parts[n - 1] !== 'cli' || parts[n - 2] !== '@astryxdesign') return null;
+  if (parts[n - 3] !== 'node_modules') return null;
+  // npm's global folder: `<prefix>/lib/node_modules` on macOS and Linux,
+  // `<prefix>\\node_modules` on Windows.
+  const depth = win ? n - 3 : n - 4;
+  if (!win && parts[n - 4] !== 'lib') return null;
+  const prefix = parts.slice(0, depth).join(win ? '\\' : '/') || paths.sep;
+  const defaults = win
+    ? [
+        paths.dirname(execPath),
+        ...(env.APPDATA ? [paths.join(env.APPDATA, 'npm')] : []),
+      ]
+    : [paths.dirname(paths.dirname(execPath)), '/usr/local', '/usr'];
+  if (defaults.some(d => samePath(d, prefix, platform))) return null;
+  if (!win) {
+    const rel = paths.relative(home, prefix);
+    if (rel === '') return '~';
+    if (!rel.startsWith('..') && !paths.isAbsolute(rel)) return `~/${rel}`;
+  }
+  return /\s/.test(prefix) ? JSON.stringify(prefix) : prefix;
 }
 
 /**
