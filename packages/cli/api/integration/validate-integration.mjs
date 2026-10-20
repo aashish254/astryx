@@ -35,6 +35,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
 import {integrationDocTypes} from '../docs/_adapter.mjs';
+import {iconSetIssues} from '../../foundation/discovery/icon-set-checks.mjs';
 import {
   THEME_SLUG_RE,
   unreadThemeFolders,
@@ -317,6 +318,7 @@ async function validateAtPackageDir(
     codemods: resolveRoot(manifest.codemods),
     docs: resolveRoot(manifest.docs),
     themes: resolveRoot(manifest.themes),
+    iconSets: resolveRoot(manifest.iconSets),
     issuesUrl: manifest.issuesUrl,
     agentDocs: manifest.agentDocs,
     __agentDocsError: agentDocsError,
@@ -332,6 +334,10 @@ async function validateAtPackageDir(
   issues.push(...(await validateLoadedIntegration(loaded)));
   if (loaded.themes && !rootProblem(loaded.themes))
     issues.push(...unreadThemeFolderIssues(packageDir, loaded));
+  // The icon-set checks (AST-084 FR14): data against descriptor, module
+  // exports, and theme map, all read statically.
+  if (loaded.iconSets && !rootProblem(loaded.iconSets))
+    issues.push(...iconSetIssues(packageDir, loaded));
   if (scanUnreachable) {
     issues.push(
       ...(await findUnreachableContributionIssues(packageDir, loaded)),

@@ -91,6 +91,8 @@ import {checkAppThemes, checkThemes} from './theme-checks.mjs';
  *   Combined project-level integration issues, including cross-package template replacement warnings.
  * @property {Error|null} [configError] - Error thrown while resolving the config
  *   path (e.g. multiple config files present), surfaced by checkConfig as a FAIL.
+ * @property {{sets: Array<{name: string, package: string}>, withdrawn: Array<{name: string, package: string, reason: string}>, choice: {status: 'selected'|'none'|'ambiguous'|'missing', reason: string}}|null} [iconSets]
+ *   The project's icon sets (AST-084 FR15), or null when they could not be read.
  * @property {string|null} [projectError] - Why the CLI could not load the
  *   project from its config, when it could not. Checks that need the loaded
  *   project quote it when they skip, so a skip says what was found.
@@ -777,6 +779,63 @@ export function checkIntegrationIssues(ctx) {
 }
 
 /**
+ * The project's icon sets (AST-084 FR15). Fails when `iconSet` names a set
+ * that is not installed; warns when two or more sets are installed and none
+ * is the project's, and for each installed set that was withdrawn, with why.
+ * A project with no icon sets passes.
+ * @param {DoctorContext} ctx
+ * @returns {DoctorCheck}
+ */
+export function checkIconSets(ctx) {
+  const state = ctx.iconSets;
+  const id = 'icon-sets';
+  const label = 'Icon sets';
+  if (state == null) {
+    return {
+      id,
+      label,
+      status: 'info',
+      message: skippedBecause(ctx, 'the project icon sets could not be read'),
+    };
+  }
+  const {sets, withdrawn, choice} = state;
+  if (choice.status === 'missing') {
+    return {
+      id,
+      label,
+      status: 'fail',
+      message: choice.reason,
+      fix: 'Install the package that ships the set, or set iconSet in astryx.config to an installed set (`astryx icon --list` names them).',
+    };
+  }
+  /** @type {string[]} */
+  const problems = [];
+  if (choice.status === 'ambiguous') problems.push(choice.reason);
+  for (const each of withdrawn) problems.push(each.reason);
+  if (problems.length > 0) {
+    return {
+      id,
+      label,
+      status: 'warn',
+      message: problems.join(' | '),
+      fix:
+        choice.status === 'ambiguous'
+          ? 'Set iconSet in astryx.config to "<package>/<set>" so templates use one set.'
+          : 'Run `astryx integration check` in the package that ships the set, or install its module.',
+    };
+  }
+  if (sets.length === 0) {
+    return {id, label, status: 'pass', message: 'No icon sets are installed.'};
+  }
+  return {
+    id,
+    label,
+    status: 'pass',
+    message: `${sets.length} icon set${sets.length === 1 ? '' : 's'} installed. ${choice.reason}`,
+  };
+}
+
+/**
  * Check 10 — report the detected package manager, and say so when the project's
  * own declaration disagrees with what is on disk.
  *
@@ -1315,6 +1374,7 @@ export const SYNC_CHECKS = [
   checkConfiguredIntegrations,
   checkProviderIdentity,
   checkIntegrationIssues,
+  checkIconSets,
   checkAgentDocs,
   checkPeerDeps,
   checkPackageManager,
@@ -1360,6 +1420,8 @@ export async function runChecks(options = {}) {
   let configuredIntegrations = null;
   /** @type {string|null} */
   let projectError = null;
+  /** @type {DoctorContext['iconSets']} */
+  let iconSets = null;
   /** @type {import('../../foundation/config/project.mjs').Project | null} */
   let project = null;
   try {
@@ -1453,6 +1515,11 @@ export async function runChecks(options = {}) {
         docsCatalog = null;
         docsCatalogError = err instanceof Error ? err.message : String(err);
       }
+      try {
+        iconSets = await project.iconSets();
+      } catch {
+        iconSets = null;
+      }
       integrationIssues = await project.issues();
     } catch {
       // Best-effort: once the project has loaded, a later read that throws
@@ -1476,6 +1543,7 @@ export async function runChecks(options = {}) {
     configuredIntegrations,
     configError,
     projectError,
+    iconSets,
   };
 
   /** @type {DoctorCheck[]} */

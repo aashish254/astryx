@@ -469,3 +469,147 @@ export function staticExportObject(file, exportNames) {
   }
   return null;
 }
+
+/**
+ * Where a module's runtime export is declared, as the file and the name it
+ * has there, without executing anything: local re-exports, renames, and
+ * imported bindings a module exports again are followed. Two exports are the
+ * same value when their origins are equal. Null when it cannot be proved.
+ * @param {string} file
+ * @param {string} exportName
+ * @param {Set<string>} [seen]
+ * @returns {{file: string, name: string} | null}
+ */
+export function moduleExportOrigin(file, exportName, seen = new Set()) {
+  const identity = `${file}\0${exportName}`;
+  if (seen.has(identity)) return null;
+  seen.add(identity);
+  let ast;
+  try {
+    if (!fs.statSync(file).isFile()) return null;
+    ast = parseModule(file);
+  } catch {
+    return null;
+  }
+  for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
+    if (node.exportKind === 'type') continue;
+    if (declarationExports(node.declaration, exportName)) {
+      return {file, name: exportName};
+    }
+    for (const specifier of node.specifiers ?? []) {
+      if (
+        specifier.type !== 'ExportSpecifier' ||
+        specifier.exportKind === 'type'
+      ) {
+        continue;
+      }
+      const exported = specifier.exported?.name ?? specifier.exported?.value;
+      if (exported !== exportName) continue;
+      const local =
+        specifier.local?.name ?? specifier.local?.value ?? exportName;
+      if (node.source) {
+        const target = resolveLocalModule(node.source.value, file);
+        const origin = target ? moduleExportOrigin(target, local, seen) : null;
+        if (origin) return origin;
+        continue;
+      }
+      return bindingOrigin(ast, file, local, seen);
+    }
+  }
+  for (const node of nodesOfType(ast.program, 'ExportAllDeclaration')) {
+    if (node.exportKind === 'type' || node.exported) continue;
+    const target = resolveLocalModule(node.source?.value, file);
+    const origin = target ? moduleExportOrigin(target, exportName, seen) : null;
+    if (origin) return origin;
+  }
+  return null;
+}
+
+/**
+ * Where a top-level binding of a parsed module comes from: an import from a
+ * local module is followed to its origin; anything else is declared here.
+ * @param {any} ast
+ * @param {string} file
+ * @param {string} local
+ * @param {Set<string>} seen
+ * @returns {{file: string, name: string} | null}
+ */
+function bindingOrigin(ast, file, local, seen) {
+  for (const node of ast.program.body) {
+    if (node.type !== 'ImportDeclaration' || node.importKind === 'type') {
+      continue;
+    }
+    for (const specifier of node.specifiers ?? []) {
+      if (specifier.local?.name !== local) continue;
+      if (specifier.type !== 'ImportSpecifier') return null;
+      const imported =
+        specifier.imported?.name ?? specifier.imported?.value ?? local;
+      const target = resolveLocalModule(node.source.value, file);
+      return target ? moduleExportOrigin(target, imported, seen) : null;
+    }
+  }
+  return {file, name: local};
+}
+
+/**
+ * The object a module exports under `exportName`, read without running it:
+ * each property's key and the binding its value names (an identifier, or the
+ * element name of `<Name />`), followed to where that binding is declared.
+ * The export itself is followed through re-exports first. A property whose
+ * value is anything else maps to null, so a caller can leave it unchecked.
+ * Null when the export is not one static object literal.
+ * @param {string} file
+ * @param {string} exportName
+ * @returns {Map<string, {file: string, name: string} | null> | null}
+ */
+export function staticExportBindings(file, exportName) {
+  const origin = moduleExportOrigin(file, exportName);
+  if (!origin) return null;
+  let ast;
+  try {
+    ast = parseModule(origin.file);
+  } catch {
+    return null;
+  }
+  /** @type {any} */
+  let init = null;
+  for (const statement of ast.program.body) {
+    const declaration =
+      statement.type === 'ExportNamedDeclaration'
+        ? statement.declaration
+        : statement;
+    if (declaration?.type !== 'VariableDeclaration') continue;
+    for (const declarator of declaration.declarations) {
+      if (
+        declarator.id?.type === 'Identifier' &&
+        declarator.id.name === origin.name
+      ) {
+        init = declarator.init;
+      }
+    }
+  }
+  const object = withoutTypeWrappers(init);
+  if (object?.type !== 'ObjectExpression') return null;
+  /** @type {Map<string, {file: string, name: string} | null>} */
+  const bindings = new Map();
+  for (const property of object.properties) {
+    if (property.type !== 'ObjectProperty' || property.computed) return null;
+    const key = property.key?.name ?? property.key?.value;
+    if (typeof key !== 'string') return null;
+    let value = withoutTypeWrappers(property.value);
+    if (value?.type === 'JSXElement') {
+      const name = value.openingElement?.name;
+      value =
+        name?.type === 'JSXIdentifier'
+          ? {type: 'Identifier', name: name.name}
+          : null;
+    }
+    bindings.set(
+      key,
+      value?.type === 'Identifier'
+        ? bindingOrigin(ast, origin.file, value.name, new Set())
+        : null,
+    );
+  }
+  return bindings;
+}
