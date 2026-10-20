@@ -195,21 +195,21 @@ function readState(pc) {
 }
 
 /**
- * An `@acme/widgets` integration installed in `root`'s node_modules, with one
- * doc topic.
+ * An integration (by default `@acme/widgets`) installed in `root`'s
+ * node_modules, with one doc topic; `manifest` replaces its manifest's text.
  * @param {string} root
- * @param {{topic: string, peers?: Record<string, string>}} options
+ * @param {{topic: string, peers?: Record<string, string>, name?: string, manifest?: string}} options
  */
-function acmeWidgets(root, {topic, peers}) {
-  const dir = path.join(root, 'node_modules', '@acme', 'widgets');
+function acmeWidgets(root, {topic, peers, name = '@acme/widgets', manifest}) {
+  const dir = path.join(root, 'node_modules', ...name.split('/'));
   writeJson(path.join(dir, 'package.json'), {
-    name: '@acme/widgets',
+    name,
     version: '1.0.0',
     ...(peers ? {peerDependencies: peers} : {}),
   });
   fs.writeFileSync(
     path.join(dir, 'astryx.integration.mjs'),
-    "export default {docs: './docs'};\n",
+    manifest ?? "export default {docs: './docs'};\n",
   );
   fs.mkdirSync(path.join(dir, 'docs'), {recursive: true});
   fs.writeFileSync(
@@ -1121,6 +1121,187 @@ describe.skipIf(!POSIX)(
         docs.data.find((/** @type {any} */ t) => t.topic === 'acme-door'),
       ).toMatchObject({package: '@acme/widgets'});
     });
+
+    it('G40 pnpm global folders: one shared folder before pnpm 11, a folder per package since', () => {
+      const pc = computer();
+      // Before pnpm 11: the CLI's files are in `global/5/.pnpm`, and
+      // `global/5/package.json` lists everything installed globally.
+      const g5 = path.join(pc.home, '.local', 'share', 'pnpm', 'global', '5');
+      const real5 = placeCli(
+        path.join(
+          g5,
+          '.pnpm',
+          '@astryxdesign+cli@9.0.0',
+          'node_modules',
+          '@astryxdesign',
+          'cli',
+        ),
+        '9.0.0',
+      );
+      writeJson(path.join(g5, 'package.json'), {
+        dependencies: {'@astryxdesign/cli': '9.0.0', '@acme/widgets': '1.0.0'},
+      });
+      fs.mkdirSync(path.join(g5, 'node_modules', '@astryxdesign'), {
+        recursive: true,
+      });
+      fs.symlinkSync(
+        real5.dir,
+        path.join(g5, 'node_modules', '@astryxdesign', 'cli'),
+      );
+      acmeWidgets(g5, {topic: 'acme-pnpm10'});
+      const empty = tempDir('empty');
+      const docs10 = JSON.parse(
+        run(real5.bin, ['docs', '--json'], {cwd: empty, pc}).stdout,
+      );
+      expect(docs10.data.map((/** @type {any} */ t) => t.topic)).toContain(
+        'acme-pnpm10',
+      );
+
+      // pnpm 11 and later: each global package has a folder of its own under
+      // `global/v11`, and the files are in `store/v11/links`.
+      const pc2 = computer();
+      const home = path.join(pc2.home, '.local', 'share', 'pnpm');
+      const store = placeCli(
+        path.join(
+          home,
+          'store',
+          'v11',
+          'links',
+          '@astryxdesign',
+          'cli',
+          '9.0.0',
+          'h1',
+          'node_modules',
+          '@astryxdesign',
+          'cli',
+        ),
+        '9.0.0',
+      );
+      const cliFolder = path.join(home, 'global', 'v11', 'a1');
+      writeJson(path.join(cliFolder, 'package.json'), {
+        dependencies: {'@astryxdesign/cli': '9.0.0'},
+      });
+      fs.mkdirSync(path.join(cliFolder, 'node_modules', '@astryxdesign'), {
+        recursive: true,
+      });
+      fs.symlinkSync(
+        store.dir,
+        path.join(cliFolder, 'node_modules', '@astryxdesign', 'cli'),
+      );
+      const widgetsFolder = path.join(home, 'global', 'v11', 'b2');
+      writeJson(path.join(widgetsFolder, 'package.json'), {
+        dependencies: {'@acme/widgets': '1.0.0'},
+      });
+      acmeWidgets(widgetsFolder, {topic: 'acme-pnpm11'});
+      const docs11 = JSON.parse(
+        run(store.bin, ['docs', '--json'], {cwd: tempDir('empty'), pc: pc2})
+          .stdout,
+      );
+      expect(docs11.data.map((/** @type {any} */ t) => t.topic)).toContain(
+        'acme-pnpm11',
+      );
+    });
+
+    it("G41 an integration's own source folder, outside a project: the folder's copy is used, and doctor says so without a warning", () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      acmeWidgets(path.resolve(g.dir, '..', '..', '..'), {
+        topic: 'acme-global',
+      });
+      const source = tempDir('source');
+      writeJson(path.join(source, 'package.json'), {
+        name: '@acme/widgets',
+        version: '2.0.0',
+      });
+      fs.writeFileSync(
+        path.join(source, 'astryx.integration.mjs'),
+        'export default {};\n',
+      );
+      const docs = JSON.parse(
+        run(g.bin, ['docs', '--json'], {cwd: source, pc}).stdout,
+      );
+      expect(docs.data.map((/** @type {any} */ t) => t.topic)).not.toContain(
+        'acme-global',
+      );
+      const doctor = JSON.parse(
+        run(g.bin, ['doctor', '--json'], {cwd: source, pc}).stdout,
+      );
+      expect(
+        doctor.data.checks.find(
+          (/** @type {any} */ c) => c.id === 'computer-integrations',
+        ),
+      ).toMatchObject({
+        status: 'pass',
+        message:
+          '@acme/widgets@1.0.0 is not used here: this folder loads its own copy of @acme/widgets.',
+      });
+    });
+
+    it('G42 inside a project, an integration installed for the computer is offered only when its peer range admits the project release and it loads', () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      const lib = path.resolve(g.dir, '..', '..', '..');
+      acmeWidgets(lib, {topic: 'acme-ok'});
+      acmeWidgets(lib, {
+        topic: 'acme-old',
+        name: '@acme/old',
+        peers: {'@astryxdesign/core': '>=10.0.0'},
+      });
+      acmeWidgets(lib, {
+        topic: 'acme-broken',
+        name: '@acme/broken',
+        manifest: "throw new Error('broken');\n",
+      });
+      pc.path.unshift(g.binDir);
+      const dir = makeProject({core: '9.0.0', cli: '9.0.0'});
+      writeJson(path.join(dir, 'package-lock.json'), {lockfileVersion: 3});
+      const discover = JSON.parse(
+        run(g.bin, ['discover', '--json'], {cwd: dir, pc}).stdout,
+      );
+      expect(
+        discover.meta.available.map((/** @type {any} */ p) => p.name),
+      ).toEqual(['@acme/widgets']);
+      const doctor = JSON.parse(
+        run(g.bin, ['doctor', '--json'], {cwd: dir, pc}).stdout,
+      );
+      expect(
+        doctor.data.checks.find(
+          (/** @type {any} */ c) => c.id === 'computer-integrations',
+        ).fix,
+      ).toBe('To use one in this project, run `npm install @acme/widgets`.');
+    });
+
+    it("G43 inside a project a door's package set answers for: its integrations are offered as available", () => {
+      const pc = computer();
+      const root = tempDir('runtime');
+      writeJson(path.join(root, 'package.json'), {
+        name: 'door-runtime',
+        private: true,
+        dependencies: {'@astryxdesign/cli': '9.0.0', '@acme/widgets': '1.0.0'},
+      });
+      const cli = placeCli(
+        path.join(root, 'node_modules', '@astryxdesign', 'cli'),
+        '9.0.0',
+      );
+      acmeWidgets(root, {topic: 'acme-door'});
+      // The project installs only Core 9.0.0, so the door's copy, that
+      // release, answers it.
+      const dir = makeProject({core: '9.0.0'});
+      writeJson(path.join(dir, 'package-lock.json'), {lockfileVersion: 3});
+      const discover = JSON.parse(
+        run(cli.bin, ['discover', '--json'], {cwd: dir, pc}).stdout,
+      );
+      expect(discover.meta.answeredBy.copy).toBe('matched');
+      expect(discover.meta.available).toEqual([
+        {
+          name: '@acme/widgets',
+          components: [],
+          version: '1.0.0',
+          source: 'installed for this computer',
+          install: 'npm install @acme/widgets',
+        },
+      ]);
+    });
   },
 );
 
@@ -1129,6 +1310,6 @@ it('names every row of the table exactly once', () => {
   const rows = [
     ...text.matchAll(/^\s+it(?:\.skipIf\([^)]*\)\()?\(?\s*['"](G\d+) /gmu),
   ].map(m => m[1]);
-  expect(rows).toEqual(Array.from({length: 39}, (_, i) => `G${i + 1}`));
+  expect(rows).toEqual(Array.from({length: 43}, (_, i) => `G${i + 1}`));
   expect(os.EOL).toBeTypeOf('string');
 });

@@ -10,6 +10,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   computerInstallRoot,
+  computerInstallRoots,
   loadComputerIntegrations,
   peerProblem,
   scanComputerIntegrations,
@@ -98,6 +99,61 @@ describe('computerInstallRoot', () => {
       null,
     );
     expect(computerInstallRoot(cli, {cacheDir})).toBeNull();
+  });
+});
+
+describe('computerInstallRoots', () => {
+  it("is pnpm's shared global folder before pnpm 11", () => {
+    const g5 = path.join(tempDir('pnpm'), 'global', '5');
+    const cli = pkgAt(
+      path.join(
+        g5,
+        '.pnpm',
+        '@astryxdesign+cli@0.8.0',
+        'node_modules',
+        '@astryxdesign',
+        'cli',
+      ),
+      {name: '@astryxdesign/cli', version: '0.8.0'},
+      null,
+    );
+    expect(computerInstallRoots(cli)).toEqual([fs.realpathSync(g5)]);
+  });
+
+  it('is every pnpm global folder since pnpm 11, when one of them installs this CLI', () => {
+    const home = tempDir('pnpm-home');
+    const cli = pkgAt(
+      path.join(
+        home,
+        'store',
+        'v11',
+        'links',
+        '@astryxdesign',
+        'cli',
+        '0.8.0',
+        'h',
+        'node_modules',
+        '@astryxdesign',
+        'cli',
+      ),
+      {name: '@astryxdesign/cli', version: '0.8.0'},
+      null,
+    );
+    const a = path.join(home, 'global', 'v11', 'a');
+    const b = path.join(home, 'global', 'v11', 'b');
+    writeJson(path.join(b, 'package.json'), {
+      dependencies: {'@acme/widgets': '1.0.0'},
+    });
+    // No global folder installs this CLI yet: only its own install root.
+    expect(computerInstallRoots(cli)).toHaveLength(1);
+    writeJson(path.join(a, 'package.json'), {
+      dependencies: {'@astryxdesign/cli': '0.8.0'},
+    });
+    fs.mkdirSync(path.join(a, 'node_modules', '@astryxdesign'), {
+      recursive: true,
+    });
+    fs.symlinkSync(cli, path.join(a, 'node_modules', '@astryxdesign', 'cli'));
+    expect(computerInstallRoots(cli)).toEqual([a, b]);
   });
 });
 

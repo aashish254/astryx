@@ -38,6 +38,7 @@ import {
   Project,
   providerLedgerOf,
   computerIntegrationCandidates,
+  availableComputerIntegrations,
 } from '../../foundation/config/project.mjs';
 import {DocsCatalog} from '../../foundation/discovery/docs-discovery.mjs';
 import {buildDocsIndexData} from '../../foundation/discovery/docs-section-key.mjs';
@@ -1361,6 +1362,8 @@ export function checkCliCommand(ctx) {
  *   the integrations installed beside the running CLI
  * @property {string[]} [loadedComputerIntegrations] the names of those that
  *   loaded outside a project
+ * @property {string[]} [folderIntegrations] the names of the integrations the
+ *   folder loads itself, whose copies win over the computer's
  */
 
 /**
@@ -1549,11 +1552,15 @@ export function checkComputerIntegrations(ctx) {
     };
   }
   const label = (/** @type {{name: string, version?: string}} */ c) => (c.version ? `${c.name}@${c.version}` : c.name);
-  const used = found.filter(c => !c.incompatible && loaded.has(c.name));
-  const skipped = found.filter(c => c.incompatible);
-  const failed = found.filter(c => !c.incompatible && !loaded.has(c.name));
+  const own = new Set(ctx.folderIntegrations ?? []);
+  const shadowed = found.filter(c => own.has(c.name));
+  const rest = found.filter(c => !own.has(c.name));
+  const used = rest.filter(c => !c.incompatible && loaded.has(c.name));
+  const skipped = rest.filter(c => c.incompatible);
+  const failed = rest.filter(c => !c.incompatible && !loaded.has(c.name));
   const notes = [
     used.length > 0 ? `Used outside a project: ${used.map(label).join(', ')}.` : '',
+    ...shadowed.map(c => `${label(c)} is not used here: this folder loads its own copy of ${c.name}.`),
     ...skipped.map(c => `Skipped ${label(c)}: ${c.incompatible}.`),
     ...failed.map(c => `${label(c)} could not be loaded.`),
   ].filter(Boolean);
@@ -1655,9 +1662,10 @@ async function runComputerChecks(cwd) {
   if (ctx.computerIntegrations.length > 0) {
     try {
       const project = await Project.load(cwd);
-      ctx.loadedComputerIntegrations = project.loadedIntegrations
-        .filter((/** @type {{__computer?: boolean, __loadError?: string}} */ i) => i.__computer && !i.__loadError)
-        .map((/** @type {{name: string}} */ i) => i.name);
+      /** @type {Array<{name: string, __computer?: boolean, __loadError?: string}>} */
+      const loaded = project.loadedIntegrations;
+      ctx.loadedComputerIntegrations = loaded.filter(i => i.__computer && !i.__loadError).map(i => i.name);
+      ctx.folderIntegrations = loaded.filter(i => !i.__computer).map(i => i.name);
     } catch {
       ctx.loadedComputerIntegrations = [];
     }
@@ -1868,15 +1876,19 @@ export async function runChecks(options = {}) {
     }),
   );
     checks.push(checkCliOnPath({nodeVersion: ctx.nodeVersion, answeredBy: answered, latest: null}));
-  checks.push(
-    checkComputerIntegrationsAvailable({
-      cwd,
-      installed: new Set([
-        ...(project?.loadedIntegrations ?? []).map((/** @type {{name: string}} */ i) => i.name),
-        ...declaredPackageNames(cwd),
-      ]),
-    }),
-  );
+  {
+    const installed = new Set([
+      ...(project?.loadedIntegrations ?? []).map((/** @type {{name: string}} */ i) => i.name),
+      ...declaredPackageNames(cwd),
+    ]);
+    checks.push(
+      checkComputerIntegrationsAvailable({
+        cwd,
+        installed,
+        candidates: await availableComputerIntegrations(cwd, installed),
+      }),
+    );
+  }
   checks.push(await checkAuthoringDocs(ctx));
   checks.push(await checkCliDocs(ctx));
   checks.push(await checkDocsTree(ctx));

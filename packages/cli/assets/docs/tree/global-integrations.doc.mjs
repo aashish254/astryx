@@ -36,8 +36,8 @@ export const docs = {
           items: [
             "Installed in an app: it applies in that app, as always, whichever copy of the CLI the user starts, because the app's release answers there.",
             'Installed for the computer, beside the CLI (`npm i -g @astryxdesign/cli your-package`), or in the same folder as the CLI by a tool that installs them together: it applies in every folder outside a project. Users and agents there see its components, templates, docs, themes, codemods, and discover source.',
-            "Installed for the computer, inside an app that does not install it: it adds nothing. `astryx discover` lists it as available, with source `installed for this computer` and the app's install command, and `astryx doctor` names it.",
-            "Installed both ways: the app's copy is the only one used in that app.",
+            "Installed for the computer, inside an app that does not install it: it adds nothing. When its peer range admits the app's release and it loads, `astryx discover` lists it as available, with source `installed for this computer` and the app's install command, and `astryx doctor` names it.",
+            "Installed both ways: the app's copy is the only one used in that app. In your own source folder, outside a project, your working copy is used, and `astryx doctor` says the computer's copy is not used there.",
           ],
         },
         {

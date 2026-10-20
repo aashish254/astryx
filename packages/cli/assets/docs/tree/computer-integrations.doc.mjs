@@ -39,7 +39,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: 'A tool that installs the CLI together with integrations in one folder, and runs the CLI from there, counts the same way: every integration it installs there applies. A package runner (`npx`) and the per-user release cache are not installs for your computer, so integrations there never count.',
+          text: 'pnpm 11 and later install each global package in a folder of its own; all of them count. A tool that installs the CLI together with integrations in one folder, and runs the CLI from there, counts the same way: every integration it installs there applies. A package runner (`npx`) and the per-user release cache are not installs for your computer, so integrations there never count.',
         },
       ],
     },
@@ -67,7 +67,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "`astryx discover` still lists it, among the packages the project could add, with source `installed for this computer` and the command that adds it with the project's package manager. When the project installs the same integration, the project's copy is the only one used.",
+          text: "`astryx discover` still lists it, among the packages the project could add, with source `installed for this computer` and the command that adds it with the project's package manager, when its peer range admits the project's release and it loads. When the project installs the same integration, the project's copy is the only one used. A folder that is an integration's own source, outside a project, uses that copy too.",
         },
       ],
     },

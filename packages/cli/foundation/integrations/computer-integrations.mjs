@@ -7,9 +7,10 @@
  * package set a door installs together.
  *
  * - The install root is the folder whose `node_modules` holds the running
- *   CLI package (above pnpm's `.pnpm` store). A package runner's temporary
- *   install and the per-user release cache are not install roots: they hold
- *   what one run asked for.
+ *   CLI package (above pnpm's `.pnpm` store). pnpm 11 and later give each
+ *   global package a folder of its own, and every one of them counts. A
+ *   package runner's temporary install and the per-user release cache are not
+ *   install roots: they hold what one run asked for.
  * - When the root has a package.json, its declared dependencies are read, as
  *   autolink reads a project's; otherwise (npm's global folder) every package
  *   directly in its `node_modules`, scoped ones included. Either way, only a
@@ -101,6 +102,56 @@ export function computerInstallRoot(cliRoot, options = {}) {
 }
 
 /**
+ * Every install root that holds packages installed with the CLI at
+ * `cliRoot`. Usually one: its install root. pnpm 11 and later install each
+ * global package in a folder of its own, `<pnpm home>/global/v<N>/<id>`, and
+ * keep the files in `<pnpm home>/store/v<N>/links`, so for a CLI found there
+ * every such global folder counts, provided one of them installs this CLI.
+ * @param {string} cliRoot
+ * @param {{cacheDir?: string}} [options]
+ * @returns {string[]}
+ */
+export function computerInstallRoots(cliRoot, options = {}) {
+  const fromPnpm = pnpmGlobalFolders(real(cliRoot));
+  if (fromPnpm.length > 0) return fromPnpm;
+  const root = computerInstallRoot(cliRoot, options);
+  return root ? [root] : [];
+}
+
+/**
+ * pnpm's global folders for a CLI whose files are in pnpm's store, or none.
+ * @param {string} cli the CLI package's real path
+ * @returns {string[]}
+ */
+function pnpmGlobalFolders(cli) {
+  const parts = cli.split(/[\\/]/);
+  const at = parts.lastIndexOf('store');
+  if (
+    at < 1 ||
+    !/^v\d+$/.test(parts[at + 1] ?? '') ||
+    parts[at + 2] !== 'links'
+  ) {
+    return [];
+  }
+  const home = parts.slice(0, at).join(path.sep) || path.sep;
+  const globalDir = path.join(home, 'global', parts[at + 1]);
+  /** @type {string[]} */
+  let names;
+  try {
+    names = fs.readdirSync(globalDir).sort();
+  } catch {
+    return [];
+  }
+  const folders = names
+    .map(name => path.join(globalDir, name))
+    .filter(dir => fs.existsSync(path.join(dir, 'package.json')));
+  const installsThisCli = folders.some(
+    dir => real(path.join(dir, 'node_modules', '@astryxdesign', 'cli')) === cli,
+  );
+  return installsThisCli ? folders : [];
+}
+
+/**
  * Every package name directly in `<root>/node_modules`, scoped ones included.
  * @param {string} root
  * @returns {string[]}
@@ -167,15 +218,25 @@ export function peerProblem(pkg, release) {
  * @returns {ComputerIntegrationCandidate[]}
  */
 export function scanComputerIntegrations({cliRoot, release, cacheDir}) {
-  const root = computerInstallRoot(cliRoot, {cacheDir});
-  if (!root) return [];
-  const declared = readPackage(root)
-    ? readDeclaredDependencies(root).map(d => d.name)
-    : installedNames(root);
   const self = real(cliRoot);
   /** @type {ComputerIntegrationCandidate[]} */
   const found = [];
   const seen = new Set();
+  for (const root of computerInstallRoots(cliRoot, {cacheDir})) {
+    scanRoot(root, {self, release, found, seen});
+  }
+  return found;
+}
+
+/**
+ * Add the integrations installed in one install root.
+ * @param {string} root
+ * @param {{self: string, release: string, found: ComputerIntegrationCandidate[], seen: Set<string>}} into
+ */
+function scanRoot(root, {self, release, found, seen}) {
+  const declared = readPackage(root)
+    ? readDeclaredDependencies(root).map(d => d.name)
+    : installedNames(root);
   for (const name of declared) {
     if (NOT_INTEGRATIONS.has(name)) continue;
     const resolved = resolveInstalledPackageDir(name, root);
@@ -197,7 +258,6 @@ export function scanComputerIntegrations({cliRoot, release, cacheDir}) {
       incompatible: peerProblem(pkg, release),
     });
   }
-  return found;
 }
 
 /**

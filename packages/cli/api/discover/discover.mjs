@@ -22,7 +22,7 @@
  *   the discover leaves.
  */
 
-import {computerIntegrationCandidates} from '../../foundation/config/project.mjs';
+import {availableComputerIntegrations} from '../../foundation/config/project.mjs';
 import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {
   addCommand,
@@ -147,29 +147,27 @@ function similarItems(entry, wanted) {
 }
 
 /**
- * The integrations installed for the computer that a project does not
- * install, as available entries with the project's install command (spec
- * AST-081 FR12). Empty outside a project, where they load instead.
+ * The integrations installed for the computer that a project could add, as
+ * available entries with the project's install command (spec AST-081 FR12).
+ * Empty outside a project, where they load instead.
  * @param {import('../../foundation/config/project.mjs').Project | undefined} project
  * @param {Array<{name: string}>} installed
  * @param {Set<string>} declared
  * @param {(name: string, version?: string) => string} add
- * @returns {import('./discover.type.mjs').DiscoverAvailableEntry[]}
+ * @returns {Promise<import('./discover.type.mjs').DiscoverAvailableEntry[]>}
  */
-function computerAvailableEntries(project, installed, declared, add) {
+async function computerAvailableEntries(project, installed, declared, add) {
   const cwd = project?.cwd ?? process.cwd();
   if (isOutsideProject(cwd)) return [];
-  const have = new Set(installed.map(pkg => pkg.name));
-  return computerIntegrationCandidates(cwd)
-    .filter(c => !have.has(c.name) && !declared.has(c.name))
-    .map(c => ({
-      name: c.name,
-      components: [],
-      ...(c.version ? {version: c.version} : {}),
-      ...(c.description ? {description: c.description} : {}),
-      source: COMPUTER_SOURCE,
-      install: add(c.name),
-    }));
+  const have = new Set([...installed.map(pkg => pkg.name), ...declared]);
+  return (await availableComputerIntegrations(cwd, have)).map(c => ({
+    name: c.name,
+    components: [],
+    ...(c.version ? {version: c.version} : {}),
+    ...(c.description ? {description: c.description} : {}),
+    source: COMPUTER_SOURCE,
+    install: add(c.name),
+  }));
 }
 
 /** The source name of a package installed for the computer. */
@@ -204,12 +202,16 @@ export async function discover(query, options = {}) {
   /** @param {{package?: string, version?: string}} [request] */
   const catalogFor = async request =>
     withSources ? await callSources(project, request) : NO_CATALOG;
-  // Inside a project, the integrations installed for the computer are
-  // available, never loaded (spec AST-081 FR12).
-  const computer = computerAvailableEntries(project, packages, declared, add);
-
   // No query, or nothing to look through: the list.
   if (!query || (packages.length === 0 && !withSources)) {
+    // Inside a project, the integrations installed for the computer are
+    // available, never loaded (spec AST-081 FR12).
+    const computer = await computerAvailableEntries(
+      project,
+      packages,
+      declared,
+      add,
+    );
     if (!withSources && computer.length === 0) {
       return list(packages, {configured, type, only});
     }

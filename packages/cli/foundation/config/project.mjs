@@ -44,9 +44,11 @@ import {
 } from '../integrations/integrations.mjs';
 import {loadAutolinkCandidates} from '../integrations/autolink.mjs';
 import {
+  computerInstallRoots,
   loadComputerIntegrations,
   scanComputerIntegrations,
 } from '../integrations/computer-integrations.mjs';
+import {relativeWithin, samePath} from '../fs/path-compare.mjs';
 import {isOutsideProject} from '../env/project-scope.mjs';
 import {cliVersion} from '../release/run-context.mjs';
 import {isGlobalCopy} from '../release/choose.mjs';
@@ -112,14 +114,13 @@ function errorMessage(err) {
  * The computer-level integrations (spec AST-081 FR12), read from package.json
  * files only. Outside a project, those installed beside the running CLI;
  * inside one, where the project's own CLI may be the copy that answers, those
- * installed beside the CLI installed for the computer: the running copy when
- * it is that copy, else the first Astryx CLI on the search path that is.
+ * installed beside the CLI installed for the computer (see globalCliRoot).
  * @param {string} [cwd]
  * @returns {import('../integrations/computer-integrations.mjs').ComputerIntegrationCandidate[]}
  */
 export function computerIntegrationCandidates(cwd = process.cwd()) {
   try {
-    const cliRoot = isOutsideProject(cwd) ? CLI_ROOT : globalCliRoot();
+    const cliRoot = isOutsideProject(cwd) ? CLI_ROOT : globalCliRoot(cwd);
     return cliRoot
       ? scanComputerIntegrations({cliRoot, release: cliVersion()})
       : [];
@@ -129,18 +130,58 @@ export function computerIntegrationCandidates(cwd = process.cwd()) {
 }
 
 /**
- * The CLI package installed for the computer: this copy when it is one, else
- * the first `astryx` on the search path that is.
+ * The CLI package whose install root holds the computer-level integrations
+ * for a folder inside a project: this copy when it was installed outside the
+ * project (installed for the computer, or in a tool's package set), else the
+ * first `astryx` on the search path that is installed for the computer. A
+ * project's own CLI and a release from the per-user cache are neither.
+ * @param {string} cwd
  * @returns {string | null}
  */
-function globalCliRoot() {
-  if (isGlobalCopy(CLI_ROOT)) return CLI_ROOT;
+function globalCliRoot(cwd) {
+  let folder = path.resolve(cwd);
+  try {
+    folder = fs.realpathSync(folder);
+  } catch {
+    // A folder that cannot be resolved is compared as written.
+  }
+  const own = computerInstallRoots(CLI_ROOT);
+  if (
+    own.length > 0 &&
+    !own.some(
+      root => samePath(root, folder) || relativeWithin(root, folder) != null,
+    )
+  ) {
+    return CLI_ROOT;
+  }
   for (const command of astryxCommandsOnSearchPath()) {
     if (command.cliRoot && isGlobalCopy(command.cliRoot)) {
       return command.cliRoot;
     }
   }
   return null;
+}
+
+/**
+ * The computer-level integrations a project could add (spec AST-081 FR12):
+ * those it does not install, whose peer ranges admit the release that
+ * answers, and whose manifest loads.
+ * @param {string} cwd
+ * @param {Set<string>} installed package names the project loads or declares
+ * @returns {Promise<import('../integrations/computer-integrations.mjs').ComputerIntegrationCandidate[]>}
+ */
+export async function availableComputerIntegrations(cwd, installed) {
+  const candidates = computerIntegrationCandidates(cwd).filter(
+    c => !c.incompatible && !installed.has(c.name),
+  );
+  if (candidates.length === 0) return [];
+  const loaded = await loadComputerIntegrations(candidates);
+  const usable = new Set(
+    loaded.flatMap(entry =>
+      entry.integration && !entry.integration.__loadError ? [entry.spec] : [],
+    ),
+  );
+  return candidates.filter(c => usable.has(c.name));
 }
 
 /**
