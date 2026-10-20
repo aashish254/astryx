@@ -10,6 +10,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {generateCompressedIndex} from '../../../foundation/agent-docs/agent-docs.mjs';
 
 const CLI = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -224,5 +225,53 @@ describe('upgrade protected-file contract', () => {
     expect(second.status, second.stderr).toBe(0);
     expect(second.envelope.data.complete).toBe(true);
     expect(second.envelope.data.filesChanged).toBe(0);
+  });
+});
+
+describe('a protected agent doc during upgrade (spec:AST-040 FR7)', () => {
+  /** @param {string[]} args */
+  const cli = args =>
+    spawnSync(process.execPath, [CLI, ...args], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: {...process.env, FORCE_COLOR: '0', CI: ''},
+    });
+
+  it('lists it in agentDocs.protectedFiles, prints one note in text mode, and keeps the exit code', () => {
+    write('package.json', JSON.stringify({name: 'consumer', private: true}));
+    write(
+      'node_modules/@astryxdesign/core/package.json',
+      JSON.stringify({name: '@astryxdesign/core', version: '0.6.0'}),
+    );
+    const stale = `${generateCompressedIndex('0.0.1')}\n`;
+    write('AGENTS.md', `# Doc\n\n${stale}`);
+    const claude = write('.claude/CLAUDE.md', `# Team notes\n\n${stale}`);
+    write('.gitignore', '.claude/\n');
+
+    const json = cli(['--json', 'upgrade', '--from', '0.6.0', '--apply']);
+    expect(json.status).toBe(0);
+    const {data} = JSON.parse(json.stdout);
+    expect(data.agentDocs.files).toEqual(['AGENTS.md']);
+    expect(data.agentDocs.protectedFiles).toEqual([
+      {
+        file: '.claude/CLAUDE.md',
+        reason: expect.stringMatching(/excluded by \.gitignore/u),
+      },
+    ]);
+    expect(json.stderr).toBe('');
+
+    const text = cli(['upgrade', '--from', '0.6.0', '--apply']);
+    expect(text.status).toBe(0);
+    const notes = text.stderr
+      .split('\n')
+      .filter(line => line.includes('.claude/CLAUDE.md'));
+    expect(notes).toEqual([
+      expect.stringMatching(
+        /^Note: agent docs left as they are: \.claude\/CLAUDE\.md \(protected by excluded by \.gitignore.*\)\. Remove the protection, or copy the block from AGENTS\.md by hand\.$/u,
+      ),
+    ]);
+    expect(text.stderr).not.toMatch(/Error:/u);
+    expect(fs.readFileSync(claude, 'utf8')).toBe(`# Team notes\n\n${stale}`);
   });
 });

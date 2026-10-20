@@ -363,7 +363,7 @@ export async function prepareAgentDocsRefresh({
  */
 function logProtectedAgentDocs(protectedFiles) {
   logger.warn(
-    `Agent docs left as they are: ${protectedFiles
+    `Note: agent docs left as they are: ${protectedFiles
       .map(item => `${item.file} (${item.reason})`)
       .join(
         '; ',
