@@ -1331,3 +1331,64 @@ describe('links in component docs and topic descriptions', () => {
     ]);
   });
 });
+
+describe('integrationDocConflicts runner commands', () => {
+  function writeTopic(/** @type {string} */ text) {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({name: '@acme/widgets', version: '1.2.3'}),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'astryx.integration.mjs'),
+      `export default {docs: './docs'};\n`,
+    );
+    fs.mkdirSync(path.join(tmpDir, 'docs'), {recursive: true});
+    const doc = {
+      type: 'generic',
+      name: 'acme-setup',
+      title: 'Fixture',
+      description: 'Fixture topic.',
+      sections: [
+        {
+          title: 'Overview',
+          content: [
+            {type: 'prose', text},
+            {type: 'code', lang: 'bash', code: 'npx @astryxdesign/cli init'},
+          ],
+        },
+      ],
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, 'docs', 'acme-setup.doc.mjs'),
+      `export default ${JSON.stringify(doc)};\n`,
+    );
+  }
+
+  it('lists a runner command with its line and fix, and warns about it', async () => {
+    writeTopic('Check it with `pnpm exec astryx doctor` first.');
+
+    const result = await integrationDocConflicts(undefined, {cwd: tmpDir});
+    const [hit, ...rest] = result.data.runnerCommands;
+
+    expect(rest).toEqual([]);
+    expect(hit).toMatchObject({
+      topic: 'acme-setup',
+      section: 'Overview',
+      file: 'docs/acme-setup.doc.mjs',
+      line: 1,
+      command: 'pnpm exec astryx doctor',
+    });
+    expect(hit.message).toContain('Write `astryx doctor`');
+    expect(result.data.issues).toEqual([
+      {code: 'runner_command', severity: 'warning', message: hit.message},
+    ]);
+  });
+
+  it('lists nothing for bare commands and the scoped install step', async () => {
+    writeTopic('Check it with `astryx doctor` first.');
+
+    const result = await integrationDocConflicts(undefined, {cwd: tmpDir});
+    expect(result.data.runnerCommands).toEqual([]);
+    expect(result.data.issues).toEqual([]);
+  });
+});
