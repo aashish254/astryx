@@ -76,6 +76,7 @@ describe('integrationAdd icon-set', () => {
     expect(JSON.parse(read('icon-sets/outline/outline.icons.json'))).toEqual({
       schemaVersion: 1,
       module: '@acme/icons',
+      map: {},
       icons: [],
     });
     expect(read('astryx.integration.mjs')).toMatch(
@@ -199,7 +200,7 @@ describe('integrationAdd icon-set', () => {
   it('refuses an option of another kind', async () => {
     setup();
     await expect(
-      integrationAdd('icon-set', 'outline', {cwd: tmpDir, from: 'neutral'}),
+      integrationAdd('icon-set', 'outline', {cwd: tmpDir, to: '1.0.0'}),
     ).rejects.toMatchObject({code: 'ERR_INVALID_ARGUMENT'});
   });
 });

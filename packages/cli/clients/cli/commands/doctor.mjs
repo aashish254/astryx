@@ -92,8 +92,14 @@ function issueBlocks(issues) {
   return [
     section('Integration issues'),
     records(issues, {
-      fields: ['severity', 'code', 'message'],
-      format: {severity: statusToken},
+      fields: ['severity', 'code', 'message', 'suggestion'],
+      format: {
+        severity: statusToken,
+        // An unmapped icon definition names the icon to map it to.
+        suggestion: (/** @type {{map: string, icon: string}} */ value) =>
+          `map.${value.map} = "${value.icon}"`,
+      },
+      labels: {suggestion: 'suggest'},
     }),
   ];
 }
@@ -358,7 +364,8 @@ function printComponentConflicts(data) {
   // An [ok] after a failed check reads as a pass: say nothing it could not check.
   const failed = data.issues.some(issue => issue.severity === 'error');
   if (data.conflicts.length === 0) {
-    if (!failed) output.push(text('[ok] No component names conflict with Core.'));
+    if (!failed)
+      output.push(text('[ok] No component names conflict with Core.'));
   } else {
     output.push(
       records(data.conflicts, {
@@ -455,7 +462,7 @@ async function runIntegrationValidation(program, pkg) {
         noPackage
           ? 'Nothing was validated: no package.json found. Run this command inside a package directory.'
           : 'Nothing was validated: no astryx.integration.* found next to package.json. ' +
-            'To validate an installed integration: astryx doctor integration validate <package>',
+              'To validate an installed integration: astryx doctor integration validate <package>',
       ),
     );
   } else printIntegrationValidation(result.data);

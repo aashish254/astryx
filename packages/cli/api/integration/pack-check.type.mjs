@@ -28,6 +28,7 @@
  * @property {{version: string, id: string}[]} codemods
  * @property {string[]} docs
  * @property {string[]} agentDocsAppend
+ * @property {string[]} iconSets
  */
 
 /**
@@ -59,7 +60,7 @@
 
 /**
  * @typedef {object} PackCheckInventoryRoot
- * @property {'themes'|'components'|'templates'|'codemods'|'docs'} kind
+ * @property {'themes'|'components'|'templates'|'codemods'|'docs'|'iconSets'} kind
  * @property {string} path
  * @property {number} expectedFiles
  * @property {string[]} missingFiles

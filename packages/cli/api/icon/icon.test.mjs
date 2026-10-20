@@ -10,6 +10,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {icon} from './icon.mjs';
+import {ICON_NAMES} from '../../authoring/doctypes/icon-set/icon-names.mjs';
 import {rankIcons, scoreIcon} from './_records.mjs';
 import {
   glyphsData,
@@ -40,10 +41,10 @@ describe('icon.search ranking', () => {
   const byId = (/** @type {string} */ id) =>
     /** @type {any} */ (icons.find(each => each.id === id));
 
-  it('scores each tier: fills, exact in the leading reading, exact in the other, prefix, partial', () => {
-    expect(scoreIcon('close', byId('x'))).toEqual({
+  it('scores each tier: definition, exact in the leading reading, exact in the other, prefix, partial', () => {
+    expect(scoreIcon('close', byId('x'), 'meaning', ['close'])).toEqual({
       score: 100,
-      reason: 'fills "close"',
+      reason: 'definition "close"',
     });
     expect(scoreIcon('trash', byId('trash'), 'name')).toEqual({
       score: 90,
@@ -98,7 +99,7 @@ describe('icon.search ranking', () => {
       export: 'TrashIcon',
       import: "import {TrashIcon} from '@acme/glyphs';",
       words: ['delete', 'remove', 'bin', 'garbage'],
-      fills: [],
+      definitions: [],
       variants: [
         {appearance: 'solid', module: '@acme/glyphs', export: 'TrashSolidIcon'},
       ],
@@ -213,15 +214,15 @@ describe('icon.search: an exact query reads as a name or a meaning', () => {
     ]);
   });
 
-  it('a shared IconName still comes first', () => {
+  it("an icon definition the set's map names comes first", () => {
     const lines = set([['trash', ['trash', 'delete']]]);
     lines.data.icons.push({
       id: 'x',
       export: 'XIcon',
       words: ['x', 'close'],
-      fills: ['close'],
     });
-    expect(ranked(lines, 'close')[0]).toEqual(['x', 100, 'fills "close"']);
+    lines.data.map = {close: 'x'};
+    expect(ranked(lines, 'close')[0]).toEqual(['x', 100, 'definition "close"']);
   });
 });
 
@@ -260,7 +261,7 @@ describe('icon.detail', () => {
 });
 
 describe('icon.list', () => {
-  it('lists each set with its coverage of the shared names', async () => {
+  it('lists each set with how many icon definitions its map covers', async () => {
     const result = await icon(undefined, {cwd, list: true});
     if (result.type !== 'icon.list') throw new Error(result.type);
     expect(result.data).toMatchObject({
@@ -275,11 +276,14 @@ describe('icon.list', () => {
       license: 'MIT',
       iconCount: 4,
       default: {appearance: 'outline', size: 24},
-      fills: ['close', 'search'],
       project: true,
     });
-    expect(set.unfilled).toContain('chevronDown');
-    expect(set.unfilled).not.toContain('close');
+    expect(set.coverage.builtIn.mapped).toBe(2);
+    expect(set.coverage.builtIn.total).toBe(ICON_NAMES.length);
+    expect(set.coverage.builtIn.missing).toContain('chevronDown');
+    expect(set.coverage.builtIn.missing).not.toContain('close');
+    expect(set.coverage.astryx.total).toBeGreaterThan(ICON_NAMES.length);
+    expect(set.coverage.own).toEqual([]);
   });
 
   it('refuses a query with --list and no query without it', async () => {

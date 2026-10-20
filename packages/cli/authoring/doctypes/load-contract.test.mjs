@@ -32,6 +32,7 @@ const LOCKS = {
   command: '_CommandDocDriftLock',
   enum: '_EnumDocDriftLock',
   namespace: '_NamespaceDocDriftLock',
+  'icon-definition': '_IconDefinitionDocDriftLock',
 };
 
 /** One valid example doc per kind, from the typed examples. */
@@ -49,7 +50,12 @@ const EXAMPLES = Object.fromEntries(
 
 describe('load check vs published type', () => {
   it('locks every doc kind', () => {
-    const source = ['_schema.mjs', 'template/parse.mjs', 'theme/parse.mjs']
+    const source = [
+      '_schema.mjs',
+      'template/parse.mjs',
+      'theme/parse.mjs',
+      'icon-definition/parse.mjs',
+    ]
       .map(file => fs.readFileSync(path.join(HERE, file), 'utf8'))
       .join('\n');
     expect(Object.keys(LOCKS).sort()).toEqual([...KINDS].sort());
@@ -175,7 +181,7 @@ describe('unknown fields', () => {
       ' docs accept',
     );
     const named = (/** @type {string} */ text) =>
-      [...text.matchAll(/`([a-z]+)`/g)].map(match => match[1]).sort();
+      [...text.matchAll(/`([a-z][a-z-]*)`/g)].map(match => match[1]).sort();
     expect(named(kept)).toEqual([...keeps].sort());
     expect(named(refused).filter(kind => KINDS.includes(kind))).toEqual(
       KINDS.filter(kind => !keeps.includes(kind)).sort(),

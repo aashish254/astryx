@@ -51,6 +51,12 @@ export interface BaseTemplateDoc extends AuthoredDocGraphFields {
    *  isReady: false show as "(WIP)" in the gallery and CLI. */
   isReady?: boolean;
 
+  /** The icon definition each icon the source imports draws, by the name it
+   *  imports (`{TrashIcon: 'delete'}`). When the project has an icon set,
+   *  each declared icon is replaced by the set's icon for that definition
+   *  (`astryx docs icon-definitions`). */
+  icons?: Record<string, string>;
+
   /** Whether this template is a scaffolding tool only (e.g. blank page).
    *  Scaffold templates are available via the CLI but hidden from
    *  browsable template galleries like the craft browser. */

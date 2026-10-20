@@ -6,10 +6,12 @@
  * descriptor and `parseIconSetData` on the parsed `<name>.icons.json`.
  *
  * The data parser checks the whole file, not only its shape: a duplicate id,
- * an icon with no words, a `fills` value that is not an `IconName`, an
- * `IconName` filled twice, and a variant or default whose axis values the
- * set's `axes` do not list all make the file invalid, and an invalid file
- * withdraws its set from every surface (FR9).
+ * an icon with no words, a `map` key that is not a camelCase definition name
+ * or a value that is not an icon id in the file, and a variant or default
+ * whose axis values the set's `axes` do not list all make the file invalid,
+ * and an invalid file withdraws its set from every surface (FR9). Whether each
+ * `map` key is Astryx's definition or one the set declares is checked by
+ * icon-set discovery, which reads the definition files.
  *
  * @input an unknown descriptor value, or an unknown parsed data file
  * @output a validated IconSetDoc / IconSetData, or a readable schema error
@@ -18,7 +20,7 @@
 
 import {z} from 'zod';
 import {formatZodError} from '../../_shared/errors.mjs';
-import {ICON_NAMES} from './icon-names.mjs';
+import {ICON_DEFINITION_NAME_RE} from '../icon-definition/parse.mjs';
 
 /** @typedef {import('./type.js').IconSetDoc} IconSetDoc */
 /** @typedef {import('./type.js').IconSetData} IconSetData */
@@ -38,6 +40,19 @@ const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const EXPORT_RE = /^[$A-Z_a-z][$\w]*$/u;
 // A bare package specifier, optionally with a subpath: never relative or
 // absolute, so no path in the data file can leave the package (FR5).
+// A path inside the set's package, from its root: `./src/icons.js`.
+const PACKAGE_PATH_RE = /^\.\/(?:[A-Za-z0-9._~@-]+\/)*[A-Za-z0-9._~@-]+$/u;
+const packagePathSchema = z
+  .string()
+  .regex(PACKAGE_PATH_RE, 'must be a ./ path inside the package')
+  .refine(
+    value =>
+      !value
+        .split('/')
+        .slice(1)
+        .some(part => part === '..' || part === '.'),
+    {message: 'must not contain "." or ".." segments'},
+  );
 const MODULE_RE =
   /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:\/[A-Za-z0-9._~-]+)*$/u;
 
@@ -118,7 +133,6 @@ const iconSchema = z
         ),
       )
       .min(1, 'an icon must have at least one word'),
-    fills: z.array(z.string()).optional(),
     variants: z.array(variantSchema).optional(),
     matches: z.array(matchSchema).optional(),
   })
@@ -154,6 +168,16 @@ const dataSchema = z
       .optional(),
     default: z.object(axisValuesShape).strict().optional(),
     themeMap: exportSchema.optional(),
+    map: z.record(z.string(), z.string()).optional(),
+    generated: packagePathSchema
+      .refine(value => /\.(?:[cm]?js|jsx|tsx?|mts)$/u.test(value), {
+        message: 'generated must be a JavaScript or TypeScript module file',
+      })
+      .optional(),
+    adapter: z
+      .object({module: packagePathSchema, export: exportSchema})
+      .strict()
+      .optional(),
     icons: z.array(iconSchema),
   })
   .strict()
@@ -217,8 +241,6 @@ const dataSchema = z
 
     /** @type {Map<string, number>} */
     const ids = new Map();
-    /** @type {Map<string, string>} */
-    const filled = new Map();
     data.icons.forEach((icon, index) => {
       const first = ids.get(icon.id);
       if (first != null) {
@@ -230,26 +252,6 @@ const dataSchema = z
       } else {
         ids.set(icon.id, index);
       }
-      (icon.fills ?? []).forEach((name, at) => {
-        if (!ICON_NAMES.includes(name)) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['icons', index, 'fills', at],
-            message: `"${name}" is not an IconName`,
-          });
-          return;
-        }
-        const by = filled.get(name);
-        if (by != null && by !== icon.id) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['icons', index, 'fills', at],
-            message: `IconName "${name}" is already filled by "${by}"`,
-          });
-        } else {
-          filled.set(name, icon.id);
-        }
-      });
       /** @type {Set<string>} */
       const named = new Set();
       (icon.matches ?? []).forEach((match, at) => {
@@ -279,6 +281,23 @@ const dataSchema = z
         checkAxes(variant, where);
       });
     });
+
+    for (const [name, id] of Object.entries(data.map ?? {})) {
+      if (!ICON_DEFINITION_NAME_RE.test(name)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['map', name],
+          message: `"${name}" is not an icon definition name: definitions are camelCase`,
+        });
+      }
+      if (!ids.has(id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['map', name],
+          message: `"${id}" is not the id of an icon in this file`,
+        });
+      }
+    }
   });
 
 /** Zod skips `__proto__` when it looks for unknown keys. */

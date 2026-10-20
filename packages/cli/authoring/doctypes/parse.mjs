@@ -5,7 +5,7 @@
  * into its typed shape (or throws a readable error), dispatching on the stamped
  * `type` and falling back to legacy shape-sniffing for unstamped docs. Its
  * acceptance set preserves the old permissive `ComponentDocSchema` while new
- * stamped kinds, including `theme` and `icon-set`, use their sealed parser.
+ * stamped kinds, including `theme`, `icon-set`, and `icon-definition`, use their sealed parser.
  */
 
 import {parseComponent} from './component/parse.mjs';
@@ -18,6 +18,7 @@ import {parseEnum} from './enum/parse.mjs';
 import {parseNamespace} from './namespace/parse.mjs';
 import {parseTheme} from './theme/parse.mjs';
 import {parseIconSet} from './icon-set/parse.mjs';
+import {parseIconDefinition} from './icon-definition/parse.mjs';
 import {parseLegacyDoc} from './legacy.mjs';
 
 /** @typedef {import('./types.js').ComponentDoc} ComponentDoc */
@@ -31,6 +32,7 @@ import {parseLegacyDoc} from './legacy.mjs';
 /** @typedef {import('./types.js').NamespaceDoc} NamespaceDoc */
 /** @typedef {import('./types.js').ThemeDoc} ThemeDoc */
 /** @typedef {import('./types.js').IconSetDoc} IconSetDoc */
+/** @typedef {import('./types.js').IconDefinitionDoc} IconDefinitionDoc */
 
 /**
  * Validate an unknown loaded doc value into its typed shape, or throw.
@@ -40,7 +42,7 @@ import {parseLegacyDoc} from './legacy.mjs';
  *
  * @param {unknown} input
  * @param {string} [label]
- * @returns {ComponentDoc | HookDoc | FunctionDoc | ReferenceDoc | TemplateDoc | SchemaDoc | CommandDoc | EnumDoc | NamespaceDoc | ThemeDoc | IconSetDoc}
+ * @returns {ComponentDoc | HookDoc | FunctionDoc | ReferenceDoc | TemplateDoc | SchemaDoc | CommandDoc | EnumDoc | NamespaceDoc | ThemeDoc | IconSetDoc | IconDefinitionDoc}
  */
 export function parseDoc(input, label = 'doc') {
   const type =
@@ -70,6 +72,8 @@ export function parseDoc(input, label = 'doc') {
       return parseTheme(input, label);
     case 'icon-set':
       return parseIconSet(input, label);
+    case 'icon-definition':
+      return parseIconDefinition(input, label);
     case undefined:
     default:
       // 0.6.x shape-sniffed unknown stamps. Keep accepting them through the

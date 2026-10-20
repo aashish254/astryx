@@ -21,6 +21,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {CLI_ROOT} from '../fs/paths.mjs';
 import {loadCliSelfDocs} from '../discovery/cli-self-docs.mjs';
+import {astryxIconDefinitions} from '../discovery/icon-definition-discovery.mjs';
 import {routeSegment} from '../discovery/docs-section-key.mjs';
 import {diagnostic, sortDiagnostics} from './diagnostics.mjs';
 import {readDocView} from './read.mjs';
@@ -242,7 +243,8 @@ export function buildDocsTree({namespaces, docs, topics = []}) {
   // without case, as topic names do, so `CLI` claims `cli`.
   const cliRoutes = new Set(topics.length > 0 ? [UNORGANIZED] : []);
   for (const topic of topics) {
-    if (topic.provider === CLI_PROVIDER) cliRoutes.add(topic.name.toLowerCase());
+    if (topic.provider === CLI_PROVIDER)
+      cliRoutes.add(topic.name.toLowerCase());
   }
   // Every other name a topic answers to (the topics it replaced, directly or
   // through a chain) is that topic's route too: `astryx docs <name>` opens the
@@ -704,8 +706,9 @@ function checkPlacement(placement, kind, at, declared) {
 }
 
 /**
- * Every adoption rule in the doc's own package that matches its group and
- * kind, from namespaces that have a route.
+ * Every adoption rule that matches the doc's group and kind, from namespaces
+ * that have a route: its own package's, and a CLI namespace's rule that
+ * adopts its group from every package (`source.packages: 'all'`).
  * @param {TreeDocInput} doc
  * @param {Map<string, TreeNamespaceInput>} declared
  * @param {Map<string, string | null>} routeOf
@@ -714,10 +717,12 @@ function adoptionsFor(doc, declared, routeOf) {
   /** @type {Array<{key: string, namespace: TreeNamespaceInput, rule: NonNullable<NamespaceDoc['adopts']>[number]}>} */
   const matches = [];
   for (const [key, namespace] of declared) {
-    if (namespace.provider !== doc.provider || routeOf.get(key) == null)
-      continue;
+    if (routeOf.get(key) == null) continue;
     for (const rule of namespace.doc.adopts ?? []) {
       if (rule.source.group !== doc.group) continue;
+      const shared =
+        rule.source.packages === 'all' && namespace.provider === CLI_PROVIDER;
+      if (namespace.provider !== doc.provider && !shared) continue;
       if (
         rule.source.kinds &&
         !rule.source.kinds.includes(/** @type {any} */ (doc.kind))
@@ -855,6 +860,23 @@ export async function loadTreeInputs({
     }
   }
   if (selfDocs) {
+    // Astryx's icon definitions, adopted by the `icon-definitions` namespace with
+    // every installed set's own.
+    const definitions = astryxIconDefinitions();
+    for (const {file, message} of definitions.errors) {
+      diagnostics.push(
+        diagnostic('invalid_doc', {
+          provider: CLI_PROVIDER,
+          source: packageSource(file),
+          message,
+        }),
+      );
+    }
+    for (const {doc, file} of definitions.definitions) {
+      docs.push(
+        iconDefinitionTreeInput(doc, file, CLI_PROVIDER, CLI_PROVIDER_ID),
+      );
+    }
     const {loaded} = await loadCliSelfDocs();
     for (const {source, doc} of loaded) {
       docs.push({
@@ -872,6 +894,33 @@ export async function loadTreeInputs({
     }
   }
   return {namespaces, docs, diagnostics};
+}
+
+/** The discovery group every icon definition doc belongs to. */
+export const ICON_DEFINITIONS_GROUP = 'icon-definitions';
+
+/**
+ * One icon definition as a docs-tree input: grouped for the CLI's
+ * `icon-definitions` namespace, which adopts them from every package.
+ * @param {import('../../authoring/doctypes/icon-definition/type').IconDefinitionDoc} doc
+ * @param {string} file
+ * @param {string} provider
+ * @param {string} providerId
+ * @returns {TreeDocInput}
+ */
+export function iconDefinitionTreeInput(doc, file, provider, providerId) {
+  return {
+    provider,
+    providerId,
+    source: packageSource(file),
+    kind: 'icon-definition',
+    name: doc.name,
+    title: doc.name,
+    summary: doc.description,
+    group: ICON_DEFINITIONS_GROUP,
+    placement: undefined,
+    ref: {selfDoc: doc},
+  };
 }
 
 /** @type {Map<string, Promise<DocsTree>>} */

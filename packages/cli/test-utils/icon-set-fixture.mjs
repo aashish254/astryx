@@ -19,6 +19,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {ICON_NAMES} from '../authoring/doctypes/icon-set/icon-names.mjs';
 
 /** @typedef {import('../authoring/doctypes/icon-set/type').IconSetData} IconSetData */
 
@@ -30,18 +31,17 @@ export function glyphsData() {
     axes: {appearances: ['outline', 'solid'], sizes: [24]},
     default: {appearance: 'outline', size: 24},
     themeMap: 'themeIcons',
+    map: {close: 'x', search: 'search'},
     icons: [
       {
         id: 'x',
         export: 'XIcon',
         words: ['close', 'cancel', 'dismiss', 'remove', 'times'],
-        fills: ['close'],
       },
       {
         id: 'search',
         export: 'SearchIcon',
         words: ['find', 'magnifier', 'lookup', 'search'],
-        fills: ['search'],
       },
       {
         id: 'trash',
@@ -101,6 +101,38 @@ export function glyphsModules() {
 }
 
 /**
+ * The default set with every built-in icon definition mapped: `close` and
+ * `search` to their icons, every other built-in to `home`, and a theme map
+ * keyed by exactly those definitions. `integration check` then reports no
+ * error for it.
+ * @returns {{data: IconSetData, modules: Record<string, string>}}
+ */
+export function completeGlyphs() {
+  const others = ICON_NAMES.filter(
+    name => name !== 'close' && name !== 'search',
+  );
+  const data = glyphsData();
+  data.map = {
+    ...data.map,
+    ...Object.fromEntries(others.map(name => [name, 'home'])),
+  };
+  const modules = glyphsModules();
+  modules['theme.js'] = [
+    "import {XIcon} from './icons/x.js';",
+    "import {SearchIcon as Magnifier} from './icons/search.js';",
+    "import {HomeIcon} from './icons/home.js';",
+    '',
+    'export const themeIcons = {',
+    '  close: XIcon,',
+    '  search: Magnifier,',
+    ...others.map(name => `  ${name}: HomeIcon,`),
+    '};',
+    '',
+  ].join('\n');
+  return {data, modules};
+}
+
+/**
  * @typedef {object} IconPackageSpec
  * @property {string} [name] package name (default `@acme/glyphs`)
  * @property {string} [version]
@@ -119,6 +151,8 @@ export function glyphsModules() {
  * @property {Record<string, string>} [dependencies] the package's own
  *   dependencies
  * @property {boolean} [install] install it in node_modules (default true)
+ * @property {Record<string, string>} [definitions] the set's own icon
+ *   definition files, by name: each value is the file's source
  */
 
 /**
@@ -182,6 +216,32 @@ export function writeIconPackage(dir, spec = {}) {
   if (spec.notice !== false) {
     fs.writeFileSync(path.join(setDir, 'LICENSE'), 'MIT License\n');
   }
+  for (const [definition, source] of Object.entries(spec.definitions ?? {})) {
+    const definitionsDir = path.join(setDir, 'definitions');
+    fs.mkdirSync(definitionsDir, {recursive: true});
+    fs.writeFileSync(
+      path.join(definitionsDir, `${definition}.doc.mjs`),
+      source,
+    );
+  }
+}
+
+/**
+ * The source of one icon definition file.
+ * @param {string} name
+ * @param {{description?: string, words?: string[]}} [fields]
+ */
+export function definitionSource(name, fields = {}) {
+  return `/** @type {import('@astryxdesign/cli/authoring').IconDefinitionDoc} */\nexport default ${JSON.stringify(
+    {
+      type: 'icon-definition',
+      name,
+      description: fields.description ?? `The ${name} icon.`,
+      words: fields.words ?? [name.toLowerCase()],
+    },
+    null,
+    2,
+  )};\n`;
 }
 
 /**

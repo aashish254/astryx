@@ -14,10 +14,13 @@ import {iconSetIssues} from './icon-set-checks.mjs';
 import {moduleExportOrigin} from './module-exports.mjs';
 import {integrationCheck} from '../../api/integration/check/check.mjs';
 import {
+  completeGlyphs,
+  definitionSource,
   glyphsData,
   glyphsModules,
   writeIconPackage,
 } from '../../test-utils/icon-set-fixture.mjs';
+import {ICON_NAMES} from '../../authoring/doctypes/icon-set/icon-names.mjs';
 
 /** @type {string} */
 let tmp;
@@ -31,13 +34,25 @@ afterEach(() => {
   fs.rmSync(tmp, {recursive: true, force: true});
 });
 
-/** @param {import('../../test-utils/icon-set-fixture.mjs').IconPackageSpec} [spec] */
-function issuesOf(spec = {}) {
+/** The findings about which icon definitions `map` covers. */
+const COVERAGE = new Set([
+  'icon_builtin_definition_missing',
+  'icon_definition_missing',
+]);
+
+/**
+ * The set's issues, leaving out the definition-coverage findings that the
+ * small fixture set always has; `coverage: true` keeps them.
+ * @param {import('../../test-utils/icon-set-fixture.mjs').IconPackageSpec} [spec]
+ * @param {{coverage?: boolean}} [options]
+ */
+function issuesOf(spec = {}, {coverage = false} = {}) {
   writeIconPackage(dir, spec);
-  return iconSetIssues(dir, {
+  const issues = iconSetIssues(dir, {
     name: spec.name ?? '@acme/glyphs',
     iconSets: path.join(dir, 'icon-sets'),
   });
+  return coverage ? issues : issues.filter(issue => !COVERAGE.has(issue.code));
 }
 
 /** @param {(data: any) => void} change */
@@ -153,10 +168,115 @@ describe('iconSetIssues', () => {
     const issues = issuesOf({
       data: data(d => (d.icons[0].module = '@acme/glyphs/solid')),
     });
-    expect(issues).toEqual([
-      expect.objectContaining({code: 'icon_export_missing'}),
+    // It is not a public entry of the package either.
+    expect(issues.map(issue => issue.code).sort()).toEqual([
+      'icon_export_missing',
+      'icon_module_not_public',
     ]);
-    expect(issues[0].message).toMatch(/does not resolve/);
+    expect(
+      issues.find(issue => issue.code === 'icon_export_missing')?.message,
+    ).toMatch(/does not resolve/);
+  });
+
+  describe('the icon export contract', () => {
+    it('an icon read from a module other than the package or its exports subpaths is an error', () => {
+      const issues = issuesOf({
+        data: data(d => (d.icons[0].module = 'upstream-icons')),
+      });
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          code: 'icon_module_not_public',
+          severity: 'error',
+        }),
+      );
+    });
+
+    it('an export not named <Name>Icon warns', () => {
+      const issues = issuesOf({
+        data: data(d => (d.icons[3].export = 'House')),
+        modules: modules({
+          'icons/home.js': 'export function House() { return null; }\n',
+          'index.js': glyphsModules()['index.js'].replace(
+            "export {HomeIcon} from './icons/home.js';",
+            "export {House} from './icons/home.js';",
+          ),
+        }),
+      });
+      expect(issues).toEqual([
+        expect.objectContaining({
+          code: 'icon_export_name',
+          severity: 'warning',
+        }),
+      ]);
+    });
+
+    it('an export that is a value, not a component, is an error', () => {
+      const issues = issuesOf({
+        modules: modules({
+          'icons/home.js': "export const HomeIcon = {path: 'M3 11'};\n",
+        }),
+      });
+      expect(issues).toEqual([
+        expect.objectContaining({
+          code: 'icon_not_component',
+          severity: 'error',
+        }),
+      ]);
+    });
+
+    it('follows `export *` from an installed package, and says which re-export it could not follow', () => {
+      const upstream = path.join(dir, 'node_modules', 'upstream-icons');
+      fs.mkdirSync(upstream, {recursive: true});
+      fs.writeFileSync(
+        path.join(upstream, 'package.json'),
+        JSON.stringify({
+          name: 'upstream-icons',
+          version: '1.0.0',
+          exports: {'.': './index.js'},
+        }),
+      );
+      fs.writeFileSync(
+        path.join(upstream, 'index.js'),
+        'export function HomeIcon() { return null; }\n',
+      );
+      const followed = issuesOf({
+        modules: modules({
+          'index.js': glyphsModules()['index.js'].replace(
+            "export {HomeIcon} from './icons/home.js';",
+            "export * from 'upstream-icons';",
+          ),
+        }),
+      });
+      expect(followed).toEqual([]);
+      const missing = issuesOf({
+        modules: modules({
+          'index.js': glyphsModules()['index.js'].replace(
+            "export {HomeIcon} from './icons/home.js';",
+            "export * from 'not-installed';",
+          ),
+        }),
+      });
+      expect(missing).toEqual([
+        expect.objectContaining({code: 'icon_export_missing'}),
+      ]);
+      expect(missing[0].message).toContain(
+        'could not follow its re-export from "not-installed"',
+      );
+      expect(missing[0].message).not.toContain('does not export at runtime');
+    });
+
+    it('a generated module or adapter the data names must exist', () => {
+      const issues = issuesOf({
+        data: data(d => {
+          d.generated = './icon-sets/glyphs/glyphs.generated.js';
+          d.adapter = {module: './src/adapt.js', export: 'adapt'};
+        }),
+      });
+      expect(issues.map(issue => issue.code)).toEqual([
+        'icon_export_missing',
+        'icon_export_missing',
+      ]);
+    });
   });
 
   describe('theme map (FR13)', () => {
@@ -172,7 +292,7 @@ describe('iconSetIssues', () => {
       expect(issues).toEqual([
         expect.objectContaining({code: 'icon_theme_map_mismatch'}),
       ]);
-      expect(issues[0].message).toMatch(/has "menu", which no icon fills/);
+      expect(issues[0].message).toMatch(/has "menu", which "map" does not map/);
     });
 
     it('a missing key is an error', () => {
@@ -211,7 +331,29 @@ describe('iconSetIssues', () => {
       expect(issues).toEqual([]);
     });
 
-    it('a set that fills names but has no themeMap is an error', () => {
+    it('reads createElement and jsx calls as the artwork they render, and warns on an entry it cannot read', () => {
+      const read = issuesOf({
+        modules: modules({
+          'theme.js':
+            "import {createElement} from 'react';\nimport {jsx as _jsx} from 'react/jsx-runtime';\nimport {XIcon} from './icons/x.js';\nimport {SearchIcon} from './icons/search.js';\nexport const themeIcons = {close: createElement(XIcon, {}), search: _jsx(SearchIcon, {})};\n",
+        }),
+      });
+      expect(read).toEqual([]);
+      const unread = issuesOf({
+        modules: modules({
+          'theme.js':
+            "import {XIcon} from './icons/x.js';\nconst pick = icon => icon;\nexport const themeIcons = {close: XIcon, search: pick(XIcon)};\n",
+        }),
+      });
+      expect(unread).toEqual([
+        expect.objectContaining({
+          code: 'icon_theme_map_unchecked',
+          severity: 'warning',
+        }),
+      ]);
+    });
+
+    it('a set that maps built-in definitions but has no themeMap is an error', () => {
       const issues = issuesOf({data: data(d => delete d.themeMap)});
       expect(issues).toEqual([
         expect.objectContaining({code: 'icon_theme_map_mismatch'}),
@@ -267,13 +409,97 @@ describe('iconSetIssues', () => {
   });
 });
 
+describe('icon definitions (map)', () => {
+  it('every built-in definition missing from map is an error, each other Astryx one a warning, each with a suggestion when an icon draws it', () => {
+    const issues = issuesOf({}, {coverage: true});
+    const builtIn = issues.filter(
+      issue => issue.code === 'icon_builtin_definition_missing',
+    );
+    const other = issues.filter(
+      issue => issue.code === 'icon_definition_missing',
+    );
+    // close and search are mapped; every other built-in is not.
+    expect(builtIn).toHaveLength(ICON_NAMES.length - 2);
+    expect(builtIn.every(issue => issue.severity === 'error')).toBe(true);
+    expect(other.length).toBeGreaterThan(0);
+    expect(other.every(issue => issue.severity === 'warning')).toBe(true);
+    // `delete` names no icon, but the trash icon is tagged delete.
+    const del = other.find(issue => issue.message.includes('"delete"'));
+    expect(del?.suggestion).toEqual({map: 'delete', icon: 'trash'});
+    expect(del?.message).toContain('astryx icon map delete trash');
+    const home = other.find(issue => issue.message.includes('"home"'));
+    expect(home?.suggestion).toEqual({map: 'home', icon: 'home'});
+    // Nothing in the set draws a calendar: no suggestion.
+    const calendar = builtIn.find(issue =>
+      issue.message.includes('"calendar"'),
+    );
+    expect(calendar).toBeDefined();
+    expect(calendar).not.toHaveProperty('suggestion');
+  });
+
+  it('a set mapping every built-in definition has no error', () => {
+    const {data: complete, modules: completeModules} = completeGlyphs();
+    const issues = issuesOf(
+      {data: {...complete, module: '@acme/glyphs'}, modules: completeModules},
+      {coverage: true},
+    );
+    expect(issues.filter(issue => issue.severity === 'error')).toEqual([]);
+  });
+
+  it("a map key that is neither Astryx's definition nor the set's own is an error", () => {
+    const issues = issuesOf({data: data(d => (d.map.rotate = 'home'))});
+    expect(issues).toEqual([
+      expect.objectContaining({code: 'invalid_icon_set', severity: 'error'}),
+    ]);
+    expect(issues[0].message).toMatch(
+      /map "rotate" \(icon "home"\) is not an icon definition\. Declare it in definitions\/rotate\.doc\.mjs/,
+    );
+  });
+
+  it("the set's own definitions: mapped is fine, unmapped warns with a suggestion, and one Astryx has warns", () => {
+    const issues = issuesOf({
+      data: data(d => (d.map.rotate = 'home')),
+      definitions: {
+        rotate: definitionSource('rotate'),
+        garbage: definitionSource('garbage', {words: ['garbage']}),
+        delete: definitionSource('delete'),
+      },
+    });
+    expect(issues.map(issue => issue.code).sort()).toEqual([
+      'icon_definition_shadowed',
+      'icon_definition_unused',
+    ]);
+    const unused = issues.find(
+      issue => issue.code === 'icon_definition_unused',
+    );
+    expect(unused?.message).toContain('"garbage"');
+    expect(unused?.suggestion).toEqual({map: 'garbage', icon: 'trash'});
+    expect(
+      issues.find(issue => issue.code === 'icon_definition_shadowed')?.message,
+    ).toContain('Astryx now has');
+  });
+
+  it('a definition file that does not read makes the set invalid', () => {
+    const issues = issuesOf({
+      definitions: {rotate: definitionSource('Rotate')},
+    });
+    expect(issues).toEqual([
+      expect.objectContaining({code: 'invalid_icon_set'}),
+    ]);
+  });
+});
+
 describe('integration check over an icon set', () => {
   it('an error fails the run; a warning fails only under --strict', async () => {
+    const complete = completeGlyphs();
     writeIconPackage(dir, {
       notice: false,
-      data: data(
-        d => (d.source = {package: 'upstream-icons', version: '1.2.0'}),
-      ),
+      modules: complete.modules,
+      data: {
+        ...complete.data,
+        module: '@acme/glyphs',
+        source: {package: 'upstream-icons', version: '1.2.0'},
+      },
     });
     const loose = await integrationCheck({cwd: dir});
     const strict = await integrationCheck({cwd: dir, strict: true});

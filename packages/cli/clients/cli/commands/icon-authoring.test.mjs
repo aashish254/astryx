@@ -1,0 +1,441 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+/**
+ * @file Icon-set authoring commands end to end (AST-084): `integration add
+ * icon-set --from`, `integration add icon-definition`, `icon add`, `icon
+ * map`, and `icon use`, driving the real program over an icon-set package
+ * that wraps a small component library and an app that installs it.
+ */
+
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {runCli} from '../../../test-utils/run-cli.mjs';
+import {writeIconSetProject} from '../../../test-utils/icon-set-fixture.mjs';
+
+/** @type {string} */
+let tmp;
+/** @type {string} */
+let pkg;
+
+/**
+ * A component library under node_modules: two components (one also exported
+ * under an `…Icon` alias), a data export, and a default-export file.
+ * @param {string} dir
+ */
+function writeLibrary(dir) {
+  const lib = path.join(dir, 'node_modules', '@acme', 'glyph-library');
+  fs.mkdirSync(path.join(lib, 'icons'), {recursive: true});
+  fs.writeFileSync(
+    path.join(lib, 'package.json'),
+    JSON.stringify({
+      name: '@acme/glyph-library',
+      version: '2.0.0',
+      type: 'module',
+      exports: {'.': './index.js', './rocket': './icons/rocket.js'},
+    }),
+  );
+  fs.writeFileSync(
+    path.join(lib, 'index.js'),
+    [
+      "export {Bin, Bin as BinIcon} from './icons/bin.js';",
+      "export {Cross} from './icons/cross.js';",
+      "export const glyphData = {path: 'M0 0'};",
+      "export const version = '2.0.0';",
+      '',
+    ].join('\n'),
+  );
+  fs.writeFileSync(
+    path.join(lib, 'icons', 'bin.js'),
+    'export function Bin(props) { return null; }\n',
+  );
+  fs.writeFileSync(
+    path.join(lib, 'icons', 'cross.js'),
+    'export const Cross = props => null;\n',
+  );
+  fs.writeFileSync(
+    path.join(lib, 'icons', 'rocket.js'),
+    'export default function Rocket(props) { return null; }\n',
+  );
+}
+
+beforeEach(() => {
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-icon-authoring-'));
+  pkg = path.join(tmp, 'icons');
+  fs.mkdirSync(pkg, {recursive: true});
+  fs.writeFileSync(
+    path.join(pkg, 'package.json'),
+    JSON.stringify(
+      {
+        name: '@acme/icons',
+        version: '1.0.0',
+        license: 'MIT',
+        type: 'module',
+        exports: {'.': './index.js'},
+        dependencies: {'@acme/glyph-library': '^2.0.0'},
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(path.join(pkg, 'index.js'), 'export {};\n');
+  writeLibrary(pkg);
+});
+afterEach(() => {
+  fs.rmSync(tmp, {recursive: true, force: true});
+});
+
+/** @param {string[]} args @param {string} [cwd] */
+async function json(args, cwd = pkg) {
+  const res = await runCli([...args, '--json'], cwd);
+  return {code: res.code, body: JSON.parse(res.stdout)};
+}
+
+/** @param {string} set */
+const dataOf = set =>
+  JSON.parse(
+    fs.readFileSync(
+      path.join(pkg, 'icon-sets', set, `${set}.icons.json`),
+      'utf-8',
+    ),
+  );
+
+describe('integration add icon-set --from', () => {
+  it('wraps every component of a library once, names each <Name>Icon, pre-fills exact map hits, and says what to export', async () => {
+    const {code, body} = await json([
+      'integration',
+      'add',
+      'icon-set',
+      'outline',
+      '--from',
+      '@acme/glyph-library',
+    ]);
+    expect(code).toBe(0);
+    expect(body.data).toMatchObject({kind: 'icon-set', icons: 2});
+    expect(body.data.notes[0]).toContain(
+      "export * from './icon-sets/outline/outline.generated.js'",
+    );
+    const data = dataOf('outline');
+    expect(data.generated).toBe('./icon-sets/outline/outline.generated.js');
+    expect(data.icons).toEqual([
+      {id: 'bin', export: 'BinIcon', words: ['bin']},
+      {id: 'cross', export: 'CrossIcon', words: ['cross']},
+    ]);
+    // `delete` has the word bin; nothing is guessed beyond exact hits.
+    expect(data.map).toMatchObject({delete: 'bin'});
+    const generated = fs.readFileSync(
+      path.join(pkg, 'icon-sets', 'outline', 'outline.generated.js'),
+      'utf-8',
+    );
+    expect(generated).toContain("export {BinIcon} from '@acme/glyph-library';");
+    expect(generated).toContain(
+      "export {Cross as CrossIcon} from '@acme/glyph-library';",
+    );
+    expect(generated).not.toContain('glyphData');
+
+    // Running it again refreshes in place and keeps the map.
+    const again = await json([
+      'integration',
+      'add',
+      'icon-set',
+      'outline',
+      '--from',
+      '@acme/glyph-library',
+    ]);
+    expect(again.code).toBe(0);
+    expect(dataOf('outline').map).toMatchObject({delete: 'bin'});
+  });
+});
+
+describe('icon add', () => {
+  beforeEach(async () => {
+    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+  });
+
+  it('lists the definitions that fit an export, and writes nothing', async () => {
+    const {code, body} = await json([
+      'icon',
+      'add',
+      'Bin',
+      '--from',
+      '@acme/glyph-library',
+    ]);
+    expect(code).toBe(0);
+    expect(body.type).toBe('icon.definitionMatches');
+    expect(body.data.matches[0]).toMatchObject({
+      name: 'delete',
+      source: 'astryx',
+      command:
+        'astryx icon add Bin --from @acme/glyph-library --definition delete',
+    });
+    expect(dataOf('outline').icons).toEqual([]);
+  });
+
+  it('adds the icon as <Name>Icon through the generated module, maps it, and is idempotent', async () => {
+    const args = [
+      'icon',
+      'add',
+      'Bin',
+      '--from',
+      '@acme/glyph-library',
+      '--definition',
+      'delete',
+    ];
+    const first = await json(args);
+    expect(first.code).toBe(0);
+    expect(first.body.data).toMatchObject({
+      icon: {id: 'bin', export: 'BinIcon', module: '@acme/icons'},
+      definition: 'delete',
+      changed: true,
+    });
+    expect(first.body.data.note).toContain('export * from');
+    const data = dataOf('outline');
+    expect(data.map).toEqual({delete: 'bin'});
+    expect(data.icons[0]).toMatchObject({id: 'bin', export: 'BinIcon'});
+    expect(data.icons[0].words).toEqual(
+      expect.arrayContaining(['bin', 'trash']),
+    );
+    expect(data.icons[0]).not.toHaveProperty('module');
+    const again = await json(args);
+    expect(again.body.data.changed).toBe(false);
+  });
+
+  it("adds the set's own definition with --new-definition, refusing one Astryx has", async () => {
+    const added = await json([
+      'icon',
+      'add',
+      'Cross',
+      '--from',
+      '@acme/glyph-library',
+      '--new-definition',
+      'crossOut',
+      '--description',
+      'Cross something out.',
+      '--words',
+      'strike,cross',
+    ]);
+    expect(added.code).toBe(0);
+    expect(
+      fs.existsSync(
+        path.join(
+          pkg,
+          'icon-sets',
+          'outline',
+          'definitions',
+          'crossOut.doc.mjs',
+        ),
+      ),
+    ).toBe(true);
+    expect(dataOf('outline').map).toEqual({crossOut: 'cross'});
+    const refused = await json([
+      'icon',
+      'add',
+      'Cross',
+      '--from',
+      '@acme/glyph-library',
+      '--new-definition',
+      'close',
+      '--description',
+      'x',
+      '--words',
+      'x',
+    ]);
+    expect(refused.code).toBe(1);
+    expect(refused.body.suggestions).toContainEqual(
+      expect.objectContaining({name: '--definition close'}),
+    );
+  });
+
+  it('refuses an export the module lacks, with close names, and an unknown definition', async () => {
+    const missing = await json([
+      'icon',
+      'add',
+      'Bim',
+      '--from',
+      '@acme/glyph-library',
+      '--definition',
+      'delete',
+    ]);
+    expect(missing.code).toBe(1);
+    expect(
+      missing.body.suggestions.map((/** @type {any} */ s) => s.name),
+    ).toContain('Bin');
+    const unknown = await json([
+      'icon',
+      'add',
+      'Bin',
+      '--from',
+      '@acme/glyph-library',
+      '--definition',
+      'trashCan',
+    ]);
+    expect(unknown.code).toBe(1);
+  });
+
+  it('a default export, or a value through the declared adapter', async () => {
+    const rocket = await json([
+      'icon',
+      'add',
+      'Rocket',
+      '--from',
+      '@acme/glyph-library/rocket',
+      '--default',
+      '--definition',
+      'rocket',
+    ]);
+    expect(rocket.code).toBe(0);
+    const refused = await json([
+      'icon',
+      'add',
+      'glyphData',
+      '--from',
+      '@acme/glyph-library',
+      '--definition',
+      'activity',
+    ]);
+    expect(refused.code).toBe(1);
+    expect(refused.body.error).toContain('adapter');
+
+    const dataFile = path.join(
+      pkg,
+      'icon-sets',
+      'outline',
+      'outline.icons.json',
+    );
+    const data = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
+    data.adapter = {module: './src/adapt.js', export: 'adapt'};
+    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+    fs.mkdirSync(path.join(pkg, 'src'));
+    fs.writeFileSync(
+      path.join(pkg, 'src', 'adapt.js'),
+      'export function adapt(data) { return () => null; }\n',
+    );
+    const adapted = await json([
+      'icon',
+      'add',
+      'glyphData',
+      '--from',
+      '@acme/glyph-library',
+      '--definition',
+      'activity',
+    ]);
+    expect(adapted.code).toBe(0);
+    expect(adapted.body.data.icon.export).toBe('GlyphDataIcon');
+    const generated = fs.readFileSync(
+      path.join(pkg, 'icon-sets', 'outline', 'outline.generated.js'),
+      'utf-8',
+    );
+    expect(generated).toContain(
+      "import {adapt as adaptIcon} from '../../src/adapt.js';",
+    );
+    expect(generated).toContain(
+      'export const GlyphDataIcon = adaptIcon(GlyphDataIconSource);',
+    );
+    expect(generated).toContain(
+      "export {default as RocketIcon} from '@acme/glyph-library/rocket';",
+    );
+  });
+});
+
+describe('icon map and integration add icon-definition', () => {
+  beforeEach(async () => {
+    await runCli(
+      [
+        'integration',
+        'add',
+        'icon-set',
+        'outline',
+        '--from',
+        '@acme/glyph-library',
+      ],
+      pkg,
+    );
+  });
+
+  it('maps, remaps, and removes an entry; refuses an unknown definition or icon', async () => {
+    const mapped = await json(['icon', 'map', 'close', 'cross']);
+    expect(mapped.body.data).toMatchObject({
+      definition: 'close',
+      icon: 'cross',
+      changed: true,
+    });
+    expect(dataOf('outline').map.close).toBe('cross');
+    const removed = await json(['icon', 'map', 'close', '--remove']);
+    expect(removed.body.data).toMatchObject({icon: null, previous: 'cross'});
+    expect(dataOf('outline').map).not.toHaveProperty('close');
+    const unknown = await json(['icon', 'map', 'rotate', 'cross']);
+    expect(unknown.code).toBe(1);
+    expect(unknown.body.suggestions).toContainEqual(
+      expect.objectContaining({
+        name: 'astryx integration add icon-definition rotate --set outline',
+      }),
+    );
+    const noIcon = await json(['icon', 'map', 'close', 'crosss']);
+    expect(noIcon.code).toBe(1);
+    expect(noIcon.body.suggestions).toContainEqual(
+      expect.objectContaining({name: 'cross'}),
+    );
+  });
+
+  it("adds the set's own definition, mapped with --icon", async () => {
+    const {code, body} = await json([
+      'integration',
+      'add',
+      'icon-definition',
+      'crossOut',
+      '--description',
+      'Cross something out.',
+      '--words',
+      'strike,cross',
+      '--icon',
+      'cross',
+    ]);
+    expect(code).toBe(0);
+    expect(body.data).toMatchObject({
+      kind: 'icon-definition',
+      name: 'crossOut',
+    });
+    expect(dataOf('outline').map.crossOut).toBe('cross');
+    const again = await json([
+      'integration',
+      'add',
+      'icon-definition',
+      'crossOut',
+      '--description',
+      'x',
+      '--words',
+      'x',
+    ]);
+    expect(again.code).toBe(1);
+    expect(again.body.code).toBe('ERR_FILE_EXISTS');
+  });
+});
+
+describe('icon use', () => {
+  it("writes the project's iconSet, creating astryx.config.mjs, and refuses a set that is not installed", async () => {
+    const app = writeIconSetProject(tmp);
+    const used = await json(['icon', 'use', 'glyphs'], app);
+    expect(used.code).toBe(0);
+    expect(used.body.data).toMatchObject({
+      iconSet: 'glyphs',
+      set: '@acme/glyphs/glyphs',
+      created: true,
+      changed: true,
+    });
+    expect(
+      fs.readFileSync(path.join(app, 'astryx.config.mjs'), 'utf-8'),
+    ).toContain("iconSet: 'glyphs'");
+    const again = await json(['icon', 'use', '@acme/glyphs/glyphs'], app);
+    expect(again.body.data).toMatchObject({
+      previous: 'glyphs',
+      changed: true,
+      created: false,
+    });
+    const missing = await json(['icon', 'use', 'glyps'], app);
+    expect(missing.code).toBe(1);
+    expect(missing.body.suggestions).toContainEqual(
+      expect.objectContaining({name: 'glyphs'}),
+    );
+  });
+});

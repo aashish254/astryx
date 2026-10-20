@@ -13,7 +13,7 @@ export const doc = {
   displayName: 'IconSetData',
   namespace: 'authoring',
   description:
-    "An icon set's data file: which icons exist, the export that draws each one, the words a person might search for, and the shared icon names (`IconName`) each one fills. `astryx icon`, `astryx search`, template icon mapping, and the checks read this file and nothing else.",
+    "An icon set's data file: which icons exist, the export that draws each one, the words a person might search for, and which icon draws each icon definition (`map`). `astryx icon`, `astryx search`, template icon mapping, and the checks read this file and nothing else.",
   appliesTo: '<iconSetsRoot>/<name>/<name>.icons.json',
   fields: [
     {
@@ -26,7 +26,7 @@ export const doc = {
       name: 'module',
       type: 'string',
       description:
-        'The import specifier every `export` is read from. A package name or a package subpath, never a relative path.',
+        "The import specifier every `export` is read from: the set's own package name, or one of its package.json `exports` subpaths. Never a file path.",
       required: true,
       example: "'@acme/outline-icons'",
     },
@@ -35,6 +35,20 @@ export const doc = {
       type: '{package: string, version: string}',
       description:
         'The upstream library and version the file was generated from. Omit it for a set with no upstream.',
+    },
+    {
+      name: 'generated',
+      type: 'string',
+      description:
+        "The module `astryx icon add` writes, as a `./` path from the package root: one export per icon, a re-export of a library component or the adapter applied to a library export. The package's entry re-exports it.",
+      example: "'./icon-sets/outline/outline.generated.js'",
+    },
+    {
+      name: 'adapter',
+      type: '{module: string, export: string}',
+      description:
+        'A function in the package, `(source) => Component`, that turns a library export that is not a component (icon data, an SVG string or URL) into one. `module` is a `./` path from the package root.',
+      example: "{module: './src/adapt.js', export: 'adapt'}",
     },
     {
       name: 'axes',
@@ -52,8 +66,15 @@ export const doc = {
       name: 'themeMap',
       type: 'string',
       description:
-        'The export that maps each filled `IconName` to its artwork, keyed by exactly the filled names. Omit it when no icon fills a name.',
+        'The export that maps each built-in icon definition to its artwork, keyed by exactly the built-in definitions in `map`.',
       example: "'themeIcons'",
+    },
+    {
+      name: 'map',
+      type: 'Record<string, string>',
+      description:
+        "Which of this set's icons draws each icon definition: definition name to icon `id`. Keys are Astryx's definitions (`astryx docs icon-definitions`) or ones the set declares in its `definitions` folder, one file per definition. One icon may draw several definitions; each definition maps to one icon. Every built-in definition must be mapped.",
+      example: '{"close": "x", "delete": "trash", "remove": "trash"}',
     },
     {
       name: 'icons',
@@ -72,7 +93,7 @@ export const doc = {
           name: 'icons[].export',
           type: 'string',
           description:
-            "The named export that draws the icon's default variant.",
+            "The named export that draws the icon's default variant, named `<Name>Icon`: a React component that takes SVG props and draws with `currentColor`.",
           required: true,
           example: "'TrashIcon'",
         },
@@ -86,16 +107,9 @@ export const doc = {
           name: 'icons[].words',
           type: 'string[]',
           description:
-            'Lower-case terms a person might search for; at least one.',
+            "Lower-case terms a person might search for, the words of the icon's own name included; at least one.",
           required: true,
-          example: "['delete', 'remove', 'bin']",
-        },
-        {
-          name: 'icons[].fills',
-          type: 'IconName[]',
-          description:
-            'The shared icon names this icon draws. Each name is filled by at most one icon in a set.',
-          example: "['close']",
+          example: "['trash', 'delete', 'remove', 'bin']",
         },
         {
           name: 'icons[].variants',
@@ -107,7 +121,7 @@ export const doc = {
           name: 'icons[].matches',
           type: "{set, export, variant?, confidence: 'exact' | 'strong' | 'likely'}[]",
           description:
-            "Reviewed equivalents of this icon in other icon sets or libraries, such as `{set: 'heroicons', export: 'XMarkIcon', variant: '24/outline', confidence: 'exact'}`. When a copied template imports a matched icon, `exact` and `strong` matches are used before any other rule; a `likely` match is only suggested. A match never names this set itself.",
+            "Reviewed equivalents of this icon in other icon sets or libraries, such as `{set: 'lines', export: 'CrossIcon', variant: 'solid', confidence: 'exact'}`. When a copied template imports a matched icon from that installed set, `exact` and `strong` matches are used before any other rule; a `likely` match is only suggested. A match never names this set itself.",
         },
       ],
     },
@@ -118,15 +132,17 @@ export const doc = {
       code: `{
   "schemaVersion": 1,
   "module": "@acme/outline-icons",
+  "generated": "./icon-sets/outline/outline.generated.js",
   "axes": {"appearances": ["outline", "solid"], "sizes": [24]},
   "default": {"appearance": "outline", "size": 24},
   "themeMap": "themeIcons",
+  "map": {"close": "x", "delete": "trash"},
   "icons": [
-    {"id": "x", "export": "XIcon", "words": ["close", "cancel", "dismiss"], "fills": ["close"]},
+    {"id": "x", "export": "XIcon", "words": ["close", "cancel", "dismiss"]},
     {
       "id": "trash",
       "export": "TrashIcon",
-      "words": ["delete", "remove", "bin"],
+      "words": ["trash", "delete", "remove", "bin"],
       "variants": [{"appearance": "solid", "export": "TrashSolidIcon"}]
     }
   ]
@@ -136,15 +152,15 @@ export const doc = {
   notes: [
     {
       type: 'prose',
-      text: 'A file that fails this schema, repeats an id, gives an icon no words, fills a name that is not an `IconName` or fills one name twice, or names an axis value `axes` does not list is invalid, and its set is withdrawn from every surface until it is fixed. `astryx doctor` names the reason.',
+      text: 'A file that fails this schema, repeats an id, gives an icon no words, has a `map` key that is not camelCase or a `map` value that is not an icon id in the file, or names an axis value `axes` does not list is invalid, and its set is withdrawn from every surface until it is fixed. `astryx doctor` names the reason.',
     },
     {
       type: 'prose',
-      text: "A template's icon maps to the project set's icon whose `matches` name it with `exact` or `strong` confidence, else to the icon that fills the same shared icon name, else to the icon with the same id, else to the icon that shares the most words with it. The CLI's own templates import heroicons (`set: 'heroicons'`, `variant` such as `24/outline`) and lucide (`set: 'lucide'`).",
+      text: "A template declares the icon definition each icon it imports draws. With a project icon set, each declared icon maps to the icon whose `matches` name it with `exact` or `strong` confidence (for an icon another installed set ships), else to the icon this file's `map` names for its definition. Nothing is guessed from names or words.",
     },
     {
       type: 'prose',
-      text: 'When the upstream library publishes per-icon names or tags, generate this file from them, so regenerating from the same upstream version writes the same file.',
+      text: 'Write it with the CLI: `astryx icon add` registers one icon and its `map` entry, `astryx icon map` changes an entry, and `astryx integration add icon-set --from` wraps a whole library.',
     },
   ],
 };

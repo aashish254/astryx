@@ -4,7 +4,8 @@
  * @file `integrationAdd(kind, name, options)` — generate one valid
  * contribution into an integration package.
  *
- * Dispatches component, doc, template, codemod, agent-doc, and icon-set. Theme
+ * Dispatches component, doc, template, codemod, agent-doc, icon-set, and
+ * icon-definition. Theme
  * delegates to the dedicated same-stem descriptor writer. Every root-based kind shares: first add creates the manifest; one shared
  * writer; never creates `files`/`exports`; atomic staged writes; no clobber;
  * dry-run receipt predicts real run; post-write verify through the real
@@ -42,6 +43,20 @@ import {discoverIntegrationDocs} from '../../foundation/discovery/docs-discovery
 import {findIntegrationComponentDoc} from '../../foundation/discovery/component-discovery.mjs';
 import {parseAgentDocsField} from '../../authoring/integration/schema.mjs';
 import {integrationAddTheme} from './add-theme.mjs';
+import {
+  IconSetAuthoringError,
+  checkNewDefinition,
+  definitionFile,
+  findLocalIconSet,
+  generatedModulePath,
+  iconSetDataText,
+  libraryIcons,
+  resolveIconSource,
+  writeDefinitionFile,
+  writeGeneratedIcons,
+  writeIconSetData,
+} from '../../foundation/discovery/icon-set-writer.mjs';
+import {astryxIconDefinitions} from '../../foundation/discovery/icon-definition-discovery.mjs';
 import {
   findPackageDir,
   projectPath,
@@ -1192,14 +1207,15 @@ function quoteJs(value) {
 /**
  * Write one icon set (spec:AST-084 FR1–FR3): `<root>/<name>/<name>.doc.mjs`,
  * a typed IconSetDoc, and a starter `<name>.icons.json` whose `module` is the
- * package itself and whose icon list is empty, so the set is valid and checks
- * clean before any icon is added.
+ * package itself, with no icons and an empty `map`. The set is valid and
+ * discoverable; `integration check` then names every built-in icon
+ * definition it still has to map.
  * @param {string} name  icon set name (kebab-case)
- * @param {{cwd?: string, dryRun?: boolean}} options
+ * @param {{cwd?: string, dryRun?: boolean, from?: string}} options
  * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
  */
 async function addIconSet(name, options) {
-  const {cwd = process.cwd(), dryRun = false} = options;
+  const {cwd = process.cwd(), dryRun = false, from} = options;
   if (!KEBAB_NAME_RE.test(name)) {
     throw new AstryxError(
       `Invalid icon set name "${name}": use lowercase kebab-case starting with a letter.`,
@@ -1269,6 +1285,17 @@ async function addIconSet(name, options) {
   const dataFile = assertWithin(`${name}.icons.json`, setDir, {
     label: 'icon set data file',
   });
+  // Wrapping a library again refreshes the set's icons in place.
+  if (from != null && fs.existsSync(docFile) && fs.existsSync(dataFile)) {
+    return refreshIconSet(name, {
+      cwd,
+      dryRun,
+      from,
+      packageDir,
+      rootPath,
+      manifestPath: projectPath(path.relative(packageDir, manifestFile)),
+    });
+  }
   for (const file of [docFile, dataFile]) {
     if (fs.existsSync(file)) {
       throw new AstryxError(
@@ -1277,6 +1304,38 @@ async function addIconSet(name, options) {
         ERROR_CODES.ERR_FILE_EXISTS,
       );
     }
+  }
+
+  // --from: every component the library exports becomes an icon, re-exported
+  // through the set's generated module.
+  /** @type {{icons: Array<{id: string, export: string, words: string[]}>, map: Record<string, string>, generated?: string, lines: string[], note?: string}} */
+  const wrapped = {icons: [], map: {}, lines: []};
+  if (from != null) {
+    const source = await iconAuthoring(() =>
+      resolveIconSource(from, {packageDir, pkg}),
+    );
+    const found = libraryIcons(source.file);
+    if (found.length === 0) {
+      throw new AstryxError(
+        `"${from}" exports no icon components this command can read. Add icons one at a time with \`astryx icon add <Export> --from ${from}\`.`,
+        undefined,
+        ERROR_CODES.ERR_NOT_FOUND,
+      );
+    }
+    wrapped.generated = `./${projectPath(path.relative(packageDir, path.join(setDir, `${name}.generated.js`)))}`;
+    wrapped.icons = found.map(icon => ({
+      id: icon.id,
+      export: icon.name,
+      words: icon.id.split('-'),
+    }));
+    wrapped.map = exactDefinitionMap(wrapped.icons, {});
+    wrapped.lines = found
+      .map(icon =>
+        icon.export === icon.name
+          ? `export {${icon.name}} from '${source.module}';`
+          : `export {${icon.export} as ${icon.name}} from '${source.module}';`,
+      )
+      .sort();
   }
 
   const displayName = kebabToTitle(name);
@@ -1298,17 +1357,28 @@ async function addIconSet(name, options) {
     '};',
     '',
   ].join('\n');
-  const dataContents = `${JSON.stringify(
-    {schemaVersion: 1, module: pkg.name, icons: []},
-    null,
-    2,
-  )}\n`;
+  const dataContents = iconSetDataText({
+    schemaVersion: 1,
+    module: pkg.name,
+    ...(wrapped.generated ? {generated: wrapped.generated} : {}),
+    map: wrapped.map,
+    icons: wrapped.icons,
+  });
 
   /** @type {import('./add-helpers.mjs').WritePlan[]} */
   const plans = [
     {path: docFile, contents: docContents, createOnly: true},
     {path: dataFile, contents: dataContents, createOnly: true},
   ];
+  if (wrapped.generated) {
+    plans.push({
+      path: assertWithin(wrapped.generated, packageDir, {
+        label: 'generated icons module',
+      }),
+      contents: generatedModuleText(wrapped.lines),
+      createOnly: true,
+    });
+  }
   const pkgUpdate = packageJsonUpdate(
     packageFile,
     rootPath,
@@ -1376,7 +1446,7 @@ async function addIconSet(name, options) {
   if (rootReceipt.created && !writtenFiles.includes(manifestPath)) {
     writtenFiles.push(manifestPath);
   }
-  return receipt(
+  const result = receipt(
     'icon-set',
     name,
     rootReceipt,
@@ -1384,6 +1454,252 @@ async function addIconSet(name, options) {
     writtenFiles,
     dryRun,
   );
+  if (wrapped.generated) {
+    result.data.icons = wrapped.icons.length;
+    result.data.notes = [
+      `Add \`export * from '${wrapped.generated}';\` to the module "${pkg.name}" resolves to, so the icons import from it.`,
+      'Run `astryx integration check` to see the icon definitions still to map.',
+    ];
+  }
+  return result;
+}
+
+/**
+ * The generated icons module's text, for a fresh wrap.
+ * @param {string[]} lines
+ */
+function generatedModuleText(lines) {
+  return [
+    '// Generated by `astryx icon add`: one export per icon of this set.',
+    '// Edit with `astryx icon add`; a line edited by hand is kept as written.',
+    ...lines,
+    '',
+  ].join('\n');
+}
+
+/**
+ * The `map` entries an exact hit gives: each Astryx definition whose name, or
+ * one of whose words, is an icon's id. Entries the map already has are kept.
+ * @param {Array<{id: string}>} icons
+ * @param {Record<string, string>} map
+ */
+function exactDefinitionMap(icons, map) {
+  const ids = new Set(icons.map(icon => icon.id));
+  /** @type {Record<string, string>} */
+  const next = {...map};
+  for (const {doc} of astryxIconDefinitions().definitions) {
+    if (next[doc.name]) continue;
+    const kebab = doc.name
+      .replace(/([a-z0-9])([A-Z])/gu, '$1-$2')
+      .toLowerCase();
+    const hit = [
+      kebab,
+      ...doc.words.map(word => word.replace(/\s+/gu, '-')),
+    ].find(candidate => ids.has(candidate));
+    if (hit) next[doc.name] = hit;
+  }
+  return next;
+}
+
+/**
+ * Run an icon-set authoring step, turning its errors into AstryxErrors.
+ * @template T
+ * @param {() => T | Promise<T>} step
+ * @returns {Promise<T>}
+ */
+async function iconAuthoring(step) {
+  try {
+    return await step();
+  } catch (error) {
+    if (error instanceof IconSetAuthoringError) {
+      throw new AstryxError(
+        error.message,
+        error.suggestions,
+        /** @type {any} */ (ERROR_CODES)[error.code] ??
+          ERROR_CODES.ERR_INVALID_ARGUMENT,
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Wrap a library into an existing set again: its icons are replaced by what
+ * the library exports now (an icon whose words the author extended keeps
+ * them), the generated module gains the new exports, `map` keeps every entry
+ * whose icon still exists, and the receipt names the entries that lost theirs.
+ * @param {string} name
+ * @param {{cwd: string, dryRun: boolean, from: string, packageDir: string, rootPath: string, manifestPath: string}} options
+ */
+async function refreshIconSet(
+  name,
+  {cwd, dryRun, from, packageDir, rootPath, manifestPath},
+) {
+  return iconAuthoring(async () => {
+    const where = await findLocalIconSet(cwd, name);
+    const {set} = where;
+    const source = resolveIconSource(from, where);
+    const found = libraryIcons(source.file);
+    const previous = new Map(set.data.icons.map(icon => [icon.id, icon]));
+    const icons = found.map(icon => {
+      const prior = previous.get(icon.id);
+      return {
+        ...(prior ?? {}),
+        id: icon.id,
+        export: icon.name,
+        words: [...new Set([...icon.id.split('-'), ...(prior?.words ?? [])])],
+      };
+    });
+    const ids = new Set(icons.map(icon => icon.id));
+    /** @type {Record<string, string>} */
+    const kept = {};
+    /** @type {string[]} */
+    const lost = [];
+    for (const [definition, id] of Object.entries(set.data.map ?? {})) {
+      if (ids.has(id)) kept[definition] = id;
+      else lost.push(`${definition} -> "${id}"`);
+    }
+    const generated = generatedModulePath(set, packageDir);
+    const next = {
+      ...set.data,
+      generated,
+      map: exactDefinitionMap(icons, kept),
+      icons,
+    };
+    /** @type {string[]} */
+    const files = [];
+    if (!dryRun) {
+      const written = writeGeneratedIcons(
+        packageDir,
+        generated,
+        set.data.adapter,
+        found.map(icon => ({
+          name: icon.name,
+          from: source.module,
+          source: icon.export,
+          adapt: false,
+        })),
+      );
+      if (written.changed) files.push(generated.replace(/^\.\//u, ''));
+      try {
+        writeIconSetData(set, next);
+      } catch (error) {
+        written.undo();
+        throw error;
+      }
+    }
+    files.push(projectPath(path.relative(packageDir, set.dataPath)));
+    const result = receipt(
+      'icon-set',
+      name,
+      {path: rootPath, created: false},
+      manifestPath,
+      files,
+      dryRun,
+    );
+    result.data.icons = icons.length;
+    result.data.notes = [
+      ...(lost.length > 0
+        ? [
+            `These map entries named icons the library no longer exports and were removed: ${lost.join(', ')}.`,
+          ]
+        : []),
+      'Run `astryx integration check` to see the icon definitions still to map.',
+    ];
+    return result;
+  });
+}
+
+// ── Contribution: ICON DEFINITION ───────────────────────────────────
+
+/**
+ * Add one of an icon set's own icon definitions (AST-084):
+ * `<set>/definitions/<name>.doc.mjs`, a typed IconDefinitionDoc, and, with
+ * `icon`, the set's `map` entry for it. A name Astryx already has is refused:
+ * map to Astryx's definition instead.
+ * @param {string} name camelCase definition name
+ * @param {{cwd?: string, dryRun?: boolean, set?: string, description?: string, words?: string[] | string, icon?: string}} options
+ * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
+ */
+async function addIconDefinition(name, options) {
+  const {
+    cwd = process.cwd(),
+    dryRun = false,
+    set: selector,
+    description,
+    icon,
+  } = options;
+  const words =
+    typeof options.words === 'string'
+      ? options.words.split(',')
+      : options.words;
+  return iconAuthoring(async () => {
+    const where = await findLocalIconSet(cwd, selector);
+    const {packageDir, set} = where;
+    const doc = checkNewDefinition(set, {name, description, words});
+    const file = definitionFile(set, doc.name);
+    if (fs.existsSync(file)) {
+      throw new AstryxError(
+        `Refusing to overwrite existing file ${projectPath(path.relative(packageDir, file))}.`,
+        undefined,
+        ERROR_CODES.ERR_FILE_EXISTS,
+      );
+    }
+    if (icon != null && !set.data.icons.some(each => each.id === icon)) {
+      throw new AstryxError(
+        `Icon set "${set.name}" has no icon "${icon}".`,
+        set.data.icons
+          .map(each => each.id)
+          .filter(id => id.includes(icon) || icon.includes(id))
+          .slice(0, 5)
+          .map(id => ({name: id, reason: 'an icon in this set'})),
+        ERROR_CODES.ERR_NOT_FOUND,
+      );
+    }
+    const files = [projectPath(path.relative(packageDir, file))];
+    if (icon != null)
+      files.push(projectPath(path.relative(packageDir, set.dataPath)));
+    if (!dryRun) {
+      const undo = writeDefinitionFile(set, doc);
+      if (icon != null) {
+        try {
+          writeIconSetData(
+            set,
+            {...set.data, map: {...(set.data.map ?? {}), [doc.name]: icon}},
+            {extraDefinitions: [doc.name]},
+          );
+        } catch (error) {
+          undo();
+          throw error;
+        }
+      }
+      // Discovery reads the set, its new definition included, or the write
+      // is undone.
+      try {
+        await findLocalIconSet(cwd, set.name);
+      } catch (error) {
+        undo();
+        throw error;
+      }
+    }
+    return receipt(
+      'icon-definition',
+      doc.name,
+      {
+        path: `./${projectPath(path.relative(packageDir, where.root))}`,
+        created: false,
+      },
+      projectPath(
+        path.relative(
+          packageDir,
+          findLocalIntegrationManifestOrNull(packageDir) ??
+            path.join(packageDir, 'astryx.integration.mjs'),
+        ),
+      ),
+      files,
+      dryRun,
+    );
+  });
 }
 
 // ── Public per-kind APIs ────────────────────────────────────────────
@@ -1437,6 +1753,14 @@ export function integrationAddIconSet(name, options = {}) {
   return addIconSet(name, options);
 }
 
+/**
+ * @param {string} name
+ * @param {import('./integration-authoring.type.mjs').IntegrationAddIconDefinitionOptions} [options]
+ */
+export function integrationAddIconDefinition(name, options = {}) {
+  return addIconDefinition(name, options);
+}
+
 // ── Public dispatcher ───────────────────────────────────────────────
 
 const KIND_OPTIONS = {
@@ -1446,7 +1770,15 @@ const KIND_OPTIONS = {
   codemod: new Set(['cwd', 'dryRun', 'to']),
   'agent-doc': new Set(['cwd', 'dryRun']),
   theme: new Set(['cwd', 'dryRun', 'from']),
-  'icon-set': new Set(['cwd', 'dryRun']),
+  'icon-set': new Set(['cwd', 'dryRun', 'from']),
+  'icon-definition': new Set([
+    'cwd',
+    'dryRun',
+    'set',
+    'description',
+    'words',
+    'icon',
+  ]),
 };
 
 /**
@@ -1473,13 +1805,13 @@ function validateKindOptions(kind, options) {
  *
  * @param {import('./integration-authoring.type.mjs').IntegrationAddKind} kind
  * @param {string} name
- * @param {{cwd?: string, dryRun?: boolean, templateType?: 'page'|'block', to?: string, replaces?: string, extends?: string, parent?: string, from?: string}} [options]
+ * @param {import('./integration-authoring.type.mjs').IntegrationAddOptions} [options]
  * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
  */
 export async function integrationAdd(kind, name, options = {}) {
   if (!Object.prototype.hasOwnProperty.call(KIND_OPTIONS, kind)) {
     throw new AstryxError(
-      `Unknown contribution kind "${kind}". Choose component, doc, template, codemod, agent-doc, theme, or icon-set.`,
+      `Unknown contribution kind "${kind}". Choose component, doc, template, codemod, agent-doc, theme, icon-set, or icon-definition.`,
       undefined,
       ERROR_CODES.ERR_INVALID_ARGUMENT,
     );
@@ -1511,6 +1843,12 @@ export async function integrationAdd(kind, name, options = {}) {
         from: options.from,
       });
     case 'icon-set':
-      return integrationAddIconSet(name, options);
+      return integrationAddIconSet(name, {
+        cwd: options.cwd,
+        dryRun: options.dryRun,
+        from: options.from,
+      });
+    case 'icon-definition':
+      return integrationAddIconDefinition(name, options);
   }
 }

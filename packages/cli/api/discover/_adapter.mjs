@@ -68,7 +68,7 @@ const DEPENDENCY_FIELDS = [
  * @property {string} license
  * @property {number} iconCount
  * @property {{appearance?: string, size?: number, weight?: number}} [default]
- * @property {string[]} fills
+ * @property {string[]} definitions the icon definitions its `map` covers
  */
 
 /**
@@ -208,9 +208,7 @@ export async function describeInstalled(project, scanned) {
         license: set.license,
         iconCount: set.data.icons.length,
         ...(set.data.default ? {default: set.data.default} : {}),
-        fills: [
-          ...new Set(set.data.icons.flatMap(icon => icon.fills ?? [])),
-        ].sort(),
+        definitions: [...Object.keys(set.data.map ?? {})].sort(),
       })),
     });
   }

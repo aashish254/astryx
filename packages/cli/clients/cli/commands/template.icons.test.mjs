@@ -22,7 +22,7 @@ afterEach(() => {
   fs.rmSync(tmp, {recursive: true, force: true});
 });
 
-// ai-chat imports XMarkIcon (fills close) and icons the fixture set lacks.
+// ai-chat imports XMarkIcon (the close definition) and icons the fixture set lacks.
 const TEMPLATE = 'ai-chat';
 
 describe('template icon mapping', () => {
@@ -34,7 +34,7 @@ describe('template icon mapping', () => {
     expect(res.stdout).not.toMatch(/\bXMarkIcon\b/);
     expect(res.stdout).not.toContain('icons: ');
     expect(res.stderr).toContain(
-      'icons: mapped XMarkIcon (@heroicons/react/24/outline) -> XIcon (@acme/glyphs) by fills',
+      'icons: mapped XMarkIcon (@heroicons/react/24/outline) -> XIcon (@acme/glyphs) by definition',
     );
     expect(res.stderr).toMatch(
       /icons: kept \w+ \(@heroicons\/react\/24\/outline\)/,
@@ -57,7 +57,7 @@ describe('template icon mapping', () => {
     expect(copied.data.icons.mapped[0]).toMatchObject({
       source: {module: '@heroicons/react/24/outline', export: 'XMarkIcon'},
       target: {set: 'glyphs', id: 'x', export: 'XIcon'},
-      by: 'fills',
+      by: 'definition',
     });
     expect(copied.data.icons.kept.length).toBeGreaterThan(0);
     expect(copied.data.missingPackages).toContain('@heroicons/react');

@@ -51,7 +51,7 @@ describe('discover icon sets', () => {
     expect(none.data).toEqual([]);
   });
 
-  it('shows the item page with description, license, count, default, fills, and the icon command', async () => {
+  it('shows the item page with description, license, count, default, definitions, and the icon command', async () => {
     const page = await json(['discover', '@acme/glyphs/glyphs']);
     expect(page).toMatchObject({
       type: 'discover.item',
@@ -62,7 +62,7 @@ describe('discover icon sets', () => {
         license: expect.any(String),
         iconCount: glyphsData().icons.length,
         default: {appearance: 'outline', size: 24},
-        fills: ['close', 'search'],
+        definitions: ['close', 'search'],
         command: 'astryx icon <words> --set @acme/glyphs/glyphs',
         installed: true,
       },

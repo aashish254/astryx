@@ -114,6 +114,7 @@ import {discoverTemplates, extractComponents} from '../template/template.mjs';
 import {templateLookupIds} from '../../foundation/discovery/template-adapter.mjs';
 import {listAvailableThemes} from '../theme/_adapter.mjs';
 import {loadIconSets} from '../icon/_adapter.mjs';
+import {definitionsByIcon} from '../../foundation/discovery/icon-set-discovery.mjs';
 import {
   guideEntry,
   loadDocsCatalog,
@@ -792,6 +793,10 @@ export function domainPriority(
     if (named.some(n => samePhrase(term, n))) {
       return 2;
     }
+    // An icon definition is a small doc named for one common word (`file`,
+    // `user`): it leads only when the query is its name, so a word of a
+    // longer query does not put it above the component the query is after.
+    if (topic.startsWith('icon-definitions/')) return 0;
     // A query of two or more words that is one of the doc's own declared
     // keywords, read as words whatever the plural, is the author naming the
     // doc for that phrase: `code review` on a guide that declares it. Only
@@ -2145,8 +2150,9 @@ async function gatherIcons(cwd) {
   } catch {
     return [];
   }
-  return sets.flatMap(set =>
-    set.data.icons.map(icon => {
+  return sets.flatMap(set => {
+    const byIcon = definitionsByIcon(set.data);
+    return set.data.icons.map(icon => {
       const module = icon.module ?? set.data.module;
       return {
         domain: /** @type {const} */ ('icon'),
@@ -2154,15 +2160,15 @@ async function gatherIcons(cwd) {
         keywords: [
           icon.id.replace(/-/g, ' '),
           ...icon.words,
-          ...(icon.fills ?? []),
+          ...(byIcon.get(icon.id) ?? []),
         ],
         description: '',
         _summary: `${set.displayName} icon: ${icon.words.join(', ')}`,
         _import: `import {${icon.export}} from '${module}';`,
         _package: set.package,
       };
-    }),
-  );
+    });
+  });
 }
 
 /**

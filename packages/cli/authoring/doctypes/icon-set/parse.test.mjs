@@ -42,6 +42,13 @@ describe('parseIconSet', () => {
 describe('parseIconSetData', () => {
   it('accepts the fixture data file', () => {
     expect(parseIconSetData(glyphsData()).icons).toHaveLength(4);
+    // One icon may draw several definitions.
+    const data = /** @type {any} */ (glyphsData());
+    data.map = {...data.map, delete: 'trash', remove: 'trash'};
+    expect(parseIconSetData(data).map).toMatchObject({
+      delete: 'trash',
+      remove: 'trash',
+    });
   });
 
   it.each([
@@ -56,14 +63,19 @@ describe('parseIconSetData', () => {
     ],
     ['an upper-case word', d => (d.icons[0].words = ['Close']), /lower-case/],
     [
-      'a fill that is not an IconName',
-      d => (d.icons[3].fills = ['house']),
-      /"house" is not an IconName/,
+      'a map key that is not a definition name',
+      d => (d.map['big-house'] = 'home'),
+      /"big-house" is not an icon definition name/,
     ],
     [
-      'an IconName filled twice',
-      d => (d.icons[3].fills = ['close']),
-      /already filled by "x"/,
+      'a map value that is not an icon id',
+      d => (d.map.delete = 'bin'),
+      /"bin" is not the id of an icon in this file/,
+    ],
+    [
+      'icons that still carry fills',
+      d => (d.icons[0].fills = ['close']),
+      /Unrecognized key/,
     ],
     [
       'a variant outside axes',
@@ -89,7 +101,7 @@ describe('parseIconSetData', () => {
       'a match with an unknown confidence',
       d =>
         (d.icons[0].matches = [
-          {set: 'heroicons', export: 'XMarkIcon', confidence: 'maybe'},
+          {set: 'other-set', export: 'XMarkIcon', confidence: 'maybe'},
         ]),
       /confidence/,
     ],
@@ -97,8 +109,8 @@ describe('parseIconSetData', () => {
       'a match listed twice',
       d =>
         (d.icons[0].matches = [
-          {set: 'lucide', export: 'X', confidence: 'exact'},
-          {set: 'lucide', export: 'X', confidence: 'likely'},
+          {set: 'other-set', export: 'X', confidence: 'exact'},
+          {set: 'other-set', export: 'X', confidence: 'likely'},
         ]),
       /listed twice/,
     ],
@@ -106,7 +118,7 @@ describe('parseIconSetData', () => {
       'a match with an unknown field',
       d =>
         (d.icons[0].matches = [
-          {set: 'lucide', export: 'X', confidence: 'exact', note: 'x'},
+          {set: 'other-set', export: 'X', confidence: 'exact', note: 'x'},
         ]),
       /Unrecognized key/,
     ],
@@ -123,12 +135,12 @@ describe('parseIconSetData', () => {
     const data = dataWith(d => {
       d.icons[0].matches = [
         {
-          set: 'heroicons',
+          set: 'other-set',
           export: 'XMarkIcon',
           variant: '24/outline',
           confidence: 'exact',
         },
-        {set: 'lucide', export: 'X', confidence: 'likely'},
+        {set: 'other-set', export: 'X', confidence: 'likely'},
       ];
     });
     expect(parseIconSetData(data).icons[0].matches).toHaveLength(2);

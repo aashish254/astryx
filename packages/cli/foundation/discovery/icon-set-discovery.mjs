@@ -27,6 +27,10 @@ import {assertWithin} from '../fs/path-safety.mjs';
 import {findInstalledPackage} from '../fs/paths.mjs';
 import {inspectPackageExport} from './package-exports.mjs';
 import {
+  astryxDefinitionsByName,
+  readDefinitionsDir,
+} from './icon-definition-discovery.mjs';
+import {
   isIgnoredThemeEntry,
   readStaticDescriptorValue,
 } from './theme-discovery.mjs';
@@ -54,6 +58,8 @@ export const NOTICE_FILE_RE = /^(?:licen[cs]e|notice|copying)(?:[.-].*)?$/iu;
  * @property {string} dataPath absolute data-file path
  * @property {IconSetData} data the validated data file
  * @property {string[]} notices license and notice files in the set directory
+ * @property {import('./icon-definition-discovery.mjs').DiscoveredIconDefinition[]} definitions
+ *   the set's own definitions, from its `definitions` folder
  * @property {string | null} [moduleFile] the file `data.module` resolves to
  *   from the project, when it resolves
  */
@@ -179,6 +185,26 @@ function readIconSet(root, name, owner) {
     }
   }
 
+  // The set's own definitions, one file each in its `definitions` folder. A file
+  // that does not read makes the set invalid, like its descriptor.
+  const own = readDefinitionsDir(path.join(dir, 'definitions'), owner);
+  if (own.errors.length > 0) {
+    throw new Error(
+      `${label}: ${own.errors.map(error => error.message).join(' ')}`,
+    );
+  }
+  // Every key of `map` is Astryx's definition or one the set declares.
+  const astryx = astryxDefinitionsByName();
+  const declared = new Set(
+    own.definitions.map(definition => definition.doc.name),
+  );
+  for (const [name, id] of Object.entries(data.map ?? {})) {
+    if (astryx.has(name) || declared.has(name)) continue;
+    throw new Error(
+      `${label} data file is invalid: map "${name}" (icon "${id}") is not an icon definition. Declare it in definitions/${name}.doc.mjs, or use an Astryx icon definition (astryx docs icon-definitions).`,
+    );
+  }
+
   const notices = fs
     .readdirSync(dir, {withFileTypes: true})
     .filter(file => file.isFile() && NOTICE_FILE_RE.test(file.name))
@@ -197,7 +223,24 @@ function readIconSet(root, name, owner) {
     dataPath,
     data,
     notices,
+    definitions: own.definitions,
   };
+}
+
+/**
+ * The definitions each icon draws, by icon id, from the set's `map`.
+ * @param {IconSetData} data
+ * @returns {Map<string, string[]>}
+ */
+export function definitionsByIcon(data) {
+  /** @type {Map<string, string[]>} */
+  const byIcon = new Map();
+  for (const [name, id] of Object.entries(data.map ?? {})) {
+    const list = byIcon.get(id) ?? [];
+    list.push(name);
+    byIcon.set(id, list);
+  }
+  return byIcon;
 }
 
 /**

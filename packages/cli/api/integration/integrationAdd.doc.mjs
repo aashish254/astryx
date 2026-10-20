@@ -84,7 +84,31 @@ export const doc = {
       name: 'options.from',
       type: 'string',
       description:
-        'Slug of an existing theme to fork as the starting point. Only valid for theme.',
+        'For theme: the slug of an existing theme to fork. For icon-set: a module whose every icon component the set wraps. Only valid for theme and icon-set.',
+    },
+    {
+      name: 'options.set',
+      type: 'string',
+      description:
+        'For icon-definition: the icon set to add it to, when the package ships several.',
+    },
+    {
+      name: 'options.description',
+      type: 'string',
+      description:
+        'For icon-definition: one sentence on what an icon with this definition is for.',
+    },
+    {
+      name: 'options.words',
+      type: 'string[] | string',
+      description:
+        'For icon-definition: words people search for; a string is split on commas.',
+    },
+    {
+      name: 'options.icon',
+      type: 'string',
+      description:
+        "For icon-definition: an icon id to map it to in the set's `map`.",
     },
   ],
   returns: [
@@ -113,6 +137,7 @@ export const doc = {
     'integrationAddAgentDoc',
     'integrationAddTheme',
     'integrationAddIconSet',
+    'integrationAddIconDefinition',
     'integrationPackCheck',
     'validateIntegration',
   ],

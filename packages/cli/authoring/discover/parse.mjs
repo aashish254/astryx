@@ -33,7 +33,7 @@ const contributionSchema = z.object({
   summary: z.string().max(4096).optional(),
   keywords: z.array(z.string().max(128)).max(64).optional(),
   iconCount: z.number().int().min(0).optional(),
-  fills: z.array(z.string().max(128)).max(512).optional(),
+  definitions: z.array(z.string().max(128)).max(2048).optional(),
 });
 
 const versionSchema = z.object({

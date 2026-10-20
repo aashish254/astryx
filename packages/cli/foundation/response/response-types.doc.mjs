@@ -112,7 +112,7 @@ export const doc = {
     {
       value: 'icon.search',
       description:
-        'The echoed query, `matchCount` (every match, before `limit`), and matches: icons from the installed icon sets ranked by meaning, each {set, id, package, module, export, import, words, fills, variants, reason, score}.',
+        'The echoed query, `matchCount` (every match, before `limit`), and matches: icons from the installed icon sets ranked by meaning, each {set, id, package, module, export, import, words, definitions, variants, reason, score}.',
     },
     {
       value: 'icon.detail',
@@ -122,7 +122,27 @@ export const doc = {
     {
       value: 'icon.list',
       description:
-        "The project's icon-set state (status, projectSet, reason), each installed set with its package, license, icon count, default variant, axes, and the shared icon names it fills and does not fill, and each withdrawn set with its reason.",
+        "The project's icon-set state (status, projectSet, reason), each installed set with its package, license, icon count, default variant, axes, and the icon definitions its `map` covers (built-in, all of Astryx's, and its own), and each withdrawn set with its reason.",
+    },
+    {
+      value: 'icon.use',
+      description:
+        'The `iconSet` written to astryx.config, the set it names as `<package>/<set>`, the config file, whether it was created, the value it replaced, and whether anything changed.',
+    },
+    {
+      value: 'icon.map',
+      description:
+        'One `map` entry of the icon set being authored: the set, its package, the data file, the definition, the icon id now mapped (null after --remove), the id it replaced, and whether the file changed.',
+    },
+    {
+      value: 'icon.add',
+      description:
+        "One icon registered in the icon set being authored: the set, its package, the icon {id, export, module}, the variant values when it was added as a variant, the definition mapped to it, the definition file written when it added the set's own, the files written, and whether anything changed.",
+    },
+    {
+      value: 'icon.definitionMatches',
+      description:
+        "The icon definitions that fit an export, before it is added: the export, its source module, the id it would get, at most 10 matches {name, description, source (astryx or set), score, reason, command}, and the command that adds the set's own definition when none fits.",
     },
 
     // discover (external / integration packages)

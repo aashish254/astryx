@@ -104,7 +104,16 @@ const RUNNERS = {
   },
   'clients/cli/commands/icon.mjs': {
     runs: SELF_DOCS,
-    sites: ['import ../../../api/icon/icon.doc.mjs', 'import ./icon.doc.mjs'],
+    sites: [
+      'import ../../../api/icon/icon.doc.mjs',
+      'import ../../../api/icon/iconAdd.doc.mjs',
+      'import ../../../api/icon/iconMap.doc.mjs',
+      'import ../../../api/icon/iconUse.doc.mjs',
+      'import ./icon-add.doc.mjs',
+      'import ./icon-map.doc.mjs',
+      'import ./icon-use.doc.mjs',
+      'import ./icon.doc.mjs',
+    ],
   },
   'clients/cli/commands/build-theme.mjs': {
     runs: `${SELF_DOCS}; and \`astryx theme build\`, a child process per theme`,

@@ -942,7 +942,7 @@ describe('public dispatcher', () => {
     await expect(
       integrationAdd(/** @type {any} */ ('plugin'), 'thing', {cwd: tmpDir}),
     ).rejects.toThrow(
-      /component, doc, template, codemod, agent-doc, theme, or icon-set/,
+      /component, doc, template, codemod, agent-doc, theme, icon-set, or icon-definition/,
     );
   });
 });

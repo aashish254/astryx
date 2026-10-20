@@ -50,6 +50,7 @@ export const AUTHORING_SELF_DOCS = [
   'doctypes/theme/theme.doc.mjs',
   'doctypes/icon-set/icon-set.doc.mjs',
   'doctypes/icon-set/icon-set-data.doc.mjs',
+  'doctypes/icon-definition/icon-definition.doc.mjs',
 ];
 
 /** Blocks a self-doc note may carry that a topic section can render. */

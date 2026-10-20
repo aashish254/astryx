@@ -39,6 +39,7 @@ export const AuthoredDocKindSchema = z.enum([
   'command',
   'enum',
   'namespace',
+  'icon-definition',
 ]);
 
 /**
@@ -652,6 +653,7 @@ export const NamespaceDocKindSchema = z
               .object({
                 group: nonEmptyString,
                 kinds: z.array(AuthoredDocKindSchema).min(1).optional(),
+                packages: z.literal('all').optional(),
               })
               .strict(),
             into: nonEmptyString,

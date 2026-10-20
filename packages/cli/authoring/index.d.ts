@@ -36,6 +36,7 @@ export type {NamespaceDoc} from './doctypes/types.js'; //    cli.doc.mjs (hierar
 export type {ThemeDoc} from './doctypes/types.js'; //        oceanTheme.doc.mjs
 export type {IconSetDoc} from './doctypes/types.js'; //      outline.doc.mjs
 export type {IconSetData} from './doctypes/types.js'; //     outline.icons.json
+export type {IconDefinitionDoc} from './doctypes/types.js'; //  delete.doc.mjs
 export type {AstryxConfig} from './config/type.js'; //       astryx.config.{ts,mjs}
 export type {DebugEvent} from './debug/type.js'; //          one recorded CLI run
 export type {AstryxIntegration} from './integration/type.js'; // astryx.integration.{ts,mjs}
@@ -73,6 +74,7 @@ export {parseEnum} from './doctypes/enum/parse.mjs';
 export {parseNamespace} from './doctypes/namespace/parse.mjs';
 export {parseTheme} from './doctypes/theme/parse.mjs';
 export {parseIconSet, parseIconSetData} from './doctypes/icon-set/parse.mjs';
+export {parseIconDefinition} from './doctypes/icon-definition/parse.mjs';
 export {parseLegacyDoc} from './doctypes/legacy.mjs';
 export {parseConfig} from './config/parse.mjs';
 export {parseIntegration} from './integration/parse.mjs';
@@ -177,6 +179,7 @@ export type {
   IconSetSource,
   IconSetVariant,
   IconSetWeights,
+  IconSetAdapter,
 } from './doctypes/types.js';
 export type {PostCodemodHook, DebugConfig} from './config/type.js';
 export type {

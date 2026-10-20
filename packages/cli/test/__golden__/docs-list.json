@@ -16,6 +16,11 @@
         "package": "@astryxdesign/cli"
       },
       {
+        "topic": "icon-definitions",
+        "description": "Every icon definition: what an icon stands for, and the shared name icon sets map their icons to.",
+        "package": "@astryxdesign/cli"
+      },
+      {
         "topic": "internationalization",
         "description": "Set the active locale, load catalogs, coexist with your own i18n library, handle RTL, and test translations.",
         "package": "@astryxdesign/cli"

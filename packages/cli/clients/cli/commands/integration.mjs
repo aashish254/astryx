@@ -76,6 +76,22 @@ async function verifyPackage(program) {
         ),
       );
     }
+    const local = result.data.contributions?.local;
+    if (local) {
+      const counts = [
+        ['component', local.components.length],
+        ['template', local.templates.length],
+        ['theme', local.themes.length],
+        ['doc topic', local.docs.length],
+        ['codemod', local.codemods.length],
+        ['icon set', (local.iconSets ?? []).length],
+      ]
+        .filter(([, count]) => Number(count) > 0)
+        .map(([word, count]) => `${count} ${word}${count === 1 ? '' : 's'}`);
+      if (counts.length > 0) {
+        blocks.push(text(`Contributes ${counts.join(', ')}.`));
+      }
+    }
     if (issues.length > 0) {
       blocks.push(
         list(
@@ -215,6 +231,10 @@ export function registerIntegration(program) {
           parent: options.parent,
           to: options.to,
           from: options.from,
+          set: options.set,
+          description: options.description,
+          words: options.words,
+          icon: options.icon,
         });
       } catch (error) {
         const err =
@@ -252,6 +272,8 @@ export function registerIntegration(program) {
         blocks.push(text(`Update ${manifest}.`));
       }
       if (files.length > 0) blocks.push(list(files));
+      for (const note of result.data.notes ?? [])
+        blocks.push(text(`[next] ${note}`));
       emit(...blocks);
       return NO_RESULT_SET;
     },

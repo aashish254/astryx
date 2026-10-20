@@ -16,6 +16,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {parse} from '@babel/parser';
+import {findInstalledPackage} from '../fs/paths.mjs';
+import {inspectPackageExport} from './package-exports.mjs';
 
 const MODULE_EXTENSIONS = [
   '.mjs',
@@ -163,22 +165,102 @@ function nodesOfType(node, type, found = []) {
   return found;
 }
 
-/** @param {unknown} specifier @param {string} fromFile */
+/**
+ * The file a re-export's specifier names, from the file that writes it: a
+ * relative path, or an installed package (its `exports` map honored, else
+ * its `module` or `main`), found through node_modules from that file.
+ * @param {unknown} specifier
+ * @param {string} fromFile
+ */
 function resolveLocalModule(specifier, fromFile) {
-  if (typeof specifier !== 'string' || !specifier.startsWith('.')) return null;
+  if (typeof specifier !== 'string') return null;
+  if (!specifier.startsWith('.'))
+    return resolvePackageModule(specifier, fromFile);
   const base = path.resolve(path.dirname(fromFile), specifier);
   const candidates = [
     base,
     ...MODULE_EXTENSIONS.map(extension => `${base}${extension}`),
     ...MODULE_EXTENSIONS.map(extension => path.join(base, `index${extension}`)),
   ];
-  return candidates.find(candidate => {
-    try {
-      return fs.statSync(candidate).isFile();
-    } catch {
-      return false;
+  return (
+    candidates.find(candidate => {
+      try {
+        return fs.statSync(candidate).isFile();
+      } catch {
+        return false;
+      }
+    }) ?? null
+  );
+}
+
+/**
+ * @param {string} specifier a bare package specifier, with an optional subpath
+ * @param {string} fromFile
+ * @returns {string | null}
+ */
+function resolvePackageModule(specifier, fromFile) {
+  if (specifier.startsWith('node:') || specifier.startsWith('/')) return null;
+  const parts = specifier.split('/');
+  const count = specifier.startsWith('@') ? 2 : 1;
+  const name = parts.slice(0, count).join('/');
+  const rest = parts.slice(count).join('/');
+  const packageDir = findInstalledPackage(path.dirname(fromFile), name);
+  if (!packageDir) return null;
+  /** @type {Record<string, any>} */
+  let pkg;
+  try {
+    pkg = JSON.parse(
+      fs.readFileSync(path.join(packageDir, 'package.json'), 'utf-8'),
+    );
+  } catch {
+    return null;
+  }
+  if (pkg.exports !== undefined) {
+    return inspectPackageExport(pkg, packageDir, rest ? `./${rest}` : '.')
+      .target;
+  }
+  const entry = rest || pkg.module || pkg.main || 'index';
+  const base = path.join(packageDir, entry);
+  return (
+    [
+      base,
+      ...MODULE_EXTENSIONS.map(extension => `${base}${extension}`),
+      ...MODULE_EXTENSIONS.map(extension =>
+        path.join(base, `index${extension}`),
+      ),
+    ].find(candidate => {
+      try {
+        return fs.statSync(candidate).isFile();
+      } catch {
+        return false;
+      }
+    }) ?? null
+  );
+}
+
+/**
+ * The re-exports of a module whose source the reader could not follow:
+ * each `export ... from '<specifier>'` that resolves to no file.
+ * @param {string} file
+ * @returns {string[]}
+ */
+export function unfollowedReexports(file) {
+  let ast;
+  try {
+    ast = parseModule(file);
+  } catch {
+    return [];
+  }
+  /** @type {Set<string>} */
+  const missing = new Set();
+  for (const type of ['ExportNamedDeclaration', 'ExportAllDeclaration']) {
+    for (const node of nodesOfType(ast.program, type)) {
+      const specifier = node.source?.value;
+      if (typeof specifier !== 'string' || node.exportKind === 'type') continue;
+      if (!resolveLocalModule(specifier, file)) missing.add(specifier);
     }
-  }) ?? null;
+  }
+  return [...missing].sort();
 }
 
 /** @param {any} declaration @param {string} exportName */
@@ -294,7 +376,11 @@ export function moduleExportSource(file, exportName, seen = new Set()) {
 
   if (exportName === 'default') {
     const defaults = nodesOfType(ast.program, 'ExportDefaultDeclaration');
-    if (defaults.some((/** @type {any} */ node) => runtimeDefault(node.declaration))) {
+    if (
+      defaults.some((/** @type {any} */ node) =>
+        runtimeDefault(node.declaration),
+      )
+    ) {
       return file;
     }
   }
@@ -307,6 +393,28 @@ export function moduleExportSource(file, exportName, seen = new Set()) {
     },
   );
   return found;
+}
+
+/** The calls that make a React element: createElement, jsx, jsxs, jsxDEV. */
+const ELEMENT_CALLS = new Set([
+  'createElement',
+  'jsx',
+  'jsxs',
+  'jsxDEV',
+  '_jsx',
+  '_jsxs',
+  '_jsxDEV',
+]);
+
+/** @param {any} callee */
+function isElementCall(callee) {
+  if (callee?.type === 'Identifier') return ELEMENT_CALLS.has(callee.name);
+  return (
+    callee?.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.property?.type === 'Identifier' &&
+    ELEMENT_CALLS.has(callee.property.name)
+  );
 }
 
 /**
@@ -516,6 +624,16 @@ export function moduleExportOrigin(file, exportName, seen = new Set()) {
       return bindingOrigin(ast, file, local, seen);
     }
   }
+  if (exportName === 'default') {
+    for (const node of nodesOfType(ast.program, 'ExportDefaultDeclaration')) {
+      const declaration = node.declaration;
+      if (!runtimeDefault(declaration)) continue;
+      if (declaration.type === 'Identifier') {
+        return bindingOrigin(ast, file, declaration.name, seen);
+      }
+      return {file, name: 'default'};
+    }
+  }
   for (const node of nodesOfType(ast.program, 'ExportAllDeclaration')) {
     if (node.exportKind === 'type' || node.exported) continue;
     const target = resolveLocalModule(node.source?.value, file);
@@ -523,6 +641,141 @@ export function moduleExportOrigin(file, exportName, seen = new Set()) {
     if (origin) return origin;
   }
   return null;
+}
+
+/**
+ * Every runtime export name of a module, read without running it: its own
+ * named exports and, through `export *` from local files, theirs. Type-only
+ * exports and `default` are left out. Sorted.
+ * @param {string} file
+ * @param {Set<string>} [seen]
+ * @returns {string[]}
+ */
+export function moduleExportNames(file, seen = new Set()) {
+  if (seen.has(file)) return [];
+  seen.add(file);
+  let ast;
+  try {
+    if (!fs.statSync(file).isFile()) return [];
+    ast = parseModule(file);
+  } catch {
+    return [];
+  }
+  /** @type {Set<string>} */
+  const names = new Set();
+  for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
+    if (node.exportKind === 'type') continue;
+    const declaration = node.declaration;
+    if (declaration && declaration.declare !== true) {
+      if (
+        ['FunctionDeclaration', 'ClassDeclaration'].includes(declaration.type)
+      ) {
+        if (declaration.id?.name) names.add(declaration.id.name);
+      } else if (declaration.type === 'VariableDeclaration') {
+        for (const item of declaration.declarations) {
+          if (item.id?.type === 'Identifier') names.add(item.id.name);
+        }
+      }
+    }
+    for (const specifier of node.specifiers ?? []) {
+      if (
+        specifier.type !== 'ExportSpecifier' ||
+        specifier.exportKind === 'type'
+      ) {
+        continue;
+      }
+      const exported = specifier.exported?.name ?? specifier.exported?.value;
+      if (typeof exported === 'string' && exported !== 'default') {
+        names.add(exported);
+      }
+    }
+  }
+  for (const node of nodesOfType(ast.program, 'ExportAllDeclaration')) {
+    if (node.exportKind === 'type' || node.exported) continue;
+    const target = resolveLocalModule(node.source?.value, file);
+    if (target) {
+      for (const name of moduleExportNames(target, seen)) names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
+/**
+ * What a module's runtime export is, read without running it: `component`
+ * for a function, a class, or a value a call returns (`forwardRef(...)`);
+ * `data` for an object, array, or other literal; `unknown` when it cannot be
+ * read.
+ * @param {string} file
+ * @param {string} exportName
+ * @returns {'component' | 'data' | 'unknown'}
+ */
+export function exportValueKind(file, exportName) {
+  const origin = moduleExportOrigin(file, exportName);
+  if (!origin) return 'unknown';
+  let ast;
+  try {
+    ast = parseModule(origin.file);
+  } catch {
+    return 'unknown';
+  }
+  /** @param {any} node @returns {'component' | 'data' | 'unknown'} */
+  const kindOf = node => {
+    const value = withoutTypeWrappers(node);
+    if (!value) return 'unknown';
+    if (
+      [
+        'FunctionDeclaration',
+        'FunctionExpression',
+        'ArrowFunctionExpression',
+        'ClassDeclaration',
+        'ClassExpression',
+        'CallExpression',
+      ].includes(value.type)
+    ) {
+      return 'component';
+    }
+    if (
+      [
+        'ObjectExpression',
+        'ArrayExpression',
+        'StringLiteral',
+        'NumericLiteral',
+        'BooleanLiteral',
+        'TemplateLiteral',
+        'NullLiteral',
+      ].includes(value.type)
+    ) {
+      return 'data';
+    }
+    return 'unknown';
+  };
+  if (origin.name === 'default') {
+    const [node] = nodesOfType(ast.program, 'ExportDefaultDeclaration');
+    return node ? kindOf(node.declaration) : 'unknown';
+  }
+  for (const statement of ast.program.body) {
+    const declaration =
+      statement.type === 'ExportNamedDeclaration'
+        ? statement.declaration
+        : statement;
+    if (!declaration) continue;
+    if (
+      ['FunctionDeclaration', 'ClassDeclaration'].includes(declaration.type) &&
+      declaration.id?.name === origin.name
+    ) {
+      return 'component';
+    }
+    if (declaration.type !== 'VariableDeclaration') continue;
+    for (const declarator of declaration.declarations) {
+      if (
+        declarator.id?.type === 'Identifier' &&
+        declarator.id.name === origin.name
+      ) {
+        return kindOf(declarator.init);
+      }
+    }
+  }
+  return 'unknown';
 }
 
 /**
@@ -603,6 +856,14 @@ export function staticExportBindings(file, exportName) {
         name?.type === 'JSXIdentifier'
           ? {type: 'Identifier', name: name.name}
           : null;
+    } else if (
+      value?.type === 'CallExpression' &&
+      isElementCall(value.callee)
+    ) {
+      // createElement(X, ...), React.createElement(X, ...), jsx(X, ...),
+      // _jsx(X, ...): the element of component X.
+      const first = withoutTypeWrappers(value.arguments?.[0]);
+      value = first?.type === 'Identifier' ? first : null;
     }
     bindings.set(
       key,

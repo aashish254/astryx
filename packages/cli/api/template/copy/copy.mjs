@@ -18,7 +18,10 @@ import {
 } from '../../../foundation/fs/path-safety.mjs';
 import {AstryxError, writeFailed} from '../../error.mjs';
 import {ERROR_CODES} from '../../../foundation/response/error-codes.mjs';
-import {pkgOf, replaceDemoMedia} from '../../../foundation/discovery/template-adapter.mjs';
+import {
+  pkgOf,
+  replaceDemoMedia,
+} from '../../../foundation/discovery/template-adapter.mjs';
 import {analyzeTemplateNeeds} from '../../../foundation/discovery/template-needs.mjs';
 import {
   NO_ICON_SETS,
@@ -97,7 +100,11 @@ export function templateCopy(
   );
   // Icons follow the project's icon set (AST-084 FR11). An icon with no match
   // keeps its import, so its library stays a needed dependency below.
-  const {source: outputSource, icons} = mapTemplateIcons(withMedia, iconSets);
+  const {source: outputSource, icons} = mapTemplateIcons(
+    withMedia,
+    iconSets,
+    match.icons,
+  );
   try {
     fs.mkdirSync(outputDir, {recursive: true});
     fs.writeFileSync(outputFilePath, outputSource);

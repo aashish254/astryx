@@ -16,14 +16,14 @@ export const doc = {
       param: 'kind',
       required: true,
       description:
-        'component, doc, template, codemod, agent-doc, theme, or icon-set',
+        'component, doc, template, codemod, agent-doc, theme, icon-set, or icon-definition',
     },
     {
       name: 'name',
       param: 'name',
       required: true,
       description:
-        'Contribution name: PascalCase for component (AcmeWidget); lowercase kebab-case for template, codemod, theme, and icon-set (account-card); letters, digits, _ and - for doc; the literal guidance line for agent-doc',
+        'Contribution name: PascalCase for component (AcmeWidget); lowercase kebab-case for template, codemod, theme, and icon-set (account-card); camelCase for icon-definition (rocketLaunch); letters, digits, _ and - for doc; the literal guidance line for agent-doc',
     },
   ],
   options: [
@@ -58,10 +58,34 @@ export const doc = {
         'Namespace of this package to place the doc in, as a guide in its `guides` slot; writes the namespace doc when it is missing, and declares the CLI that reads it as an optional `@astryxdesign/cli` peer. Only valid for doc, and not with --replaces or --extends',
     },
     {
-      flag: '--from <theme>',
+      flag: '--from <source>',
       param: 'options.from',
       description:
-        'Existing theme slug to fork as a starting point instead of a blank scaffold; the new theme copies the base and has no link back, and package.json `dependencies` gains the npm packages the copied files import (other than Core and React). Only valid for theme',
+        'For theme: an existing theme slug to fork instead of a blank scaffold; the new theme copies the base and has no link back, and package.json `dependencies` gains the npm packages the copied files import (other than Core and React). For icon-set: a module whose every icon component the set wraps (a package, a subpath, or a ./ path); run again to refresh. Only valid for theme and icon-set',
+    },
+    {
+      flag: '--set <name>',
+      param: 'options.set',
+      description:
+        'For icon-definition: the icon set to add it to, when the package ships several',
+    },
+    {
+      flag: '--description <text>',
+      param: 'options.description',
+      description:
+        'For icon-definition: one sentence on what an icon with this definition is for',
+    },
+    {
+      flag: '--words <list>',
+      param: 'options.words',
+      description:
+        'For icon-definition: comma-separated words people search for',
+    },
+    {
+      flag: '--icon <id>',
+      param: 'options.icon',
+      description:
+        'For icon-definition: also map it to this icon of the set (its `map` entry)',
     },
     {
       flag: '--to <version>',
@@ -114,6 +138,14 @@ export const doc = {
       cli: 'astryx integration add theme ocean --from neutral',
     },
     {label: 'Add an icon set', cli: 'astryx integration add icon-set outline'},
+    {
+      label: 'Wrap a whole icon library',
+      cli: 'astryx integration add icon-set outline --from @acme/glyph-library',
+    },
+    {
+      label: "Add a set's own icon definition",
+      cli: "astryx integration add icon-definition rotate --description 'Rotate an image or shape.' --words turn,spin --icon rotate-cw",
+    },
   ],
   exitCodes: [
     {code: 0, when: 'the contribution is written or the dry run succeeds'},

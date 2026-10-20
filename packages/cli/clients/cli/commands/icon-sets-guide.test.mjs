@@ -26,20 +26,20 @@ describe('icon-set authoring guide', () => {
     },
   );
 
-  it('covers adding a set, its data file, generating it, checks, and how apps use it', async () => {
+  it('covers adding a set, adding icons, the export contract, library shapes, checks, and how apps use it', async () => {
     const {status, stdout} = await runCli(['docs', GUIDE, '--full']);
     expect(status).toBe(0);
     for (const phrase of [
       'npx astryx integration add icon-set outline',
-      '`matches`',
-      '`confidence`',
-      'tags.json',
-      'invalid_icon_set',
-      'icon_export_missing',
-      'icon_theme_map_mismatch',
-      'icon_source_version_drift',
-      'icon_license_notice_missing',
-      'npx astryx search delete --type icon',
+      'npx astryx icon add Bin --from @acme/glyph-library --definition delete',
+      '--new-definition',
+      'astryx docs icon-definitions',
+      'icon_builtin_definition_missing',
+      'icon_definition_missing',
+      'icon_module_not_public',
+      'icon_not_component',
+      'icon_theme_map_unchecked',
+      'adapter',
       '`iconSet`',
     ]) {
       expect(stdout).toContain(phrase);

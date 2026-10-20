@@ -122,8 +122,30 @@ function enumerateDocFiles(root, pkgDir) {
   return walkDir(root, n => DOC_RE.test(n)).map(f => rel(pkgDir, f));
 }
 
+/**
+ * Every file an icon set ships: its descriptor, data file, own definitions,
+ * and license notices, and its generated icons module.
+ * @param {string} root
+ * @param {string} pkgDir
+ */
+function enumerateIconSetFiles(root, pkgDir) {
+  /** @type {string[]} */
+  const files = [];
+  for (const set of discoverIconSetDirectory(root, '(local)').sets) {
+    files.push(set.docPath, set.dataPath);
+    for (const definition of set.definitions) files.push(definition.file);
+    for (const notice of set.notices) files.push(path.join(set.dir, notice));
+    if (set.data.generated) {
+      const generated = path.join(pkgDir, set.data.generated);
+      if (fs.existsSync(generated)) files.push(generated);
+    }
+  }
+  return [...new Set(files)].sort().map(file => rel(pkgDir, file));
+}
+
 /** @type {Record<FileInventoryRoot['kind'], (root: string, pkgDir: string) => string[]>} */
 const ENUMERATORS = {
+  iconSets: enumerateIconSetFiles,
   themes: enumerateThemeFiles,
   components: enumerateComponentFiles,
   templates: enumerateTemplateFiles,
@@ -136,13 +158,14 @@ const ROOT_KINDS = /** @type {const} */ ([
   'templates',
   'codemods',
   'docs',
+  'iconSets',
 ]);
 
 // ── Public: static file inventory ────────────────────────────────
 
 /**
  * @typedef {object} FileInventoryRoot
- * @property {'themes'|'components'|'templates'|'codemods'|'docs'} kind
+ * @property {'themes'|'components'|'templates'|'codemods'|'docs'|'iconSets'} kind
  * @property {string} path — project-relative root path
  * @property {string[]} files — project-relative required file paths
  */
@@ -194,6 +217,7 @@ export function computeRequiredFiles(loaded) {
  * @property {{version: string, id: string}[]} codemods
  * @property {string[]} docs
  * @property {string[]} agentDocsAppend
+ * @property {string[]} iconSets icon set names
  */
 
 /**
@@ -227,9 +251,17 @@ export async function collectIdentities(loaded) {
     agentDocsAppend: loaded.agentDocs?.append
       ? [...loaded.agentDocs.append]
       : [],
+    iconSets: [],
   };
   /** @type {Array<{kind: string, message: string}>} */
   const errors = [];
+  if (loaded.iconSets && fs.existsSync(loaded.iconSets)) {
+    const found = discoverIconSetDirectory(loaded.iconSets, loaded.name);
+    identities.iconSets = found.sets.map(set => set.name).sort();
+    for (const error of found.errors) {
+      errors.push({kind: 'iconSets', message: error.message});
+    }
+  }
 
   if (loaded.themes && fs.existsSync(loaded.themes)) {
     try {
@@ -478,6 +510,12 @@ export function compareIdentities(local, packed) {
     item => `${item.version}/${item.id}`,
   );
   compareKind('Doc topic', local.docs, packed.docs, item => item);
+  compareKind(
+    'Icon set',
+    local.iconSets ?? [],
+    packed.iconSets ?? [],
+    item => item,
+  );
 
   if (
     JSON.stringify(local.agentDocsAppend) !==

@@ -44,7 +44,7 @@ export function templateShow(match, {iconSets = NO_ICON_SETS} = {}) {
     fs.readFileSync(match.filePath, 'utf-8'),
   );
   // Icons follow the project's icon set, as template.copy writes them.
-  const {source, icons} = mapTemplateIcons(withMedia, iconSets);
+  const {source, icons} = mapTemplateIcons(withMedia, iconSets, match.icons);
 
   return {
     type: 'template.show',

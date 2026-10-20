@@ -465,6 +465,24 @@ const CASES = [
     skipFieldChecks: true,
   },
   {
+    name: 'icon use',
+    args: ['icon', 'use', 'does-not-exist'],
+    errorExpected: true,
+    skipFieldChecks: true,
+  },
+  {
+    name: 'icon map',
+    args: ['icon', 'map', 'close', 'x'],
+    errorExpected: true,
+    skipFieldChecks: true,
+  },
+  {
+    name: 'icon add',
+    args: ['icon', 'add', 'XIcon', '--from', 'does-not-exist'],
+    errorExpected: true,
+    skipFieldChecks: true,
+  },
+  {
     name: 'theme use',
     args: ['theme', 'use', 'does-not-exist'],
     errorExpected: true,

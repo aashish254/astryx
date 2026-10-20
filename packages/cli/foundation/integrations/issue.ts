@@ -15,4 +15,9 @@ export interface AstryxIntegrationIssue {
   code: string;
   severity: 'warning' | 'error';
   message: string;
+  /**
+   * For an icon definition an icon set does not map: the icon the set's
+   * lookup suggests, as `map[map] = icon`.
+   */
+  suggestion?: {map: string; icon: string};
 }

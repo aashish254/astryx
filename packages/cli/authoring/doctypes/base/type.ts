@@ -14,7 +14,8 @@ export type AuthoredDocKind =
   | 'schema'
   | 'command'
   | 'enum'
-  | 'namespace';
+  | 'namespace'
+  | 'icon-definition';
 
 /** Visibility of an authored doc in a compiled audience-specific bundle. */
 export type DocAudience = 'public' | 'internal';

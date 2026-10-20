@@ -6,9 +6,9 @@ export const doc = {
   exampleFor: 'TreeList',
   name: 'TreeList — Interactive Settings',
   displayName: 'TreeList — Interactive Settings',
-  description:
-    'Settings tree with clickable items and a documentation link.',
+  description: 'Settings tree with clickable items and a documentation link.',
   isReady: true,
   aspectRatio: 4 / 3,
   componentsUsed: ['TreeList', 'Icon'],
+  icons: {ChevronRightIcon: 'chevronRight', Cog6ToothIcon: 'settings'},
 };

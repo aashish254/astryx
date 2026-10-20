@@ -1,15 +1,15 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file `icon.list` leaf (AST-084 FR7): every installed icon set, the
- * project's set, and the sets withdrawn with why.
+ * @file `icon.list` leaf (AST-084 FR7): every installed icon set with the
+ * icon definitions its `map` covers, the project's set, and the sets
+ * withdrawn with why.
  *
  * @output the `icon.list` envelope
  * @position api/icon/list — dispatched by ../icon.mjs
  */
 
-import {ICON_NAMES} from '../../../authoring/doctypes/icon-set/icon-names.mjs';
-import {loadIconSets} from '../_adapter.mjs';
+import {astryxIconDefinitions, loadIconSets} from '../_adapter.mjs';
 
 /**
  * List the installed icon sets.
@@ -18,6 +18,8 @@ import {loadIconSets} from '../_adapter.mjs';
  */
 export async function iconList({cwd}) {
   const {sets, withdrawn, choice} = await loadIconSets(cwd);
+  const astryx = astryxIconDefinitions().definitions.map(each => each.doc);
+  const builtIn = astryx.filter(doc => doc.builtIn).map(doc => doc.name);
   return {
     type: 'icon.list',
     data: {
@@ -27,9 +29,7 @@ export async function iconList({cwd}) {
         : null,
       reason: choice.reason,
       sets: sets.map(set => {
-        const filled = new Set(
-          set.data.icons.flatMap(icon => icon.fills ?? []),
-        );
+        const mapped = new Set(Object.keys(set.data.map ?? {}));
         return {
           name: set.name,
           displayName: set.displayName,
@@ -39,8 +39,18 @@ export async function iconList({cwd}) {
           iconCount: set.data.icons.length,
           default: set.data.default ?? null,
           axes: set.data.axes ?? null,
-          fills: ICON_NAMES.filter(name => filled.has(name)),
-          unfilled: ICON_NAMES.filter(name => !filled.has(name)),
+          coverage: {
+            builtIn: {
+              mapped: builtIn.filter(name => mapped.has(name)).length,
+              total: builtIn.length,
+              missing: builtIn.filter(name => !mapped.has(name)),
+            },
+            astryx: {
+              mapped: astryx.filter(doc => mapped.has(doc.name)).length,
+              total: astryx.length,
+            },
+            own: set.definitions.map(each => each.doc.name),
+          },
           project: set === choice.set,
         };
       }),

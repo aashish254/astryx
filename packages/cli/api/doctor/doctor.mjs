@@ -446,7 +446,7 @@ export function checkImplicitIntegrations(ctx) {
         : '';
     // A declared root counts only when it exists: the manifest's keys are a
     // claim, and `integration-issues` reports the ones that are not true.
-    const declared = ['components', 'templates', 'themes', 'docs', 'codemods'].filter(
+    const declared = ['components', 'templates', 'themes', 'docs', 'codemods', 'iconSets'].filter(
       root => integration[/** @type {'components'} */ (root)],
     );
     const missing = declared.filter(root => {

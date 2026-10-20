@@ -14,6 +14,7 @@ import type {ComponentDoc} from '../doctypes/component/type.js';
 import type {EnumDoc} from '../doctypes/enum/type.js';
 import type {FunctionDoc} from '../doctypes/function/type.js';
 import type {HookDoc} from '../doctypes/hook/type.js';
+import type {IconDefinitionDoc} from '../doctypes/icon-definition/type.js';
 import type {NamespaceDoc} from '../doctypes/namespace/type.js';
 import type {ReferenceDoc} from '../doctypes/reference/type.js';
 import type {SchemaDoc} from '../doctypes/schema/type.js';
@@ -73,7 +74,8 @@ export type AuthoredDoc =
   | SchemaDoc
   | CommandDoc
   | EnumDoc
-  | NamespaceDoc;
+  | NamespaceDoc
+  | IconDefinitionDoc;
 
 /** Provenance attached by discovery before compilation. */
 export interface AuthoredDocSource {
@@ -103,7 +105,9 @@ export type AuthoredDocKindOf<TDoc extends AuthoredDoc> =
                 ? 'enum'
                 : TDoc extends NamespaceDoc
                   ? 'namespace'
-                  : never;
+                  : TDoc extends IconDefinitionDoc
+                    ? 'icon-definition'
+                    : never;
 
 type DeepReadonly<Value> = Value extends (...args: never[]) => unknown
   ? Value

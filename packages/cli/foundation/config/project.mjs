@@ -77,6 +77,7 @@ import {
   discoverIntegrationIconSets,
   orderIconSets,
 } from '../discovery/icon-set-discovery.mjs';
+import {iconDefinitionTreeInput} from '../doc-compiler/tree.mjs';
 import {getTransformsBetween} from '../../assets/codemods/registry.mjs';
 import {
   discoverIntegrationCodemods,
@@ -445,7 +446,10 @@ export class Project {
     // existing consumer command doubles as the author's preview. A local copy
     // replaces the same installed package in place, preserving configured
     // precedence while making the source being edited authoritative.
-    const localIntegration = await loadLocalIntegrationSafely(projectDir, fresh);
+    const localIntegration = await loadLocalIntegrationSafely(
+      projectDir,
+      fresh,
+    );
 
     // Autolinked and local packages can claim a provider ID that a configured
     // package already holds, so identity is resolved once over the final set.
@@ -996,7 +1000,10 @@ export class Project {
           // nothing and a reader gets the topic it was meant to replace.
           if (errors.length > 0) {
             for (const e of errors) {
-              catalog.addIssue({package: integration.name ?? pkg, message: e.message});
+              catalog.addIssue({
+                package: integration.name ?? pkg,
+                message: e.message,
+              });
             }
             continue;
           }
@@ -1015,6 +1022,26 @@ export class Project {
             message: errorMessage(err),
           });
         }
+      }
+
+      // Each installed icon set's own icon definitions join Astryx's under
+      // the `icon-definitions` namespace, marked with their package.
+      const {sets} = await this.iconSets();
+      for (const set of sets) {
+        if (set.definitions.length === 0) continue;
+        const at = this.#loadedIntegrations.findIndex(
+          each => each?.name === set.package,
+        );
+        const integration = this.#loadedIntegrations[at];
+        const providerId = integration?.providerId ?? set.package;
+        catalog.addTreeInputs({
+          namespaces: [],
+          guides: set.definitions.map(({doc, file}) => ({
+            ...iconDefinitionTreeInput(doc, file, set.package, providerId),
+            summary: `${doc.description} (from ${set.package}, icon set "${set.name}")`,
+            rank: at + 1,
+          })),
+        });
       }
 
       return catalog;

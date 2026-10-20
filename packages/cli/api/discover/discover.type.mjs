@@ -126,7 +126,7 @@
  *   license?: string,
  *   iconCount?: number,
  *   default?: {appearance?: string, size?: number, weight?: number},
- *   fills?: string[],
+ *   definitions?: string[],
  *   command?: string,
  *   installed: boolean,
  *   installedAs?: string,
@@ -135,8 +135,8 @@
  * }} data For an icon set, `title` and `summary` are its display name and
  *   description, and it carries `license`, `iconCount`, `default` (the variant
  *   an icon's own export draws, when the set names one), the shared icon names
- *   it `fills`, and `command`, which searches the set's icons. A source's
- *   entry carries `iconCount` and `fills` when the source lists them.
+ *   its `map` covers (`definitions`), and `command`, which searches the set's icons. A source's
+ *   entry carries `iconCount` and `definitions` when the source lists them.
  */
 
 /**

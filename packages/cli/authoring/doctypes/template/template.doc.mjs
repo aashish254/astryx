@@ -65,6 +65,12 @@ export const doc = {
         "Integration templates only: the exact id of the Core template this one replaces for unqualified lookup. Find it with `astryx --json template --list --package @astryxdesign/core`; the Core original stays selectable with `--package @astryxdesign/core`. A page replaces only a Core page and a block only a Core block. Needs @astryxdesign/cli 0.6.4 or later: earlier CLIs reject the field, drop that template, and hide the package's doc topics.",
     },
     {
+      name: 'icons',
+      type: 'Record<string, string>',
+      description:
+        "The icon definition each icon the source imports draws, keyed by the name it imports, such as `{TrashIcon: 'delete'}`. When the project has an icon set, `astryx template` and `astryx build` replace each declared icon with the set's icon for that definition (`astryx docs icon-definitions`); an undeclared icon is kept.",
+    },
+    {
       name: 'isReady',
       type: 'boolean',
       description:

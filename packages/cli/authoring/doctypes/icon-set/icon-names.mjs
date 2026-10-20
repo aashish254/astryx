@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file The shared semantic icon names (`IconName`) an icon set may fill
- * (AST-084 FR3, FR13). A set fills existing names; it never adds one.
+ * @file The shared semantic icon names (`IconName`) Core renders: the
+ * built-in icon definitions every icon set maps (AST-084 FR3, FR13).
  *
  * SYNC: packages/core/src/Icon/globalIconRegistry.tsx (the `IconName` union).
  * `icon-names.test.mjs` fails when the two lists differ.

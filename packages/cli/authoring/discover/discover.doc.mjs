@@ -116,7 +116,7 @@ export const doc = {
               name: 'packages[].contributions',
               type: 'DiscoverContribution[]',
               description:
-                'What the requested (else latest) version adds: `{kind, name, title?, summary?, keywords?, iconCount?, fills?}`, where kind is `component`, `template`, `doc`, `theme`, `codemod`, `agent-doc`, or `icon-set` (a DiscoverKind) and name is the name the CLI uses for it. An `icon-set` entry may carry `iconCount` and the shared icon names it `fills`.',
+                'What the requested (else latest) version adds: `{kind, name, title?, summary?, keywords?, iconCount?, definitions?}`, where kind is `component`, `template`, `doc`, `theme`, `codemod`, `agent-doc`, or `icon-set` (a DiscoverKind) and name is the name the CLI uses for it. An `icon-set` entry may carry `iconCount` and the icon `definitions` it maps.',
               required: true,
             },
           ],

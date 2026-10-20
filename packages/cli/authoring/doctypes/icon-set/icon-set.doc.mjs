@@ -81,7 +81,7 @@ export default {
     },
     {
       type: 'prose',
-      text: 'The data file is described by {@link schema:icon-set-data}. Run `astryx integration check` to prove every export it names exists in the module and that the theme map agrees with `fills`.',
+      text: 'The data file is described by {@link schema:icon-set-data}. Run `astryx integration check` to prove every export it names exists in the module and that the theme map agrees with the built-in entries of `map`.',
     },
   ],
 };

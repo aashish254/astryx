@@ -34,8 +34,8 @@ export interface DiscoverContribution {
   keywords?: string[];
   /** For an icon set: how many icons it has. */
   iconCount?: number;
-  /** For an icon set: the shared icon names it fills. */
-  fills?: string[];
+  /** For an icon set: the icon definitions its `map` covers. */
+  definitions?: string[];
 }
 
 /** One published version of a package. */

@@ -6,8 +6,20 @@ export const doc = {
   exampleFor: 'ToggleButton',
   name: 'ToggleButton — Color',
   displayName: 'ToggleButton — Color',
-  description: 'Toggle buttons with colored icons in the pressed state. Shows accent-colored toolbar formatting and semantic reaction colors (yellow star, red heart, blue bookmark).',
+  description:
+    'Toggle buttons with colored icons in the pressed state. Shows accent-colored toolbar formatting and semantic reaction colors (yellow star, red heart, blue bookmark).',
   isReady: true,
   aspectRatio: 16 / 9,
   componentsUsed: ['ToggleButton', 'Layout', 'Text', 'Icon'],
+  icons: {
+    BellIcon: 'notification',
+    BoldIcon: 'bold',
+    BookmarkIcon: 'bookmark',
+    HeartIcon: 'heart',
+    ItalicIcon: 'italic',
+    LinkIcon: 'link',
+    StarIcon: 'star',
+    StrikethroughIcon: 'strikethrough',
+    UnderlineIcon: 'underline',
+  },
 };

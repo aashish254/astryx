@@ -84,7 +84,7 @@ export type IconSetMatchConfidence = 'exact' | 'strong' | 'likely';
  * suggests `likely` ones.
  */
 export interface IconSetMatch {
-  /** The other set's name, such as `heroicons`; never this set's own name. */
+  /** The other set's name, such as `lines`; never this set's own name. */
   set: string;
   /** The export that draws the equivalent icon in that set. */
   export: string;
@@ -104,8 +104,6 @@ export interface IconSetIcon {
   module?: string;
   /** Lower-case terms a person might search for; at least one. */
   words: string[];
-  /** Shared semantic icon names (`IconName`) this icon draws. */
-  fills?: string[];
   /** Other variants, each naming its axis values and its own export. */
   variants?: IconSetVariant[];
   /** Reviewed equivalents of this icon in other sets. */
@@ -116,6 +114,14 @@ export interface IconSetIcon {
 export interface IconSetSource {
   package: string;
   version: string;
+}
+
+/** The function that turns a library export into an icon component. */
+export interface IconSetAdapter {
+  /** A path from the package root, such as `./src/adapt.js`. */
+  module: string;
+  /** Its named export. */
+  export: string;
 }
 
 /** The `<name>.icons.json` data file of one icon set. */
@@ -130,8 +136,29 @@ export interface IconSetData {
   axes?: IconSetAxes;
   /** The variant an icon's own `export` draws. */
   default?: IconSetAxisValues;
-  /** The export that maps each filled `IconName` to its artwork. */
+  /** The export that maps each built-in definition in `map` to its artwork. */
   themeMap?: string;
+  /**
+   * Which of this set's icons draws each icon definition, by definition name:
+   * Astryx's (`astryx docs icon-definitions`) or one the set declares in its
+   * `definitions` folder. One icon may draw several definitions; each
+   * definition maps to one icon.
+   */
+  map?: Record<string, string>;
+  /**
+   * The module `astryx icon add` writes, from the package root, such as
+   * `./src/icons.generated.js`: one export per registered icon, a re-export
+   * of a library component or an adapted export. The set's `module` exports
+   * it, so every icon entry reads from the set's own module.
+   */
+  generated?: string;
+  /**
+   * A function in the set's package, `(source) => Component`, that turns a
+   * library export that is not a component (an icon data object, an SVG
+   * string or URL, a glyph name) into one. `module` is a path from the
+   * package root.
+   */
+  adapter?: IconSetAdapter;
   /** Every icon in the set. */
   icons: IconSetIcon[];
 }

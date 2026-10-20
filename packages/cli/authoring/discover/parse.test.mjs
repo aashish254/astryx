@@ -50,14 +50,14 @@ describe('parseDiscoverCatalog', () => {
     expect(parsed).not.toHaveProperty('cursor');
   });
 
-  it('keeps an icon-set entry with its icon count and fills', () => {
+  it('keeps an icon-set entry with its icon count and definitions', () => {
     const value = catalog();
     const set = {
       kind: 'icon-set',
       name: 'outline',
       title: 'Outline',
       iconCount: 120,
-      fills: ['close', 'search'],
+      definitions: ['close', 'search'],
     };
     value.packages[0].contributions.push(/** @type {any} */ (set));
     expect(parseDiscoverCatalog(value).packages[0].contributions[1]).toEqual(

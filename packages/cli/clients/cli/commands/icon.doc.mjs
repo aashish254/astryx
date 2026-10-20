@@ -15,8 +15,11 @@ export const doc = {
   summary:
     'Find an icon by meaning in the installed icon sets, with its import line',
   description:
-    "Terminal front-end to icon(): searches every installed icon set's data file by meaning and prints each match's import line. `<set>/<id>` reads one icon with every variant's import line; --list lists the installed sets and which shared icon names each one fills.",
+    "Terminal front-end to icon(): searches every installed icon set's data file by meaning and prints each match's import line. `<set>/<id>` reads one icon with every variant's import line; --list lists the installed sets and how many icon definitions each one maps. The subcommands author a set: `icon add` registers an icon from a library, `icon map` points an icon definition at an icon, and `icon use` makes a set the project's.",
   fn: 'icon',
+  // The authoring subcommands: `icon add` registers an icon, `icon map`
+  // edits a map entry, and `icon use` picks the project's icon set.
+  subcommands: ['add', 'map', 'use'],
   // Every word after `icon` is the query: `astryx icon arrow up` searches for
   // "arrow up", with no quotes needed.
   args: [{name: 'query', param: 'query', required: false, variadic: true}],

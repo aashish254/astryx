@@ -1,9 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file `astryx docs cli/integrations/building-blocks/icon-sets`: add an icon
- * set to an integration, generate its data file, check it, and know how apps
- * find its icons and how templates follow it.
+ * @file `astryx docs cli/integrations/building-blocks/icon-sets`: make an
+ * icon set: register icons against icon definitions with the CLI, check the
+ * set, and know how apps find its icons and how templates follow it.
  */
 
 /** @type {import('@astryxdesign/cli/authoring').ReferenceDoc} */
@@ -18,140 +18,203 @@ export const docs = {
     'add icons',
     'ship icons',
     'icon library',
+    'icon definition',
     'icons.json',
     'integration icons',
   ],
   description:
-    'Ship an icon set: one data file says what every icon means, so apps find icons by meaning and templates use your icons.',
+    'Ship an icon set: register each icon against an icon definition, so apps find icons by meaning and templates use your icons.',
   sections: [
+    {
+      id: 'how-it-works',
+      title: 'How it works',
+      content: [
+        {
+          type: 'prose',
+          text: 'Astryx keeps a list of icon definitions: one file per thing an icon can stand for, such as `close` or `delete` (`astryx docs icon-definitions`). An icon set registers which of its icons draws each definition, in the `map` of its data file. Templates say which definition each of their icons draws, so a project that uses your set gets your icon for every definition you map. Built-in definitions are the shared names Core renders; every set maps them.',
+        },
+        {
+          type: 'prose',
+          text: 'The CLI knows no icon library. You, or your agent, pick each icon from the library you wrap; the commands below verify it, write the files, and check the set.',
+        },
+      ],
+    },
     {
       id: 'add-an-icon-set',
       title: 'Add an icon set',
       content: [
-        {
-          type: 'prose',
-          text: 'An icon set is a package of icon components plus one data file that says what each icon means. Run `integration add icon-set` with a lowercase kebab-case name.',
-        },
         {
           type: 'code',
           lang: 'bash',
           code: 'npx astryx integration add icon-set outline',
         },
         {
-          type: 'code',
-          lang: 'text',
-          code: `icon-set contribution added
-
-[ok] outline
-
-Declare icon-set root ./icon-sets in astryx.integration.mjs.
-
-- icon-sets/outline/outline.doc.mjs
-- icon-sets/outline/outline.icons.json
-- package.json
-- astryx.integration.mjs`,
-        },
-        {
           type: 'prose',
-          text: "`outline.doc.mjs` is the set's descriptor: its name, display name, description, and `license`, the SPDX license of the artwork (it starts as your package's own license). `outline.icons.json` starts with no icons, and its `module` is your package name. The set's folder also holds any license or notice files for the artwork. Every field is in {@link schema:icon-set-doc} and {@link schema:icon-set-data}.",
+          text: "`outline.doc.mjs` is the descriptor: name, display name, description, and `license`, the SPDX license of the artwork (it starts as your package's own). `outline.icons.json` starts with no icons and an empty `map`; its `module` is your package name. Every field is in {@link schema:icon-set-doc} and {@link schema:icon-set-data}.",
         },
       ],
     },
     {
-      id: 'the-data-file',
-      title: 'The data file',
+      id: 'add-icons',
+      title: 'Add icons one at a time',
       content: [
         {
           type: 'prose',
-          text: 'Every icon surface reads `<name>.icons.json` and nothing else. Each icon has:',
+          text: 'Pick an icon from the library and ask which definitions fit it. Nothing is written yet:',
+        },
+        {
+          type: 'code',
+          lang: 'bash',
+          code: 'npx astryx icon add Bin --from @acme/glyph-library',
+        },
+        {
+          type: 'prose',
+          text: 'Each row is an Astryx definition (or one your set declares) with the exact command that adds the icon for it. Run one:',
+        },
+        {
+          type: 'code',
+          lang: 'bash',
+          code: 'npx astryx icon add Bin --from @acme/glyph-library --definition delete',
+        },
+        {
+          type: 'prose',
+          text: "The CLI reads the library's exports without running them and refuses a name the module does not export, suggesting close names. It adds the icon as `BinIcon` (id `bin`, words from its name and the definition), writes `export {Bin as BinIcon} from '@acme/glyph-library';` to the set's generated module, and sets `map.delete = \"bin\"`. Running it again changes nothing.",
+        },
+        {
+          type: 'prose',
+          text: 'When no Astryx definition fits, add your own in the same command. It needs no pull request:',
+        },
+        {
+          type: 'code',
+          lang: 'bash',
+          code: "npx astryx icon add RotateCw --from @acme/glyph-library --new-definition rotate --description 'Rotate an image or shape.' --words turn,spin",
+        },
+        {
+          type: 'prose',
+          text: '`icon map <definition> <icon>` points a definition at an icon the set already has, and `--remove` drops an entry. `integration add icon-definition <name> --description ... --words ... --icon <id>` adds your own definition for an icon you already have.',
+        },
+      ],
+    },
+    {
+      id: 'wrap-a-library',
+      title: 'Or wrap a whole library',
+      content: [
+        {
+          type: 'code',
+          lang: 'bash',
+          code: 'npx astryx integration add icon-set outline --from @acme/glyph-library',
+        },
+        {
+          type: 'prose',
+          text: "Every component the library exports becomes an icon (an alias of one component is recorded once), named `<Name>Icon`, and `map` is filled only where a definition's name or one of its words is an icon's id. Run it again after a library release to refresh the icons; `map` entries whose icon still exists are kept, and the receipt names any that lost theirs.",
+        },
+      ],
+    },
+    {
+      id: 'export-the-icons',
+      title: 'How icons are exported',
+      content: [
+        {
+          type: 'prose',
+          text: "Every icon is a named export of your package's public entry, so apps, templates, and theme maps all import components from one place:",
         },
         {
           type: 'list',
           style: 'unordered',
           items: [
-            '`id`: a lowercase kebab-case name, unique in the set.',
-            "`export`: the named export that draws it, imported from the file's `module`. An icon or a variant can set its own `module` when your package splits icons across subpaths.",
-            "`words`: the lowercase terms people search for. List the icon's own name first, then its tags, the most telling tag first.",
-            "`fills` (optional): the shared Astryx icon names it draws, such as `close` or `search`. A theme uses your set's theme map (named by `themeMap`) to point those names at your artwork.",
-            '`variants` (optional): other appearances, sizes, or weights, each with its own `export`. The values must be ones `axes` lists.',
-            '`matches` (optional): reviewed equivalents in another set, each with a `confidence` of `exact`, `strong`, or `likely`. Templates use `exact` and `strong` matches; a `likely` one is only suggested.',
+            "The data file's `module` is your package name or one of its package.json `exports` subpaths, never a file path. `integration check` fails otherwise.",
+            'Each export is named `<Name>Icon`, and a variant `<Name><Variant>Icon`, such as `TrashSolidIcon`. `icon add` names them that way; `integration check` warns on another name.',
+            'Each export is a React component: a function, a class, `forwardRef` or `memo`, or what your adapter returns. `integration check` fails on a plain object or string.',
+            'It accepts SVG props (`className`, `style`, `aria-*`, `width`, `height`), draws with `currentColor`, and fills its box (`1em` or `100%`), so `<Icon icon={TrashIcon} size="sm" />` sizes and colors it like a built-in icon. The CLI cannot check this statically; the test below can.',
           ],
         },
         {
+          type: 'prose',
+          text: "`icon add` writes the set's generated module (`generated` in the data file). Add one line to the file your package's entry points at; the receipt names it:",
+        },
+        {
           type: 'code',
-          lang: 'json',
-          code: `{
-  "schemaVersion": 1,
-  "module": "@acme/icons",
-  "axes": {"appearances": ["outline", "solid"], "sizes": [24]},
-  "default": {"appearance": "outline", "size": 24},
-  "themeMap": "themeIcons",
-  "icons": [
-    {
-      "id": "x",
-      "export": "XIcon",
-      "words": ["x", "close", "cancel", "dismiss"],
-      "fills": ["close"],
-      "matches": [
-        {"set": "heroicons", "export": "XMarkIcon", "confidence": "exact"}
-      ]
-    },
-    {
-      "id": "trash",
-      "export": "TrashIcon",
-      "words": ["trash", "delete", "remove", "bin"],
-      "variants": [{"appearance": "solid", "export": "TrashSolidIcon"}]
-    }
-  ]
+          lang: 'js',
+          code: "export * from './icon-sets/outline/outline.generated.js';",
+        },
+        {
+          type: 'prose',
+          text: 'An optional render test you can copy:',
+        },
+        {
+          type: 'code',
+          lang: 'js',
+          code: `import {renderToStaticMarkup} from 'react-dom/server';
+import {createElement} from 'react';
+import * as icons from '@acme/icons';
+
+for (const [name, Icon] of Object.entries(icons)) {
+  if (!name.endsWith('Icon')) continue;
+  const html = renderToStaticMarkup(createElement(Icon, {className: 'x'}));
+  if (!html.includes('class="x"')) throw new Error(\`\${name} drops className\`);
+  if (!html.includes('currentColor')) throw new Error(\`\${name} has a fixed color\`);
 }`,
         },
       ],
     },
     {
-      id: 'generate-the-data-file',
-      title: 'Generate it from the library',
+      id: 'library-shapes',
+      title: 'Library shapes',
       content: [
         {
           type: 'prose',
-          text: 'When the icon library publishes names or tags for its icons, generate the data file from them instead of writing it by hand, so it stays in step with each release. Keep the words the library does not publish in your own source, and sort the output, so generating it twice from the same version writes the same file.',
+          text: '`--from` is any import specifier: a package, a package subpath, or a `./` path inside your package. Use the row that matches the library:',
+        },
+        {
+          type: 'table',
+          headers: ['Library ships', 'Command'],
+          rows: [
+            [
+              'Components in one module',
+              '`icon add Bin --from @acme/glyph-library --definition delete`',
+            ],
+            [
+              'A subpath per style',
+              '`icon add Bin --from @acme/glyph-library/solid --id bin --appearance solid` (a variant of an icon you added; the value must be in `axes`)',
+            ],
+            [
+              'One file per icon, default export',
+              '`icon add Rocket --from @acme/glyph-library/rocket --default --definition rocket`',
+            ],
+            [
+              'Icon data objects',
+              'Declare an `adapter`, then `icon add Rocket --from @acme/glyph-data --definition rocket`',
+            ],
+            [
+              'SVG strings or URLs',
+              'Declare an `adapter` that renders them, then `icon add` as above',
+            ],
+            [
+              'Your own component files',
+              '`icon add Rocket --from ./src/icons/rocket.js --definition rocket`',
+            ],
+          ],
+        },
+        {
+          type: 'prose',
+          text: 'An export that is not a component goes through your adapter: a function in your package that turns it into one. Declare it in the data file, `"adapter": {"module": "./src/adapt.js", "export": "adapt"}`, and `icon add` writes `export const RocketIcon = adaptIcon(RocketIconSource);`:',
         },
         {
           type: 'code',
           lang: 'js',
-          code: `// scripts/icons.mjs: node scripts/icons.mjs
-import {readFileSync, writeFileSync} from 'node:fs';
-import {createRequire} from 'node:module';
+          code: `// src/adapt.js
+import {createElement} from 'react';
 
-const require = createRequire(import.meta.url);
-// The library's own metadata: {"trash": ["delete", "remove", "bin"], ...}
-const tags = require('@acme/glyph-library/tags.json');
-const {version} = require('@acme/glyph-library/package.json');
-// Words the library does not publish, kept here once.
-const extra = {x: ['close'], trash: ['garbage']};
-
-const pascal = id => id.replace(/(^|-)(\\w)/g, (_, _s, c) => c.toUpperCase());
-const icons = Object.keys(tags)
-  .sort()
-  .map(id => ({
-    id,
-    export: \`\${pascal(id)}Icon\`,
-    words: [...new Set([...id.split('-'), ...tags[id], ...(extra[id] ?? [])])],
-  }));
-
-const file = 'icon-sets/outline/outline.icons.json';
-const data = JSON.parse(readFileSync(file, 'utf-8'));
-writeFileSync(
-  file,
-  JSON.stringify(
-    {...data, source: {package: '@acme/glyph-library', version}, icons},
-    null,
-    2,
-  ) + '\\n',
-);`,
-        },
-        {
-          type: 'prose',
-          text: "Your package re-exports each icon from the library under its `export` name and keeps `sideEffects: false`, so an app that imports one icon gets only that icon. Ship the library's license and notice text unchanged in the set's folder.",
+/** Turn one icon data object ({path}) into an icon component. */
+export function adapt(data) {
+  return function AdaptedIcon(props) {
+    return createElement(
+      'svg',
+      {viewBox: '0 0 24 24', width: '1em', height: '1em', fill: 'currentColor', ...props},
+      createElement('path', {d: data.path}),
+    );
+  };
+}`,
         },
       ],
     },
@@ -161,22 +224,36 @@ writeFileSync(
       content: [
         {
           type: 'prose',
-          text: '`astryx integration check` reads the data file against what your package really exports. It never runs your icon module. Its icon-set codes:',
+          text: '`astryx integration check` reads the set without running your icons. Each definition you have not mapped is listed with its description and words, so you or your agent can pick the icon; when your set already has an icon that fits, the finding suggests the `icon map` command. Its icon-set codes:',
         },
         {
           type: 'list',
           style: 'unordered',
           items: [
-            '`invalid_icon_set` (error): the descriptor or data file is invalid, for example a repeated `id`, an icon with no words, a `fills` value that is not a shared icon name or a name filled twice, or a variant whose values `axes` does not list. The set is withdrawn: apps do not see it.',
-            '`icon_export_missing` (error): an `export` the named module does not export.',
-            "`icon_theme_map_mismatch` (error): the theme map's keys or artwork disagree with `fills`.",
-            '`icon_source_version_drift` (warning): the file was generated from a different library version than the one your package depends on. Generate it again.',
-            '`icon_license_notice_missing` (warning): a set generated from a library ships no license or notice file.',
+            '`invalid_icon_set` (error): the descriptor, data file, or a definition file is invalid, for example a repeated `id`, an icon with no words, or a `map` key that is neither an Astryx definition nor one in your `definitions` folder. The set is withdrawn: apps do not see it.',
+            '`icon_builtin_definition_missing` (error): a built-in definition is not in `map`.',
+            '`icon_definition_missing` (warning): another Astryx definition is not in `map`.',
+            '`icon_definition_unused` (warning): a definition you declared is not in `map`.',
+            "`icon_definition_shadowed` (warning): a definition you declared now exists in Astryx; map to Astryx's and remove yours.",
+            '`icon_module_not_public` (error), `icon_export_name` (warning), `icon_not_component` (error): the export contract above.',
+            '`icon_export_missing` (error): an export, the generated module, or the adapter does not exist; when a re-export cannot be followed, the message names it.',
+            '`icon_theme_map_mismatch` (error) and `icon_theme_map_unchecked` (warning): the theme map disagrees with the built-in entries of `map`, or has an entry the reader cannot read.',
+            '`icon_source_version_drift` and `icon_license_notice_missing` (warnings): the data names another library version than the package depends on, or a set with an upstream ships no license notice.',
           ],
         },
         {
           type: 'prose',
-          text: 'Warnings fail only with `--strict`, which every integration runs in its build ({@link generic:checks}). `doctor integration validate` also checks each descriptor against its authoring type.',
+          text: 'Warnings fail only with `--strict`, which every integration runs in its build ({@link generic:checks}). The flow, start to finish: `integration add icon-set` → `integration check` → `icon add` (or `icon map`) for each definition it lists → `integration check` passes.',
+        },
+      ],
+    },
+    {
+      id: 'share-a-definition',
+      title: 'Share a definition with every set',
+      content: [
+        {
+          type: 'prose',
+          text: "Your own definitions need no change to Astryx. To share one with every set, open a pull request that copies its file into the CLI's icon definitions folder, with a description and words. Its name must not clash with another definition.",
         },
       ],
     },
@@ -185,21 +262,17 @@ writeFileSync(
       title: 'How apps use it',
       content: [
         {
-          type: 'prose',
-          text: 'Once an app installs your package, its agents and engineers find icons by meaning and get the import line:',
-        },
-        {
           type: 'code',
           lang: 'bash',
           code: `npx astryx icon delete              # ranked matches with import lines
-npx astryx icon outline/trash       # one icon and every variant
-npx astryx icon --list              # installed sets and the names each fills
-npx astryx search delete --type icon
-npx astryx discover @acme/icons/outline`,
+npx astryx icon outline/bin         # one icon and every variant
+npx astryx icon --list              # installed sets and their definition coverage
+npx astryx icon use outline         # make it the project's icon set
+npx astryx search delete --type icon`,
         },
         {
           type: 'prose',
-          text: 'Templates and blocks an app copies use the project\'s icon set instead of the icons they were written with. The project\'s set is the one `iconSet` names in `astryx.config` (`"outline"` or `"@acme/icons/outline"`), or the only set installed. An icon with no match keeps its original import, and the copy reports every icon as mapped or kept.',
+          text: "A template declares, in its descriptor's `icons`, the definition each imported icon draws (`{TrashIcon: 'delete'}`). With a project icon set (`iconSet` in astryx.config, or the only set installed), each declared icon becomes the set's icon for that definition. An icon the set does not map keeps its original import, and the copy reports every icon as mapped or kept. Nothing is guessed from names.",
         },
       ],
     },

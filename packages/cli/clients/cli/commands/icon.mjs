@@ -31,8 +31,18 @@ import {
 import {cliError} from '../lib/cli-error.mjs';
 import {defineCommand} from '../lib/define-command.mjs';
 import {icon as iconApi} from '../../../api/icon/icon.mjs';
+import {iconAdd} from '../../../api/icon/add/add.mjs';
+import {iconMap} from '../../../api/icon/map/map.mjs';
+import {iconUse} from '../../../api/icon/use/use.mjs';
 import {doc as iconCommand} from './icon.doc.mjs';
+import {doc as iconUseCommand} from './icon-use.doc.mjs';
+import {doc as iconMapCommand} from './icon-map.doc.mjs';
+import {doc as iconAddCommand} from './icon-add.doc.mjs';
 import {doc as iconFn} from '../../../api/icon/icon.doc.mjs';
+import {doc as iconUseFn} from '../../../api/icon/iconUse.doc.mjs';
+import {doc as iconMapFn} from '../../../api/icon/iconMap.doc.mjs';
+import {doc as iconAddFn} from '../../../api/icon/iconAdd.doc.mjs';
+import {NO_RESULT_SET} from '../../../foundation/debug/index.mjs';
 
 /** @typedef {import('../../../api/icon/icon.type.mjs').IconVariantEntry} IconVariantEntry */
 
@@ -76,7 +86,7 @@ const axesText = value => {
  * @param {import('commander').Command} program
  */
 export function registerIcon(program) {
-  defineCommand(program, iconCommand, {
+  const iconCli = defineCommand(program, iconCommand, {
     fn: iconFn,
     action: async (
       /** @type {string[] | string | undefined} */ words,
@@ -157,7 +167,7 @@ export function registerIcon(program) {
                 'package',
                 'import',
                 'words',
-                'fills',
+                'definitions',
                 'appearance',
                 'reason',
               ],
@@ -180,7 +190,7 @@ export function registerIcon(program) {
               'export',
               'import',
               'words',
-              'fills',
+              'definitions',
             ],
           }),
           ...(variants.length > 0
@@ -211,22 +221,33 @@ export function registerIcon(program) {
         record({status, projectSet, reason}),
         ...(sets.length > 0
           ? [
-              records(sets, {
-                fields: [
-                  'name',
-                  'displayName',
-                  'package',
-                  'license',
-                  'iconCount',
-                  'default',
-                  'axes',
-                  'fills',
-                  'unfilled',
-                  'project',
-                  'description',
-                ],
-                format: {default: axisValuesText, axes: axesText},
-              }),
+              records(
+                sets.map(({coverage, ...set}) => ({
+                  ...set,
+                  builtIn: `${coverage.builtIn.mapped}/${coverage.builtIn.total}`,
+                  definitions: `${coverage.astryx.mapped}/${coverage.astryx.total}`,
+                  own: coverage.own,
+                  missing: coverage.builtIn.missing,
+                })),
+                {
+                  fields: [
+                    'name',
+                    'displayName',
+                    'package',
+                    'license',
+                    'iconCount',
+                    'default',
+                    'axes',
+                    'builtIn',
+                    'definitions',
+                    'own',
+                    'missing',
+                    'project',
+                    'description',
+                  ],
+                  format: {default: axisValuesText, axes: axesText},
+                },
+              ),
             ]
           : []),
         ...(withdrawn.length > 0
@@ -243,5 +264,156 @@ export function registerIcon(program) {
       );
       return answered;
     },
+  });
+
+  /**
+   * Run one authoring call and print its receipt, or its error.
+   * @param {() => Promise<any>} call
+   * @param {(result: any) => void} print
+   */
+  const run = async (call, print) => {
+    let result;
+    try {
+      result = await call();
+    } catch (e) {
+      const err = /** @type {import('../../../api/error.mjs').AstryxError} */ (
+        e
+      );
+      return cliError(err.message, {
+        suggestions: err.suggestions ?? [],
+        code: err.code,
+      });
+    }
+    if (program.opts().json) jsonOut(result);
+    else print(result);
+    return NO_RESULT_SET;
+  };
+
+  defineCommand(iconCli, iconUseCommand, {
+    fn: iconUseFn,
+    action: (/** @type {string} */ set) =>
+      run(
+        () => iconUse(set, {cwd: process.cwd()}),
+        ({data}) =>
+          emit(
+            text(
+              data.changed
+                ? `[ok] iconSet is now "${data.iconSet}" (${data.set}) in ${data.config}${data.created ? ', created' : ''}.`
+                : `[ok] iconSet already names "${data.iconSet}" in ${data.config}.`,
+            ),
+            ...(data.previous && data.changed
+              ? [text(`It was "${data.previous}".`)]
+              : []),
+          ),
+      ),
+  });
+
+  defineCommand(iconCli, iconMapCommand, {
+    fn: iconMapFn,
+    action: (
+      /** @type {string} */ definition,
+      /** @type {string | undefined} */ iconId,
+      /** @type {{set?: string, remove?: boolean}} */ options,
+    ) =>
+      run(
+        () =>
+          iconMap(definition, iconId, {
+            cwd: process.cwd(),
+            set: options.set,
+            remove: options.remove ?? false,
+          }),
+        ({data}) =>
+          emit(
+            text(
+              data.icon == null
+                ? data.changed
+                  ? `[ok] Removed map.${data.definition} (was "${data.previous}") from ${data.file}.`
+                  : `[ok] ${data.file} has no map.${data.definition}.`
+                : data.changed
+                  ? `[ok] map.${data.definition} = "${data.icon}" in ${data.file}${data.previous ? ` (was "${data.previous}")` : ''}.`
+                  : `[ok] map.${data.definition} is already "${data.icon}".`,
+            ),
+          ),
+      ),
+  });
+
+  defineCommand(iconCli, iconAddCommand, {
+    fn: iconAddFn,
+    action: (
+      /** @type {string} */ exportName,
+      /** @type {Record<string, string | boolean | undefined>} */ options,
+    ) =>
+      run(
+        () =>
+          iconAdd(exportName, {
+            cwd: process.cwd(),
+            from: /** @type {string} */ (options.from),
+            set: /** @type {string | undefined} */ (options.set),
+            definition: /** @type {string | undefined} */ (options.definition),
+            newDefinition: /** @type {string | undefined} */ (
+              options.newDefinition
+            ),
+            description: /** @type {string | undefined} */ (
+              options.description
+            ),
+            words:
+              typeof options.words === 'string'
+                ? options.words.split(',')
+                : undefined,
+            useDefault: options.default === true,
+            appearance: /** @type {string | undefined} */ (options.appearance),
+            size: options.size != null ? Number(options.size) : undefined,
+            weight: options.weight != null ? Number(options.weight) : undefined,
+            id: /** @type {string | undefined} */ (options.id),
+          }),
+        result => {
+          const cli = getCliInvocation();
+          if (result.type === 'icon.definitionMatches') {
+            const {matches, newDefinition} = result.data;
+            emit(
+              section(
+                `Icon definitions for ${result.data.export} (${matches.length})`,
+              ),
+              ...(matches.length > 0
+                ? [
+                    records(matches, {
+                      fields: [
+                        'name',
+                        'source',
+                        'score',
+                        'reason',
+                        'description',
+                        'command',
+                      ],
+                      format: {
+                        command: (/** @type {string} */ value) =>
+                          formatCliCommand(value),
+                      },
+                    }),
+                  ]
+                : [text('No icon definition fits it.')]),
+              ...(newDefinition
+                ? [
+                    text(
+                      `None fits well? Add your own: ${formatCliCommand(newDefinition)}`,
+                    ),
+                  ]
+                : []),
+              text(`All icon definitions: ${cli} docs icon-definitions`),
+            );
+            return;
+          }
+          const {data} = result;
+          emit(
+            text(
+              data.changed
+                ? `[ok] Added ${data.icon.export} as "${data.icon.id}"${data.variant ? ` (variant ${Object.values(data.variant).join(' ')})` : ''}${data.definition ? `, map.${data.definition} = "${data.icon.id}"` : ''}.`
+                : `[ok] ${data.icon.export} is already "${data.icon.id}"${data.definition ? ` and map.${data.definition} names it` : ''}.`,
+            ),
+            ...(data.files.length > 0 ? [list(data.files)] : []),
+            ...(data.note ? [text(`[next] ${data.note}`)] : []),
+          );
+        },
+      ),
   });
 }

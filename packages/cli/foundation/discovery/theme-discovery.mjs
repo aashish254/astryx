@@ -547,6 +547,67 @@ function staticThemeValue(node, label) {
 }
 
 /**
+ * Convert one static literal of a data descriptor (an icon definition): a
+ * string, a boolean, or an array or plain object of those.
+ * @param {any} node
+ * @param {string} label
+ * @returns {unknown}
+ */
+function staticDataValue(node, label) {
+  if (node?.type === 'StringLiteral' || node?.type === 'BooleanLiteral') {
+    return node.value;
+  }
+  if (node?.type === 'ArrayExpression') {
+    return node.elements.map((/** @type {any} */ element) =>
+      staticDataValue(unparenthesized(element), label),
+    );
+  }
+  if (node?.type === 'ObjectExpression') {
+    return staticObject(node, label, staticDataValue);
+  }
+  throw new Error(
+    `${label} must use static strings, booleans, arrays, and objects in its default export.`,
+  );
+}
+
+/**
+ * A static object literal, every value converted by `convert`.
+ * @param {any} object
+ * @param {string} label
+ * @param {(node: any, label: string) => unknown} convert
+ * @returns {Record<string, any>}
+ */
+function staticObject(object, label, convert) {
+  /** @type {Record<string, any>} */
+  const value = {};
+  for (const property of object.properties) {
+    if (property.type !== 'ObjectProperty' || property.computed) {
+      throw new Error(`${label} must contain only static object properties.`);
+    }
+    const key =
+      property.key.type === 'Identifier'
+        ? property.key.name
+        : property.key.type === 'StringLiteral'
+          ? property.key.value
+          : null;
+    if (key === null) {
+      throw new Error(`${label} has an invalid property name.`);
+    }
+    if (Object.hasOwn(value, key)) {
+      throw new Error(`${label} declares "${key}" more than once.`);
+    }
+    // Defined, not assigned, so `__proto__` stays a key the parser rejects.
+    Object.defineProperty(value, key, {
+      value: convert(unparenthesized(property.value), label),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return value;
+}
+
+/**
  * How messages about a theme descriptor name it.
  * @param {string} docPath
  * @param {string} owner
@@ -582,7 +643,7 @@ function readThemeDoc(docPath, owner) {
 /**
  * Descriptor reads in this process, by path and label, reused while the file
  * keeps its size and mtime.
- * @type {Map<string, {size: number, mtimeMs: number, read: {value: Record<string, string | boolean>} | {error: unknown}}>}
+ * @type {Map<string, {size: number, mtimeMs: number, read: {value: Record<string, any>} | {error: unknown}}>}
  */
 const descriptorReads = new Map();
 
@@ -606,14 +667,21 @@ export function readThemeDescriptorValue(docPath, label) {
  * @param {string} docPath
  * @param {string} label
  * @param {string} typeName the public authoring type, such as `ThemeDoc`
- * @returns {Record<string, string | boolean>}
+ * @param {{data?: boolean}} [options] `data`: also accept arrays and plain
+ *   objects of static values (icon definitions)
+ * @returns {Record<string, any>}
  */
-export function readStaticDescriptorValue(docPath, label, typeName) {
+export function readStaticDescriptorValue(
+  docPath,
+  label,
+  typeName,
+  {data = false} = {},
+) {
   const {size, mtimeMs} = fs.statSync(docPath);
-  const key = `${docPath}\0${label}\0${typeName}`;
+  const key = `${docPath}\0${label}\0${typeName}\0${data}`;
   let cached = descriptorReads.get(key);
   if (!cached || cached.size !== size || cached.mtimeMs !== mtimeMs) {
-    /** @type {{value: Record<string, string | boolean>} | {error: unknown}} */
+    /** @type {{value: Record<string, any>} | {error: unknown}} */
     let read;
     try {
       read = {
@@ -621,6 +689,7 @@ export function readStaticDescriptorValue(docPath, label, typeName) {
           fs.readFileSync(docPath, 'utf-8'),
           label,
           typeName,
+          data,
         ),
       };
     } catch (error) {
@@ -630,16 +699,17 @@ export function readStaticDescriptorValue(docPath, label, typeName) {
     descriptorReads.set(key, cached);
   }
   if ('error' in cached.read) throw cached.read.error;
-  return {...cached.read.value};
+  return data ? structuredClone(cached.read.value) : {...cached.read.value};
 }
 
 /**
  * @param {string} source
  * @param {string} label
  * @param {string} typeName
- * @returns {Record<string, string | boolean>}
+ * @param {boolean} [data]
+ * @returns {Record<string, any>}
  */
-function readDescriptorSource(source, label, typeName) {
+function readDescriptorSource(source, label, typeName, data = false) {
   /** @type {any} */
   let ast;
   try {
@@ -681,33 +751,7 @@ function readDescriptorSource(source, label, typeName) {
     );
   }
 
-  /** @type {Record<string, string | boolean>} */
-  const value = {};
-  for (const property of object.properties) {
-    if (property.type !== 'ObjectProperty' || property.computed) {
-      throw new Error(`${label} must contain only static object properties.`);
-    }
-    const key =
-      property.key.type === 'Identifier'
-        ? property.key.name
-        : property.key.type === 'StringLiteral'
-          ? property.key.value
-          : null;
-    if (key === null) {
-      throw new Error(`${label} has an invalid property name.`);
-    }
-    if (Object.hasOwn(value, key)) {
-      throw new Error(`${label} declares "${key}" more than once.`);
-    }
-    // Defined, not assigned, so `__proto__` stays a key the parser rejects.
-    Object.defineProperty(value, key, {
-      value: staticThemeValue(unparenthesized(property.value), label),
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    });
-  }
-  return value;
+  return staticObject(object, label, data ? staticDataValue : staticThemeValue);
 }
 
 /**
