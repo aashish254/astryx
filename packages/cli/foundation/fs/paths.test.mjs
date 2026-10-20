@@ -348,6 +348,17 @@ describe('findProjectPackageOf', () => {
     expect(findProjectPackageOf(project, NAMES)).toBeNull();
   });
 
+  // AST-040 FR11: a Plug'n'Play project that declares Core keeps no
+  // node_modules copy; the runtime answers for it.
+  it("asks Yarn Plug'n'Play for a project that declares Core and has no node_modules copy", () => {
+    const store = writePackage(path.join(tmpDir, 'store', '@astryxdesign-core'), '@astryxdesign/core', '0.7.1');
+    const project = withPnp({'@astryxdesign/core': store});
+    writeProject(project, DECLARES_CORE);
+
+    expect(fs.existsSync(path.join(project, 'node_modules', '@astryxdesign'))).toBe(false);
+    expect(findProjectPackageOf(project, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: store});
+  });
+
   // A project nested in another, outside any workspace, has its own install.
   it('stops at the root of a nested project outside any workspace', () => {
     writeProject(tmpDir, {dependencies: {'@astryxdesign/core': '0.8.0'}});
