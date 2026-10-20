@@ -4,7 +4,7 @@
  * @file `integrationAdd(kind, name, options)` — generate one valid
  * contribution into an integration package.
  *
- * Dispatches component, doc, template, codemod, and agent-doc. Theme
+ * Dispatches component, doc, template, codemod, agent-doc, and icon-set. Theme
  * delegates to the dedicated same-stem descriptor writer. Every root-based kind shares: first add creates the manifest; one shared
  * writer; never creates `files`/`exports`; atomic staged writes; no clobber;
  * dry-run receipt predicts real run; post-write verify through the real
@@ -63,6 +63,7 @@ const DEFAULT_ROOTS = {
   templates: './templates',
   docs: './docs',
   codemods: './codemods',
+  iconSets: './icon-sets',
 };
 
 // ── Shared manifest / package plumbing ──────────────────────────────
@@ -392,14 +393,20 @@ async function addDoc(name, options) {
       ERROR_CODES.ERR_INVALID_ARGUMENT,
     );
   }
-  if (options.parent != null && (options.replaces != null || options.extends != null)) {
+  if (
+    options.parent != null &&
+    (options.replaces != null || options.extends != null)
+  ) {
     throw new AstryxError(
       'A guide placed in a namespace has its own route: it cannot also replace or extend a topic.',
       undefined,
       ERROR_CODES.ERR_INVALID_ARGUMENT,
     );
   }
-  if (options.parent != null && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(options.parent)) {
+  if (
+    options.parent != null &&
+    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(options.parent)
+  ) {
     throw new AstryxError(
       '--parent must name a namespace in lowercase letters and digits joined by single hyphens, such as "acme".',
       undefined,
@@ -528,7 +535,11 @@ async function addDoc(name, options) {
   /** @type {import('./add-helpers.mjs').WritePlan[]} */
   const plans = [{path: docFile, contents: docContents, createOnly: true}];
   if (namespaceFile != null && writeNamespace) {
-    plans.push({path: namespaceFile, contents: namespaceContents, createOnly: true});
+    plans.push({
+      path: namespaceFile,
+      contents: namespaceContents,
+      createOnly: true,
+    });
   }
   let pkgUpdate = packageJsonUpdate(
     packageFile,
@@ -1164,6 +1175,217 @@ async function addAgentDoc(line, options) {
   return receipt('agent-doc', line, null, manifestPath, writtenFiles, false);
 }
 
+// ── Contribution: ICON SET ──────────────────────────────────────────
+
+/**
+ * A single-quoted JavaScript string literal for any text.
+ * @param {string} value
+ */
+function quoteJs(value) {
+  return `'${value
+    .replace(/\\/gu, '\\\\')
+    .replace(/'/gu, "\\'")
+    .replace(/\n/gu, '\\n')
+    .replace(/\r/gu, '\\r')}'`;
+}
+
+/**
+ * Write one icon set (spec:AST-084 FR1–FR3): `<root>/<name>/<name>.doc.mjs`,
+ * a typed IconSetDoc, and a starter `<name>.icons.json` whose `module` is the
+ * package itself and whose icon list is empty, so the set is valid and checks
+ * clean before any icon is added.
+ * @param {string} name  icon set name (kebab-case)
+ * @param {{cwd?: string, dryRun?: boolean}} options
+ * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
+ */
+async function addIconSet(name, options) {
+  const {cwd = process.cwd(), dryRun = false} = options;
+  if (!KEBAB_NAME_RE.test(name)) {
+    throw new AstryxError(
+      `Invalid icon set name "${name}": use lowercase kebab-case starting with a letter.`,
+      undefined,
+      ERROR_CODES.ERR_INVALID_ARGUMENT,
+    );
+  }
+  try {
+    sanitizeName(name, {label: 'icon set name'});
+  } catch (error) {
+    if (error instanceof PathSafetyError) {
+      throw new AstryxError(
+        error.message,
+        undefined,
+        ERROR_CODES.ERR_INVALID_ARGUMENT,
+      );
+    }
+    throw error;
+  }
+
+  const {packageDir, packageFile, pkg, owner, manifestFile, manifestExists} =
+    resolvePackage(cwd);
+  if (typeof pkg.name !== 'string' || pkg.name.trim() === '') {
+    throw new AstryxError(
+      'package.json has no name. An icon set imports its icons from its own package, so the package needs a name first.',
+      undefined,
+      ERROR_CODES.ERR_INVALID_ARGUMENT,
+    );
+  }
+  const manifest = await loadCurrentManifest(manifestFile, manifestExists);
+  const rootPath = manifest.iconSets ?? DEFAULT_ROOTS.iconSets;
+  /** @type {string} */
+  let root;
+  try {
+    root = assertWithin(rootPath, packageDir, {label: 'iconSets root'});
+  } catch (error) {
+    if (error instanceof PathSafetyError) {
+      throw new AstryxError(
+        error.message,
+        undefined,
+        ERROR_CODES.ERR_PATH_TRAVERSAL,
+      );
+    }
+    throw error;
+  }
+
+  try {
+    await patchIntegrationRoot(packageDir, 'iconSets', rootPath, {
+      dryRun: true,
+      createIfMissing: true,
+    });
+  } catch (error) {
+    if (error instanceof IntegrationRootConflictError) {
+      throw new AstryxError(
+        error.message,
+        undefined,
+        ERROR_CODES.ERR_INTEGRATION_ROOT_CONFLICT,
+      );
+    }
+    throw error;
+  }
+
+  const setDir = assertWithin(name, root, {label: 'icon set directory'});
+  const docFile = assertWithin(`${name}.doc.mjs`, setDir, {
+    label: 'icon set descriptor',
+  });
+  const dataFile = assertWithin(`${name}.icons.json`, setDir, {
+    label: 'icon set data file',
+  });
+  for (const file of [docFile, dataFile]) {
+    if (fs.existsSync(file)) {
+      throw new AstryxError(
+        `Refusing to overwrite existing file ${projectPath(path.relative(packageDir, file))}.`,
+        undefined,
+        ERROR_CODES.ERR_FILE_EXISTS,
+      );
+    }
+  }
+
+  const displayName = kebabToTitle(name);
+  // The artwork license defaults to the package's own license; the author
+  // edits it when the artwork comes from elsewhere.
+  const license =
+    typeof pkg.license === 'string' && pkg.license.trim() !== ''
+      ? pkg.license
+      : 'UNLICENSED';
+  const docContents = [
+    "/** @type {import('@astryxdesign/cli/authoring').IconSetDoc} */",
+    'export default {',
+    "  type: 'icon-set',",
+    `  name: ${quoteJs(name)},`,
+    `  displayName: ${quoteJs(displayName)},`,
+    `  description: ${quoteJs(`${displayName} icons.`)},`,
+    '  maintained: true,',
+    `  license: ${quoteJs(license)},`,
+    '};',
+    '',
+  ].join('\n');
+  const dataContents = `${JSON.stringify(
+    {schemaVersion: 1, module: pkg.name, icons: []},
+    null,
+    2,
+  )}\n`;
+
+  /** @type {import('./add-helpers.mjs').WritePlan[]} */
+  const plans = [
+    {path: docFile, contents: docContents, createOnly: true},
+    {path: dataFile, contents: dataContents, createOnly: true},
+  ];
+  const pkgUpdate = packageJsonUpdate(
+    packageFile,
+    rootPath,
+    path.basename(manifestFile),
+  );
+  if (pkgUpdate != null) {
+    plans.push({
+      path: packageFile,
+      contents: pkgUpdate.contents,
+      createOnly: false,
+      expectedOriginal: pkgUpdate.expectedOriginal,
+    });
+  }
+
+  const writtenFiles = plans.map(p =>
+    projectPath(path.relative(packageDir, p.path)),
+  );
+  const manifestPath = projectPath(path.relative(packageDir, manifestFile));
+
+  let rootReceipt = {path: rootPath, created: !manifest.iconSets};
+  if (!dryRun) {
+    let rollback = () => {};
+    try {
+      rollback = applyWrites(plans);
+      rootReceipt = await patchIntegrationRoot(
+        packageDir,
+        'iconSets',
+        rootPath,
+        {
+          createIfMissing: true,
+          verify: async () => {
+            const m = await loadManifestObject(manifestFile, 'verify', {
+              fresh: true,
+            });
+            if (!m.iconSets)
+              throw new Error('iconSets root not visible after writing.');
+            const setsRoot = assertWithin(m.iconSets, packageDir, {
+              label: 'iconSets root',
+            });
+            await assertContributionVisible(
+              {name: owner, iconSets: setsRoot},
+              'icon-set',
+              name,
+            );
+          },
+        },
+      );
+    } catch (error) {
+      rollback();
+      if (error instanceof IntegrationRootConflictError) {
+        throw new AstryxError(
+          error.message,
+          undefined,
+          ERROR_CODES.ERR_INTEGRATION_ROOT_CONFLICT,
+        );
+      }
+      if (error instanceof AstryxError) throw error;
+      throw new AstryxError(
+        `Failed to write icon-set contribution: ${error instanceof Error ? error.message : String(error)}`,
+        undefined,
+        ERROR_CODES.ERR_WRITE_FAILED,
+      );
+    }
+  }
+  if (rootReceipt.created && !writtenFiles.includes(manifestPath)) {
+    writtenFiles.push(manifestPath);
+  }
+  return receipt(
+    'icon-set',
+    name,
+    rootReceipt,
+    manifestPath,
+    writtenFiles,
+    dryRun,
+  );
+}
+
 // ── Public per-kind APIs ────────────────────────────────────────────
 
 /**
@@ -1207,6 +1429,14 @@ export function integrationAddAgentDoc(line, options = {}) {
   return addAgentDoc(line, options);
 }
 
+/**
+ * @param {string} name
+ * @param {import('./integration-authoring.type.mjs').IntegrationAddIconSetOptions} [options]
+ */
+export function integrationAddIconSet(name, options = {}) {
+  return addIconSet(name, options);
+}
+
 // ── Public dispatcher ───────────────────────────────────────────────
 
 const KIND_OPTIONS = {
@@ -1216,6 +1446,7 @@ const KIND_OPTIONS = {
   codemod: new Set(['cwd', 'dryRun', 'to']),
   'agent-doc': new Set(['cwd', 'dryRun']),
   theme: new Set(['cwd', 'dryRun', 'from']),
+  'icon-set': new Set(['cwd', 'dryRun']),
 };
 
 /**
@@ -1240,7 +1471,7 @@ function validateKindOptions(kind, options) {
 /**
  * Add one contribution to the local integration package.
  *
- * @param {'component'|'doc'|'template'|'codemod'|'agent-doc'|'theme'} kind
+ * @param {import('./integration-authoring.type.mjs').IntegrationAddKind} kind
  * @param {string} name
  * @param {{cwd?: string, dryRun?: boolean, templateType?: 'page'|'block', to?: string, replaces?: string, extends?: string, parent?: string, from?: string}} [options]
  * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
@@ -1248,7 +1479,7 @@ function validateKindOptions(kind, options) {
 export async function integrationAdd(kind, name, options = {}) {
   if (!Object.prototype.hasOwnProperty.call(KIND_OPTIONS, kind)) {
     throw new AstryxError(
-      `Unknown contribution kind "${kind}". Choose component, doc, template, codemod, agent-doc, or theme.`,
+      `Unknown contribution kind "${kind}". Choose component, doc, template, codemod, agent-doc, theme, or icon-set.`,
       undefined,
       ERROR_CODES.ERR_INVALID_ARGUMENT,
     );
@@ -1279,5 +1510,7 @@ export async function integrationAdd(kind, name, options = {}) {
         dryRun: options.dryRun,
         from: options.from,
       });
+    case 'icon-set':
+      return integrationAddIconSet(name, options);
   }
 }

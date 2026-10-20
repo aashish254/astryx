@@ -15,14 +15,15 @@ export const doc = {
       name: 'kind',
       param: 'kind',
       required: true,
-      description: 'component, doc, template, codemod, agent-doc, or theme',
+      description:
+        'component, doc, template, codemod, agent-doc, theme, or icon-set',
     },
     {
       name: 'name',
       param: 'name',
       required: true,
       description:
-        'Contribution name: PascalCase for component (AcmeWidget); lowercase kebab-case for template, codemod, and theme (account-card); letters, digits, _ and - for doc; the literal guidance line for agent-doc',
+        'Contribution name: PascalCase for component (AcmeWidget); lowercase kebab-case for template, codemod, theme, and icon-set (account-card); letters, digits, _ and - for doc; the literal guidance line for agent-doc',
     },
   ],
   options: [
@@ -54,7 +55,7 @@ export const doc = {
       flag: '--parent <namespace>',
       param: 'options.parent',
       description:
-        "Namespace of this package to place the doc in, as a guide in its `guides` slot; writes the namespace doc when it is missing, and declares the CLI that reads it as an optional `@astryxdesign/cli` peer. Only valid for doc, and not with --replaces or --extends",
+        'Namespace of this package to place the doc in, as a guide in its `guides` slot; writes the namespace doc when it is missing, and declares the CLI that reads it as an optional `@astryxdesign/cli` peer. Only valid for doc, and not with --replaces or --extends',
     },
     {
       flag: '--from <theme>',
@@ -96,7 +97,7 @@ export const doc = {
       cli: 'astryx integration add doc acme-theming --extends theme',
     },
     {
-      label: 'Add a guide to the package\'s own docs section',
+      label: "Add a guide to the package's own docs section",
       cli: 'astryx integration add doc releasing --parent acme',
     },
     {
@@ -112,6 +113,7 @@ export const doc = {
       label: 'Fork an existing theme',
       cli: 'astryx integration add theme ocean --from neutral',
     },
+    {label: 'Add an icon set', cli: 'astryx integration add icon-set outline'},
   ],
   exitCodes: [
     {code: 0, when: 'the contribution is written or the dry run succeeds'},

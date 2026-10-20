@@ -55,6 +55,7 @@ export {
   integrationAddCodemod,
   integrationAddComponent,
   integrationAddDoc,
+  integrationAddIconSet,
   integrationAddTemplate,
 } from './integration/add-contribution.mjs';
 export {integrationAddTheme} from './integration/add-theme.mjs';

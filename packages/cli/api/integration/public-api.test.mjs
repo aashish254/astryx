@@ -13,6 +13,7 @@ describe('integration authoring public API', () => {
       'integrationAddCodemod',
       'integrationAddAgentDoc',
       'integrationAddTheme',
+      'integrationAddIconSet',
       'integrationPackCheck',
     ]) {
       expect(api[name], name).toBeTypeOf('function');

@@ -5,7 +5,7 @@
  */
 
 /**
- * @typedef {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'} IntegrationAddKind
+ * @typedef {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'|'icon-set'} IntegrationAddKind
  */
 
 /**
@@ -37,6 +37,7 @@
  */
 
 /** @typedef {IntegrationAddBaseOptions} IntegrationAddAgentDocOptions */
+/** @typedef {IntegrationAddBaseOptions} IntegrationAddIconSetOptions */
 /**
  * @typedef {IntegrationAddBaseOptions & {
  *   from?: string,
@@ -70,7 +71,7 @@
 
 /**
  * @typedef {object} IntegrationAddData
- * @property {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'} kind
+ * @property {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'|'icon-set'} kind
  * @property {string} name
  * @property {{path: string, created: boolean}|null} root
  * @property {string} manifest

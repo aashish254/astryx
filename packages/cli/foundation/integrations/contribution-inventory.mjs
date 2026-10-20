@@ -24,6 +24,7 @@ import {loadComponentDoc} from '../discovery/component-loader.mjs';
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
 import {discoverIntegrationCodemods} from '../../assets/codemods/integration-discovery.mjs';
 import {discoverIntegrationDocs} from '../discovery/docs-discovery.mjs';
+import {discoverIconSetDirectory} from '../discovery/icon-set-discovery.mjs';
 
 // ── File-walk helpers (no module imports, no execution) ──────────
 
@@ -205,6 +206,7 @@ export function computeRequiredFiles(loaded) {
  * @property {string} [codemods]
  * @property {string} [docs]
  * @property {{append?: readonly string[]}} [agentDocs]
+ * @property {string} [iconSets]
  */
 
 /**
@@ -319,8 +321,11 @@ export async function collectIdentities(loaded) {
 
   if (loaded.docs && fs.existsSync(loaded.docs)) {
     try {
-      const {records, guides, errors: docErrors} =
-        await discoverIntegrationDocs(loaded);
+      const {
+        records,
+        guides,
+        errors: docErrors,
+      } = await discoverIntegrationDocs(loaded);
       for (const docError of docErrors) {
         errors.push({kind: 'docs', message: docError.message});
       }
@@ -340,7 +345,7 @@ export async function collectIdentities(loaded) {
  * handler, not a second set of per-writer rules.
  *
  * @param {IdentitySource} loaded
- * @param {'theme'|'component'|'template'|'codemod'|'doc'|'agent-doc'} kind
+ * @param {'theme'|'component'|'template'|'codemod'|'doc'|'agent-doc'|'icon-set'} kind
  * @param {string} name
  * @param {{version?: string}} [options]
  * @returns {Promise<void>}
@@ -351,6 +356,21 @@ export async function assertContributionVisible(
   name,
   {version} = {},
 ) {
+  if (kind === 'icon-set') {
+    // An icon set is read by its own discovery seam (spec:AST-084 FR1–FR3):
+    // the descriptor and data file must both parse, and the set must be found.
+    const {sets, errors} = loaded.iconSets
+      ? discoverIconSetDirectory(loaded.iconSets, loaded.name)
+      : {sets: [], errors: []};
+    const error = errors.find(entry => entry.name === name);
+    if (error) throw new Error(error.message);
+    if (!sets.some(set => set.name === name)) {
+      throw new Error(
+        `icon-set contribution "${name}" was not visible after writing.`,
+      );
+    }
+    return;
+  }
   const {identities, errors} = await collectIdentities(loaded);
   const errorKind =
     kind === 'theme'
