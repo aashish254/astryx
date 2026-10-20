@@ -12,14 +12,27 @@ import {HStack, VStack} from '@astryxdesign/core/Stack';
 import {Text} from '@astryxdesign/core/Text';
 import {RadioList, RadioListItem} from '@astryxdesign/core/RadioList';
 
+/**
+ * Deprecated. A `BottomSheetSwitcher` flow used on its own behaves as
+ * released, and when it is stacked with other sheets it is one level of the
+ * bottom-sheet stack; a future minor release removes it. These stories stay
+ * as its documentation. New
+ * flows write each step as a standalone `BottomSheet` driven by one state
+ * value — see the `Core/BottomSheetReplace` stories, which mirror these one
+ * to one with the replacement.
+ */
 const meta: Meta<typeof BottomSheetSwitcher> = {
-  title: 'Core/BottomSheetSwitcher',
+  title: 'Core/BottomSheetSwitcher (deprecated)',
   component: BottomSheetSwitcher,
   tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
     docs: {
       story: {inline: false, height: '560px'},
+      description: {
+        component:
+          'Deprecated: write each step as its own BottomSheet with isOpen, controlled by one state value that names the open step; the same replace handoff runs between steps. A switcher flow used on its own behaves as released; stacked with other sheets, it is one level of the stack (it recedes and is blocked when covered and shares the one scrim). A future minor release removes it. The Core/BottomSheetReplace stories show each of these flows rebuilt with the replacement.',
+      },
     },
   },
   argTypes: {

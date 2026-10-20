@@ -32,6 +32,14 @@ beforeEach(() => {
   HTMLDialogElement.prototype.show = vi.fn(function (this: HTMLDialogElement) {
     this.setAttribute('open', '');
   });
+  // A non-modal sheet is a manual popover; jsdom's stand-ins keep the same
+  // `open` marker the dialog paths use (the Drawer tests do the same).
+  HTMLElement.prototype.showPopover = vi.fn(function (this: HTMLElement) {
+    this.setAttribute('open', '');
+  });
+  HTMLElement.prototype.hidePopover = vi.fn(function (this: HTMLElement) {
+    this.removeAttribute('open');
+  });
   HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
     this.removeAttribute('open');
   });
@@ -531,7 +539,7 @@ describe('BottomSheet', () => {
   });
 
   describe('hasScrim={false} (non-modal)', () => {
-    it('opens non-modally: show() instead of showModal(), no aria-modal', () => {
+    it('opens non-modally: a manual popover instead of showModal(), no aria-modal', () => {
       render(
         <BottomSheet
           isOpen
@@ -541,9 +549,160 @@ describe('BottomSheet', () => {
           Content
         </BottomSheet>,
       );
-      expect(HTMLDialogElement.prototype.show).toHaveBeenCalled();
+      // In the top layer as a manual popover (no light dismiss, no backdrop)
+      // so sheets order by presentation without a page-level z-index.
+      expect(HTMLElement.prototype.showPopover).toHaveBeenCalled();
+      expect(HTMLDialogElement.prototype.show).not.toHaveBeenCalled();
       expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toHaveAttribute('popover', 'manual');
       expect(screen.getByRole('dialog')).not.toHaveAttribute('aria-modal');
+    });
+
+    it('focuses the panel, as show() did, when the browser focuses the popover on show', () => {
+      // Chromium's `show()` focusing steps land on the panel (tabindex -1,
+      // no ring); `showPopover()` lands on the content group and draws a
+      // ring. The sheet puts focus on the panel so a lone non-modal sheet
+      // focuses exactly as it did.
+      const showPopover = HTMLElement.prototype.showPopover;
+      HTMLElement.prototype.showPopover = vi.fn(function (this: HTMLElement) {
+        this.setAttribute('open', '');
+        // Something inside the sheet other than the panel, as Chromium does
+        // (it picks the scroll region's focusable group).
+        this.querySelector<HTMLElement>('button')?.focus();
+      });
+      try {
+        const opener = document.createElement('button');
+        document.body.appendChild(opener);
+        opener.focus();
+        render(
+          <BottomSheet
+            isOpen
+            onOpenChange={() => {}}
+            label="Filters"
+            hasScrim={false}>
+            <button type="button">First action</button>
+          </BottomSheet>,
+        );
+        expect(document.activeElement).toBe(getSheet());
+        opener.remove();
+      } finally {
+        HTMLElement.prototype.showPopover = showPopover;
+      }
+    });
+
+    it('returns focus to its opener on close when the person was still in the sheet', () => {
+      const opener = document.createElement('button');
+      opener.textContent = 'Open';
+      document.body.appendChild(opener);
+      opener.focus();
+      try {
+        render(<ExitHarness hasScrim={false} />);
+        // The person moved into the sheet (e.g. tabbed to its control).
+        screen.getByRole('button', {name: 'Close sheet'}).focus();
+        fireEvent.keyDown(screen.getByRole('dialog'), {key: 'Escape'});
+        finishSheetExit();
+        expect(screen.getByRole('dialog', {hidden: true})).not.toHaveAttribute(
+          'open',
+        );
+        expect(document.activeElement).toBe(opener);
+      } finally {
+        opener.remove();
+      }
+    });
+
+    it('always focuses finalFocusRef on close, even when focus had left the sheet', () => {
+      const elsewhere = document.createElement('input');
+      const target = document.createElement('button');
+      target.textContent = 'Target';
+      document.body.append(elsewhere, target);
+      const finalFocusRef = {current: target as HTMLElement | null};
+      function Harness() {
+        const [isOpen, setIsOpen] = useState(true);
+        return (
+          <>
+            <button type="button" onClick={() => setIsOpen(false)}>
+              Close from page
+            </button>
+            <BottomSheet
+              isOpen={isOpen}
+              onOpenChange={setIsOpen}
+              hasScrim={false}
+              finalFocusRef={finalFocusRef}
+              label="Filters">
+              Content
+            </BottomSheet>
+          </>
+        );
+      }
+      try {
+        render(<Harness />);
+        // The page stayed live: the person moved on, then a page control
+        // closed the sheet. The explicit target still receives focus.
+        elsewhere.focus();
+        fireEvent.click(screen.getByRole('button', {name: 'Close from page'}));
+        finishSheetExit();
+        expect(document.activeElement).toBe(target);
+      } finally {
+        elsewhere.remove();
+        target.remove();
+      }
+    });
+
+    it('leaves focus where the person took it when the sheet closes from the page', () => {
+      const opener = document.createElement('button');
+      const elsewhere = document.createElement('input');
+      document.body.append(opener, elsewhere);
+      opener.focus();
+      try {
+        render(<ExitHarness hasScrim={false} />);
+        // The page stayed live: the person moved on, then the sheet closed
+        // (a timer, a page control).
+        elsewhere.focus();
+        fireEvent.click(screen.getByRole('button', {name: 'Close sheet'}));
+        finishSheetExit();
+        expect(document.activeElement).toBe(elsewhere);
+      } finally {
+        opener.remove();
+        elsewhere.remove();
+      }
+    });
+
+    it('leaves focus alone when the browser does not move it on show', () => {
+      const opener = document.createElement('button');
+      document.body.appendChild(opener);
+      opener.focus();
+      render(
+        <BottomSheet
+          isOpen
+          onOpenChange={() => {}}
+          label="Filters"
+          hasScrim={false}>
+          <button type="button">First action</button>
+        </BottomSheet>,
+      );
+      expect(document.activeElement).toBe(opener);
+      opener.remove();
+    });
+
+    it('falls back to show() below the Popover API support floor', () => {
+      const showPopover = HTMLElement.prototype.showPopover;
+      // @ts-expect-error -- emulate a browser without the Popover API
+      delete HTMLElement.prototype.showPopover;
+      try {
+        render(
+          <BottomSheet
+            isOpen
+            onOpenChange={() => {}}
+            label="Filters"
+            hasScrim={false}>
+            Content
+          </BottomSheet>,
+        );
+        expect(HTMLDialogElement.prototype.show).toHaveBeenCalled();
+        expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled();
+      } finally {
+        HTMLElement.prototype.showPopover = showPopover;
+      }
     });
 
     it('does not dismiss when the shell (dialog element itself) is clicked', () => {

@@ -319,8 +319,12 @@ it owns, moves that host into the latest open outlet, returns it to the
 viewport's tree position when no Dialog is open, and enters the top layer again
 after each move. Toasts therefore paint above the Dialog and stay operable inside
 it. Moving the host does not remount the rows, so entries, timers, and focus
-handoff survive. Toast state lives inside the viewport. A viewport rendered with
-`isTopLayer={false}` stays in place.
+handoff survive. A non-modal top-layer surface that blocks nothing (a
+`hasScrim={false}` BottomSheet shown as a manual popover) is not an outlet; it
+announces its entry through the same registry and the viewport leaves and
+re-enters the top layer in place, keeping focus inside it, so toasts paint
+above that surface too. Toast state lives inside the viewport. A viewport
+rendered with `isTopLayer={false}` stays in place.
 
 CommandPalette composes native Dialog. Its normal launcher presentation therefore
 uses `showModal()`; its documentation/showcase `isInline` path does not. The

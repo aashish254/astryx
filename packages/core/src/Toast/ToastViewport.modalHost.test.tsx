@@ -2,9 +2,11 @@
 
 /**
  * @file ToastViewport.modalHost.test.tsx
- * @input Uses vitest, @testing-library/react, ToastViewport, useToast, Dialog
+ * @input Uses vitest, @testing-library/react, ToastViewport, useToast,
+ *   Dialog, BottomSheet
  * @output Tests that a top-layer ToastViewport moves into the latest open
- *   native modal and back without remounting its toasts
+ *   native modal and back without remounting its toasts, and re-enters the
+ *   top layer above a non-modal sheet shown after it
  * @position Testing; validates ToastViewport.tsx with Layer/modalOutlet.ts
  *
  * SYNC: When ToastViewport hosting or Layer/modalOutlet.ts changes, update
@@ -18,6 +20,7 @@ import {act, fireEvent, render, screen} from '@testing-library/react';
 import {ToastViewport} from './ToastViewport';
 import {useToast} from './useToast';
 import {Dialog} from '../Dialog';
+import {BottomSheet} from '../BottomSheet';
 import type {ToastDismissReason} from './types';
 
 // jsdom does not implement the native modal methods.
@@ -68,6 +71,24 @@ function DialogFixture({
   );
 }
 
+function NonModalSheetFixture({label}: {label: string}) {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setIsOpen(open => !open)}>
+        {`Toggle ${label}`}
+      </button>
+      <BottomSheet
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        hasScrim={false}
+        label={label}>
+        <ToastButton label={`Show toast in ${label}`} />
+      </BottomSheet>
+    </>
+  );
+}
+
 function getDialog(label: string): HTMLDialogElement {
   return document.querySelector<HTMLDialogElement>(
     `dialog[aria-label="${label}"]`,
@@ -75,7 +96,9 @@ function getDialog(label: string): HTMLDialogElement {
 }
 
 function getViewport(): HTMLElement {
-  return document.querySelector<HTMLElement>('[popover="manual"]')!;
+  // A non-modal BottomSheet is a manual popover too; the viewport is the one
+  // that is not a dialog.
+  return document.querySelector<HTMLElement>('[popover="manual"]:not(dialog)')!;
 }
 
 function TimedToastButton({
@@ -151,6 +174,96 @@ describe('ToastViewport modal hosting', () => {
 
     fireEvent.click(screen.getByRole('button', {name: 'Close Edit'}));
     expect(showsOnViewport()).toBe(3);
+  });
+
+  /**
+   * jsdom's Popover stand-ins keep no state and `:popover-open` never
+   * matches; these keep a showing set so the viewport can tell it is already
+   * in the top layer, as a browser does.
+   */
+  function trackPopoverState() {
+    const showing = new WeakSet<Element>();
+    const showPopover = vi
+      .spyOn(HTMLElement.prototype, 'showPopover')
+      .mockImplementation(function (this: HTMLElement) {
+        showing.add(this);
+      });
+    const hidePopover = vi
+      .spyOn(HTMLElement.prototype, 'hidePopover')
+      .mockImplementation(function (this: HTMLElement) {
+        showing.delete(this);
+      });
+    const matches = Element.prototype.matches;
+    vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+      this: Element,
+      selector: string,
+    ) {
+      if (selector === ':popover-open') {
+        return showing.has(this);
+      }
+      return matches.call(this, selector);
+    });
+    return {showPopover, hidePopover};
+  }
+
+  it('re-enters the top layer in place when a non-modal sheet is shown after it', () => {
+    // A `hasScrim={false}` sheet is a manual popover: it enters the top
+    // layer above the viewport and blocks nothing, so the viewport stays
+    // where it is and leaves and re-enters to paint above the sheet again.
+    const {showPopover, hidePopover} = trackPopoverState();
+    render(
+      <ToastViewport>
+        <ToastButton />
+        <NonModalSheetFixture label="Filters" />
+      </ToastViewport>,
+    );
+    const viewport = getViewport();
+    const onViewport = (spy: typeof showPopover) =>
+      spy.mock.contexts.filter(context => context === viewport).length;
+    fireEvent.click(screen.getByRole('button', {name: 'Show toast'}));
+    expect(onViewport(showPopover)).toBe(1);
+    const root = viewport.parentNode;
+
+    fireEvent.click(screen.getByRole('button', {name: 'Toggle Filters'}));
+    expect(getDialog('Filters')).toHaveAttribute('popover', 'manual');
+    // Re-entered (hide, then show) after the sheet's own showPopover, and
+    // not moved: the sheet is not an outlet.
+    expect(onViewport(hidePopover)).toBe(1);
+    expect(onViewport(showPopover)).toBe(2);
+    const sheetShow = showPopover.mock.contexts.indexOf(getDialog('Filters'));
+    const viewportReshow = showPopover.mock.contexts.lastIndexOf(viewport);
+    expect(sheetShow).toBeGreaterThan(-1);
+    expect(viewportReshow).toBeGreaterThan(sheetShow);
+    expect(viewport.parentNode).toBe(root);
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+
+    // A toast raised while the sheet is open lands in the same viewport.
+    fireEvent.click(
+      screen.getByRole('button', {name: 'Show toast in Filters'}),
+    );
+    expect(screen.getAllByText('Saved')).toHaveLength(2);
+
+    // Closing the sheet moves nothing and re-enters nothing.
+    fireEvent.click(screen.getByRole('button', {name: 'Toggle Filters'}));
+    expect(onViewport(hidePopover)).toBe(1);
+    expect(onViewport(showPopover)).toBe(2);
+  });
+
+  it('keeps focus inside the viewport across a re-entry', () => {
+    trackPopoverState();
+    render(
+      <ToastViewport>
+        <ToastButton />
+        <NonModalSheetFixture label="Filters" />
+      </ToastViewport>,
+    );
+    fireEvent.click(screen.getByRole('button', {name: 'Show toast'}));
+    const viewport = getViewport();
+    const dismiss = viewport.querySelector('button');
+    expect(dismiss).not.toBeNull();
+    dismiss!.focus();
+    fireEvent.click(screen.getByRole('button', {name: 'Toggle Filters'}));
+    expect(document.activeElement).toBe(dismiss);
   });
 
   it("keeps each toast's auto-hide timer running across a move", () => {
