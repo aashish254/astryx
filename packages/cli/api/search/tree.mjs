@@ -1,41 +1,40 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file How search answers: a root dispatcher sends each query to the
- * searcher that should answer it. Today every query goes to the main
- * searcher, the lexical ranker.
- * @input {query, options} and the candidates the adapter gathered
+ * @file How search answers: a root classifier reads the query's words and
+ * guesses the domain it wants (tree.weights.json), and hands it to that
+ * domain's topic searcher when it is sure enough; otherwise the main searcher
+ * keeps it. Adding a topic searcher is one file and one line here.
+ * @input {query, options} and the gathered catalog with its static data
  * @output the search response
  * @position api/search; search.mjs runs it with the shared route helper
  */
 
 import {routeKit} from '../../foundation/route/route.mjs';
-import {rankLexical} from './_lexical.mjs';
+import {routerTokens} from './_query-words.mjs';
+import {doc} from './_doc-searcher.mjs';
+import {main} from './_main-searcher.mjs';
+import {template} from './_template-searcher.mjs';
 
 /**
- * @typedef {{query: string, options: NonNullable<Parameters<typeof rankLexical>[1]>}} SearchRequest
- * @typedef {Parameters<typeof rankLexical>[2]} SearchCatalog
+ * @typedef {{query: string, options: {cwd?: string, type?: import('./search.type.mjs').SearchDomain, limit?: number}}} SearchRequest
+ * @typedef {import('./_adapter.mjs').SearchCatalog} SearchCatalog
  * @typedef {import('./search.type.mjs').SearchResponse} SearchAnswer
+ * @typedef {import('../../foundation/route/route.mjs').RouteKit<SearchRequest, SearchCatalog, SearchAnswer>} SearchKit
  */
 
-/** @type {import('../../foundation/route/route.mjs').RouteKit<SearchRequest, SearchCatalog, SearchAnswer>} */
-const {defineSearcher, defineDispatcher, defineTree} = routeKit;
+/** @type {SearchKit} */
+const {defineClassifier, defineTree} = routeKit;
 
-const main = defineSearcher({
-  id: 'main',
-  summary:
-    'Ranks every component, hook, doc, template, and theme by keyword and fuzzy match.',
-  run: (request, catalog) =>
-    rankLexical(request.query, request.options, catalog),
-});
-
-const root = defineDispatcher({
+const root = defineClassifier({
   id: 'root',
-  summary: 'Sends every query to the main searcher.',
-  children: ['main'],
-  floor: 0,
-  fallback: 'main',
-  route: () => ({ids: ['main'], confidence: 1}),
+  summary:
+    'Guesses the domain a query wants from its words and hands it to that topic searcher, else to the main searcher.',
+  searchers: {doc: doc.id, template: template.id},
+  fallback: main.id,
+  floor: 0.4,
+  features: request => routerTokens(request.query),
+  weights: catalog => catalog.data.router,
 });
 
-export const SEARCH_TREE = defineTree('root', [root, main]);
+export const SEARCH_TREE = defineTree('root', [root, main, doc, template]);
