@@ -358,12 +358,17 @@ function generatedCommand(contents) {
 /**
  * Create an eager, fail-closed resolver. Every declaration under root is parsed
  * before the caller can begin writing consumer files.
+ *
+ * `ignoreFrom`, a folder above `root` such as the repository root, adds the
+ * `.gitignore` file of each folder from it down to, not including, `root`, as
+ * Git reads them for files below `root`. Only those files are read, never the
+ * rest of the tree above `root`; one that cannot be read fails the resolver.
  * @param {string} root
- * @param {{overrides?: Map<string, string|null>}} [options]
+ * @param {{overrides?: Map<string, string|null>, ignoreFrom?: string}} [options]
  */
 export function createFileProtectionResolver(
   root,
-  {overrides = new Map()} = {},
+  {overrides = new Map(), ignoreFrom} = {},
 ) {
   const resolvedRoot = path.resolve(root);
   const normalizedOverrides = new Map(
@@ -572,6 +577,37 @@ export function createFileProtectionResolver(
         // Mercurial reads only the repository-root .hgignore directly. Nested
         // rule files participate through include:/subinclude: directives.
         parseHgIgnore(full, dir);
+      }
+    }
+  }
+
+  // Ancestor .gitignore files come first, outermost first: a file nearer the
+  // path overrides one farther away, as in Git.
+  if (ignoreFrom != null) {
+    const top = path.resolve(ignoreFrom);
+    const below = relativeWithin(resolvedRoot, top);
+    if (below != null && below !== '') {
+      /** @type {string[]} */
+      const dirs = [top];
+      for (const part of below.split('/').slice(0, -1)) {
+        dirs.push(path.join(dirs[dirs.length - 1], part));
+      }
+      for (const dir of dirs) {
+        const file = path.join(dir, '.gitignore');
+        if (!fs.existsSync(file)) continue;
+        const {contents, relative} = readProtectionFile(file);
+        try {
+          gitIgnoreSources.push({
+            file: relative,
+            dir,
+            matcher: ignore({ignorecase: false}).add(contents),
+          });
+        } catch (error) {
+          throw new ProtectionSourceError(
+            relative,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }
     }
   }

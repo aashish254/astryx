@@ -1062,7 +1062,8 @@ const CREATED_HEADING =
 
 /**
  * Whether the project's ignore rules exclude root CLAUDE.md, read with the
- * working-tree ignore reader upgrade uses. It decides only where the copy
+ * working-tree ignore reader upgrade uses, from the repository root down to
+ * the project root. It decides only where the copy
  * goes (a fresh clone lacks an ignored file); the managed block is written
  * whatever the ignore rules say (INV31). An ignore file that cannot be read
  * counts as excluding root CLAUDE.md, so the copy in .claude/CLAUDE.md stays.
@@ -1084,11 +1085,31 @@ function rootClaudeIgnored(targetDir) {
  */
 function ignoredHere(targetDir, rel, unreadable) {
   try {
-    return createFileProtectionResolver(targetDir)
+    // A project inside a repository also takes the ignore files above it,
+    // from the repository root down, such as a monorepo's root .gitignore.
+    const ignoreFrom = repositoryRootOf(targetDir) ?? undefined;
+    return createFileProtectionResolver(targetDir, {ignoreFrom})
       .classify(path.join(targetDir, rel))
       .some(item => item.reason === 'ignored');
   } catch {
     return unreadable;
+  }
+}
+
+/**
+ * The repository root at or above `dir`: the nearest folder holding `.git`,
+ * `.hg`, or `.sl`. Null outside a repository.
+ * @param {string} dir
+ * @returns {string | null}
+ */
+function repositoryRootOf(dir) {
+  for (let current = path.resolve(dir); ; ) {
+    if (REPOSITORY_MARKERS.some(marker => fs.existsSync(path.join(current, marker)))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
   }
 }
 

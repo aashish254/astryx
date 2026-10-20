@@ -275,14 +275,18 @@ and remains available through explicit Core package selection.
   least one copy, whether it starts at the project root or in a folder below
   it, from files the project commits (DEC-2). `--agent` and `--agent-docs-path`
   name the files instead; an `--agent` preset still never leaves a copy in both
-  Claude Code files.
+  Claude Code files, except as the ignored-root rule below says.
   - `AGENTS.md` at the project root holds the block. Init creates it when it is
     missing.
   - The project's Claude Code file holds a full copy: root `CLAUDE.md`, else
     `.claude/CLAUDE.md`. It holds the copy even when it imports `AGENTS.md`,
     because Claude Code does not follow an import of a file above the folder it
     starts in. While root `CLAUDE.md` holds a copy, `.claude/CLAUDE.md` holds
-    none. Init creates no Claude Code file, and a Claude Code file that is
+    none, except while ignore rules (read from the repository root down to the
+    project root) exclude root `CLAUDE.md`: then a `.claude/CLAUDE.md` the
+    project commits holds a copy too, in the default layout and with the
+    `claude` and `all` presets, so a fresh clone still gives Claude Code one.
+    Init creates no Claude Code file, and a Claude Code file that is
     `AGENTS.md` under another name holds no second copy.
   - `GEMINI.md` holds a one-line managed import of `AGENTS.md`. Init creates
     it when it is missing, and adds no import to a `GEMINI.md` that already

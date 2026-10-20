@@ -727,6 +727,38 @@ describe('third astracat round: first-run copy beside an ignored root, escapes b
   }, 60_000);
 });
 
+describe('a monorepo package whose CLAUDE.md the repository root ignores', () => {
+  it('keeps and refreshes the committed .claude/CLAUDE.md copy', () => {
+    const repo = path.join(tmpDir, 'repo');
+    const project = path.join(repo, 'apps', 'web');
+    fs.mkdirSync(path.join(repo, '.git'), {recursive: true});
+    fs.mkdirSync(path.join(project, '.claude'), {recursive: true});
+    fs.writeFileSync(path.join(repo, '.gitignore'), 'apps/web/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"web"}\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(
+      copy,
+      '# Team\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
+    );
+
+    const written = installAgentDocs(project, {renderedBlock: BLOCK});
+
+    expect(written).toEqual([
+      'AGENTS.md',
+      'CLAUDE.md',
+      '.claude/CLAUDE.md',
+      'GEMINI.md',
+    ]);
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+
+    // Without the repository-root rule, the copy moves to root CLAUDE.md.
+    fs.writeFileSync(path.join(repo, '.gitignore'), '');
+    installAgentDocs(project, {renderedBlock: BLOCK});
+    expect(fs.readFileSync(copy, 'utf-8')).toBe('# Team\n');
+  });
+});
+
 describe('init exit codes and output', () => {
   it('an ignored GEMINI.md with notes: written through, exit 0, nothing on stderr', async () => {
     const {project} = layout();
