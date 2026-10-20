@@ -160,6 +160,7 @@ export async function run(options = {}, {cwd = process.cwd(), origin} = {}) {
       {apply, path: path_},
       {
         cwd,
+        origin,
         expectedVersion:
           installed.packageName === '@astryxdesign/core'
             ? targetVersion

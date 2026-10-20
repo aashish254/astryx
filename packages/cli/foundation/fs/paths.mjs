@@ -267,9 +267,66 @@ function escapeRegExp(text) {
 }
 
 /**
+ * The alternatives of the brace list that opens at `glob[start]`, split at
+ * its own commas, and the index of its closing brace; null when it is never
+ * closed.
+ *
+ * @param {string} glob
+ * @param {number} start
+ * @returns {{alternatives: string[], end: number} | null}
+ */
+function braceList(glob, start) {
+  const alternatives = [];
+  let depth = 0;
+  let from = start + 1;
+  for (let i = start; i < glob.length; i++) {
+    if (glob[i] === '{') {
+      depth++;
+    } else if (glob[i] === '}' && --depth === 0) {
+      alternatives.push(glob.slice(from, i));
+      return {alternatives, end: i};
+    } else if (glob[i] === ',' && depth === 1) {
+      alternatives.push(glob.slice(from, i));
+      from = i + 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * The regular-expression source for a workspace glob: `*` and `?` stay
+ * within one folder name, `**` spans any number of folders, and `{a,b}`
+ * matches either alternative, each a glob of its own.
+ *
+ * @param {string} glob
+ * @returns {string}
+ */
+function globSource(glob) {
+  let source = '';
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i];
+    const list = char === '{' ? braceList(glob, i) : null;
+    if (char === '*' && glob[i + 1] === '*') {
+      // `**/` also matches no folder at all.
+      source += glob[i + 2] === '/' ? '(?:.*/)?' : '.*';
+      i += glob[i + 2] === '/' ? 2 : 1;
+    } else if (char === '*') {
+      source += '[^/]*';
+    } else if (char === '?') {
+      source += '[^/]';
+    } else if (list) {
+      source += `(?:${list.alternatives.map(globSource).join('|')})`;
+      i = list.end;
+    } else {
+      source += escapeRegExp(char);
+    }
+  }
+  return source;
+}
+
+/**
  * A regular expression for a workspace pattern, tested against a member's
- * path relative to the workspace root: `*` and `?` stay within one folder
- * name, `**` spans any number of folders, and `{a,b}` is either name.
+ * path relative to the workspace root (see `globSource`).
  *
  * @param {string} pattern
  * @returns {RegExp}
@@ -279,30 +336,7 @@ function workspacePatternRegExp(pattern) {
     .trim()
     .replace(/^(?:\.\/)+/, '')
     .replace(/\/+$/, '');
-  let source = '';
-  for (let i = 0; i < glob.length; i++) {
-    const char = glob[i];
-    if (char === '*' && glob[i + 1] === '*') {
-      // `**/` also matches no folder at all.
-      source += glob[i + 2] === '/' ? '(?:.*/)?' : '.*';
-      i += glob[i + 2] === '/' ? 2 : 1;
-    } else if (char === '*') {
-      source += '[^/]*';
-    } else if (char === '?') {
-      source += '[^/]';
-    } else if (char === '{' && glob.indexOf('}', i) !== -1) {
-      const end = glob.indexOf('}', i);
-      source += `(?:${glob
-        .slice(i + 1, end)
-        .split(',')
-        .map(escapeRegExp)
-        .join('|')})`;
-      i = end;
-    } else {
-      source += escapeRegExp(char);
-    }
-  }
-  return new RegExp(`^${source}$`);
+  return new RegExp(`^${globSource(glob)}$`);
 }
 
 /**

@@ -89,7 +89,10 @@ export async function upgrade(options = {}, {cwd = process.cwd()} = {}) {
       throw new AstryxError(msg, undefined, ERROR_CODES.ERR_INVALID_ARGUMENT);
     }
     const scoped = scopeToProject(options, cwd);
-    return registryUpgrade(scoped.options, {cwd: scoped.cwd});
+    return registryUpgrade(scoped.options, {
+      cwd: scoped.cwd,
+      origin: scoped.origin,
+    });
   }
 
   if (!options.list && !options.from) {

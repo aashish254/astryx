@@ -108,8 +108,9 @@ export function scopeToProject(options, cwd) {
  * command ran in, with its file paths made relative to that folder, so each
  * resolves from where the command ran: `modifiedFiles`, `agentDocs.files`, and
  * the `file` of each `protectedFiles`, `declinedCandidates` and `errors`
- * entry. Copied-composition paths stay relative to the scanned source folder.
- * A result of a run at the project root is returned as it is.
+ * entry. The registry step names copied-composition paths from that folder
+ * itself (see `reconcileRegistryCompositions`), so they pass through. A
+ * result of a run at the project root is returned as it is.
  * @template {{type: string, data: object}} T
  * @param {T} result
  * @param {{cwd: string, origin?: string}} scope from `scopeToProject`

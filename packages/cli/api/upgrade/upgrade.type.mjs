@@ -70,7 +70,9 @@
  */
 
 /**
- * Aggregate receipt for ShadCN-copied composition reconciliation.
+ * Aggregate receipt for ShadCN-copied composition reconciliation. File paths
+ * are relative to the scanned source directory, or, when the upgrade ran in a
+ * folder below the project root, to that folder.
  * @typedef {object} RegistryCompositionSummary
  * @property {boolean} applied
  * @property {boolean} ok False when conflicts, missing files, invalid receipts, or failures remain.

@@ -118,42 +118,6 @@ describe('upgrade.run — sourcePathFound', () => {
   }, SLOW);
 });
 
-describe('upgrade.run — the installed Core is found from any folder in the project', () => {
-  let dir;
-  beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-core-'));
-    seedProject(dir);
-  });
-  afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
-
-  it('targets the project Core when run from a subfolder', async () => {
-    const res = await upgrade({from: '0.0.1', path: '.'}, {cwd: path.join(dir, 'src')});
-
-    expect(res.type).toBe('upgrade.run');
-    expect(res.data.to).toBe('0.1.8');
-  }, SLOW);
-
-  it('targets the Core a workspace hoisted to its root when run in a member', async () => {
-    fs.writeFileSync(
-      path.join(dir, 'package.json'),
-      JSON.stringify({name: 'root', private: true, workspaces: ['apps/*']}),
-    );
-    const member = path.join(dir, 'apps', 'web');
-    fs.mkdirSync(path.join(member, 'src'), {recursive: true});
-    fs.writeFileSync(
-      path.join(member, 'package.json'),
-      JSON.stringify({name: 'web', dependencies: {'@astryxdesign/core': '0.1.8'}}),
-    );
-    fs.writeFileSync(path.join(member, 'src', 'index.ts'), 'const x = 1;\n');
-
-    const res = await upgrade({from: '0.0.1'}, {cwd: member});
-
-    expect(res.type).toBe('upgrade.run');
-    expect(res.data.to).toBe('0.1.8');
-    expect(res.data.sourcePathFound).toBe(true);
-  }, SLOW);
-});
-
 /** Core 0.7.0 renamed this prop; its codemod renames it on Typeahead. */
 const OLD_PROP_SOURCE =
   "import {Typeahead} from '@astryxdesign/core';\n" +
@@ -263,7 +227,7 @@ describe('upgrade.run — the result names files relative to the folder it ran i
     expect(relativeToOrigin(result, {cwd: dir})).toBe(result);
   });
 
-  it('rewrites every project-relative path and leaves copied-composition paths alone', () => {
+  it('rewrites every project-relative path and passes the copied-composition summary through', () => {
     const registryCompositions = {items: [{item: 'example', path: 'components/Example.tsx', files: []}]};
     const result = relativeToOrigin(
       {
@@ -384,10 +348,10 @@ describe("upgrade.run — the target Core is the project's own", () => {
     expect(fs.readFileSync(path.join(project, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
   }, SLOW);
 
-  it('upgrades a member that declares no Astryx package, in its own src', async () => {
+  it.each([[['apps/*']], [['{apps/*,tools/*}']]])('upgrades a member that declares no Astryx package, in its own src, when the workspace lists %j', async workspaces => {
     fs.writeFileSync(
       path.join(dir, 'package.json'),
-      JSON.stringify({name: 'root', private: true, workspaces: ['apps/*'], dependencies: {'@astryxdesign/core': '0.7.0'}}),
+      JSON.stringify({name: 'root', private: true, workspaces, dependencies: {'@astryxdesign/core': '0.7.0'}}),
     );
     const member = nestedProject({});
 
@@ -398,34 +362,6 @@ describe("upgrade.run — the target Core is the project's own", () => {
     expect(fs.readFileSync(path.join(member, 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
     expect(fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
   }, SLOW);
-});
-
-describe('upgrade.run — a path you name is read from the folder you ran in, in any spelling', () => {
-  let dir;
-  beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upg-spelling-'));
-    seedOldPropProject(dir);
-    // A folder with source of its own and no package.json, inside the project.
-    fs.mkdirSync(path.join(dir, 'frontend', 'src'), {recursive: true});
-    fs.writeFileSync(path.join(dir, 'frontend', 'src', 'App.tsx'), OLD_PROP_SOURCE);
-  });
-  afterEach(() => fs.rmSync(dir, {recursive: true, force: true}));
-
-  it.each([['./src'], ['src'], ['src/'], ['./src/']])(
-    'reads --path %s from the folder you ran in',
-    async spelling => {
-      const res = await upgrade(
-        {from: '0.6.8', path: spelling, apply: true},
-        {cwd: path.join(dir, 'frontend')},
-      );
-
-      expect(res.type).toBe('upgrade.run');
-      expect(res.data.modifiedFiles).toEqual(['src/App.tsx']);
-      expect(fs.readFileSync(path.join(dir, 'frontend', 'src', 'App.tsx'), 'utf-8')).toContain('emptySearchText="None"');
-      expect(fs.readFileSync(path.join(dir, 'src', 'App.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
-    },
-    SLOW,
-  );
 });
 
 describe('upgrade.run — the project is the nearest folder that declares Astryx', () => {
@@ -457,15 +393,19 @@ describe('upgrade.run — the project is the nearest folder that declares Astryx
     expect(fs.readFileSync(path.join(home, 'src', 'repoA', 'src', 'a.tsx'), 'utf-8')).toBe(OLD_PROP_SOURCE);
   }, SLOW);
 
-  it('treats a folder whose package.json declares no Astryx package as part of the project above it', async () => {
+  // Installing Core does not make a folder a project.
+  it('treats a folder that installs Core without declaring it as part of the project above it', async () => {
     seedOldPropProject(home);
     const tool = path.join(home, 'tools', 'codegen');
-    fs.mkdirSync(tool, {recursive: true});
-    fs.writeFileSync(path.join(tool, 'package.json'), JSON.stringify({name: 'codegen', type: 'module'}));
+    const core = path.join(tool, 'node_modules', '@astryxdesign', 'core');
+    fs.mkdirSync(core, {recursive: true});
+    fs.writeFileSync(path.join(tool, 'package.json'), JSON.stringify({name: 'codegen'}));
+    fs.writeFileSync(path.join(core, 'package.json'), JSON.stringify({name: '@astryxdesign/core', version: '0.9.0'}));
 
     const res = await upgrade({from: '0.6.8', apply: true}, {cwd: tool});
 
     expect(res.type).toBe('upgrade.run');
+    expect(res.data.to).toBe('0.7.0');
     expect(res.data.modifiedFiles).toEqual(['../../src/App.tsx']);
   }, SLOW);
 

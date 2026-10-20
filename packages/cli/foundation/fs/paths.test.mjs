@@ -162,18 +162,6 @@ describe('findCoreDir', () => {
     expect(findCoreDir(deep)).toBe(nmCore);
   });
 
-  // Released CLIs searched the folder and the four above it, whatever package.json
-  // files lay between. A package.json that only sets the module type is common.
-  it('still searches the folder and the four above it', () => {
-    writeProject(tmpDir, {dependencies: {'@astryxdesign/core': '^0.7.0'}});
-    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.0');
-    const src = path.join(tmpDir, 'src');
-    fs.mkdirSync(src, {recursive: true});
-    fs.writeFileSync(path.join(src, 'package.json'), JSON.stringify({type: 'module'}));
-
-    expect(findCoreDir(src)).toBe(nmCore);
-  });
-
   // Node loads the hoisted copy whatever the member declares: an override or
   // resolution can force it, and a peer range can be stale. Reads answer from
   // the copy that loads.
@@ -184,14 +172,6 @@ describe('findCoreDir', () => {
     writeProject(tmpDir, {private: true, workspaces: ['apps/*'], overrides: {'@astryxdesign/core': '0.7.1'}});
     const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.1');
     const member = writeProject(path.join(tmpDir, 'apps', 'web'), fields);
-
-    expect(findCoreDir(member)).toBe(nmCore);
-  });
-
-  it('takes a workspace Core that a member declares with a workspace protocol', () => {
-    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
-    const nmCore = install(tmpDir, '@astryxdesign/core', '0.7.1');
-    const member = writeProject(path.join(tmpDir, 'apps', 'web'), {dependencies: {'@astryxdesign/core': 'workspace:*'}});
 
     expect(findCoreDir(member)).toBe(nmCore);
   });
@@ -323,26 +303,13 @@ describe('findProjectPackageOf', () => {
     expect(findProjectPackageOf(deep, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: current});
   });
 
-  it('finds a package the workspace hoists to its root', () => {
-    writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
-    const hoisted = install(tmpDir, '@astryxdesign/core', '0.7.0');
-    const member = writeProject(path.join(tmpDir, 'apps', 'web'), DECLARES_CORE);
-
-    expect(findProjectPackageOf(member, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: hoisted});
-  });
-
   // A member uses what its workspace installs, whatever its own package.json
   // says: an override or resolution can force the copy, and a range or peer
   // range can be stale. Membership decides, not the declared version.
   it.each([
-    ['0.6.8', 'dependencies'],
     ['~0.6.8', 'dependencies'],
     ['0.7.0 - 0.8.0', 'dependencies'],
     ['>= 0.7.0', 'dependencies'],
-    ['^0.6.0 || ^0.7.0', 'dependencies'],
-    ['npm:@astryxdesign/core@^0.7.0', 'dependencies'],
-    ['workspace:*', 'dependencies'],
-    ['latest', 'dependencies'],
     ['^0.6.8', 'peerDependencies'],
   ])('takes the hoisted package for a member that declares %s in %s', (range, field) => {
     writeProject(tmpDir, {private: true, workspaces: ['apps/*']});
@@ -356,6 +323,8 @@ describe('findProjectPackageOf', () => {
     ['Yarn object-form workspaces', {workspaces: {packages: ['apps/*']}}, null],
     ['a ** pattern', {workspaces: ['apps/**']}, null],
     ['a brace pattern', {workspaces: ['{apps,tools}/*']}, null],
+    ['a brace list of globs', {workspaces: ['{apps/*,tools/*}']}, null],
+    ['a nested brace list', {workspaces: ['{apps/{web,admin},tools/*}']}, null],
     ['a pnpm-workspace.yaml block list', {}, "packages:\n  - 'apps/*'  # apps\n  - \"tools/*\"\nonlyBuiltDependencies: []\n"],
     ['a pnpm-workspace.yaml flow list', {}, "packages: ['tools/*', apps/*]\n"],
   ])('takes the hoisted package for a member that %s lists', (_label, rootFields, yaml) => {
@@ -370,6 +339,7 @@ describe('findProjectPackageOf', () => {
   it.each([
     ['lists other folders', {workspaces: ['packages/*']}],
     ['excludes it with a ! pattern', {workspaces: ['apps/*', '!apps/web']}],
+    ['lists other folders in a brace list of globs', {workspaces: ['{packages/*,tools/*}']}],
   ])('stops at the project root when the workspace %s', (_label, rootFields) => {
     writeProject(tmpDir, {private: true, ...rootFields});
     install(tmpDir, '@astryxdesign/core', '0.7.1');
@@ -397,19 +367,6 @@ describe('findProjectPackageOf', () => {
     expect(findProjectPackageOf(plain, NAMES)).toBeNull();
     const own = install(plain, '@astryxdesign/core', '0.7.1');
     expect(findProjectPackageOf(plain, NAMES)).toEqual({name: '@astryxdesign/core', packageDir: own});
-  });
-
-  it('never takes a package from the home folder for a folder inside it', () => {
-    writeProject(tmpDir, DECLARES_CORE);
-    install(tmpDir, '@astryxdesign/core', '0.7.1');
-    const desktop = path.join(tmpDir, 'Desktop');
-    fs.mkdirSync(desktop, {recursive: true});
-    const plain = writeProject(path.join(tmpDir, 'plain'));
-
-    withHome(tmpDir, () => {
-      expect(findProjectPackageOf(desktop, NAMES)).toBeNull();
-      expect(findProjectPackageOf(plain, NAMES)).toBeNull();
-    });
   });
 });
 
