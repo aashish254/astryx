@@ -1260,6 +1260,7 @@ export function removeProjectAgentDocs(cwd) {
  * @param {Map<string, Set<string>>} wrappers
  * @param {string} compressedIndex
  * @param {boolean} onlyReplace
+ * @param {((rel: string, reason: string) => void) | undefined} onSkipped
  * @returns {string[]} files written
  */
 function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyReplace, onSkipped) {
