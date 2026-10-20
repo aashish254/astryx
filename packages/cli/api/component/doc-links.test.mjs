@@ -16,6 +16,7 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {component} from './component.mjs';
 import {CORE_PACKAGE, linkComponentResponse} from './_adapter.mjs';
 import {docs} from '../docs/docs.mjs';
+import {search} from '../search/search.mjs';
 import {runCli} from '../../test-utils/run-cli.mjs';
 
 const SLOW = 60_000;
@@ -130,6 +131,23 @@ describe("a link in a component doc's text", () => {
         label: 'As `astryx docs acme-setup` shows',
         code: '// {@link generic:acme-setup}',
       });
+    },
+    SLOW,
+  );
+
+  it(
+    "reads the same in a search hit's description",
+    async () => {
+      scaffold();
+      const found = /** @type {any} */ (
+        await search('AcmeButton', {cwd: tmpDir, type: 'component'})
+      );
+      const hit = found.data.results.find(
+        (/** @type {any} */ result) => result.name === 'AcmeButton',
+      );
+      expect(hit.description).toBe(
+        'A button. Set it up as `astryx docs acme-setup` says; theme it with `astryx docs theme`.',
+      );
     },
     SLOW,
   );

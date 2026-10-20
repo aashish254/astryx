@@ -676,6 +676,52 @@ export function scopeIntegrationMember(docs, owner, dirName) {
 }
 
 /**
+ * A search response with every inline `{@link <target>}` in a component
+ * result's description resolved to the command that opens the doc it names,
+ * as `astryx component` prints it (spec:AST-047 FR9). The response object is
+ * kept, with its results replaced.
+ * @template {{data: {results: any[]}}} R
+ * @param {R} response
+ * @param {string} cwd
+ * @returns {Promise<R>}
+ */
+export async function linkSearchResponse(response, cwd) {
+  const results = response.data.results;
+  if (
+    !results.some(
+      result =>
+        result?.domain === 'component' &&
+        typeof result.description === 'string' &&
+        result.description.includes('{@link'),
+    )
+  ) {
+    return response;
+  }
+  const linked = [];
+  for (const result of results) {
+    if (
+      result?.domain !== 'component' ||
+      typeof result.description !== 'string' ||
+      !result.description.includes('{@link')
+    ) {
+      linked.push(result);
+      continue;
+    }
+    const read = await linkComponentResponse(
+      {
+        type: 'component.detail',
+        package: result.package,
+        data: {description: result.description},
+      },
+      cwd,
+    );
+    linked.push({...result, description: read.data.description});
+  }
+  response.data = {...response.data, results: linked};
+  return response;
+}
+
+/**
  * A component read with every inline `{@link <target>}` in its doc text
  * resolved to the command that opens the doc it names (spec:AST-047 FR9), in
  * the detail, its props projection, and each list entry. A Core component's

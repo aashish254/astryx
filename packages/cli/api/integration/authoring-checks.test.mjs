@@ -1103,7 +1103,8 @@ describe('integrationDocConflicts stray doc pointers', () => {
       await integrationDocConflicts(undefined, {cwd: tmpDir}),
     ).filter((/** @type {any} */ each) => each.topic === 'acme-setup');
 
-    expect(found.map((/** @type {any} */ each) => each.line)).toEqual([9]);
+    // The summary's own pointer is listed too, at its line.
+    expect(found.map((/** @type {any} */ each) => each.line)).toEqual([5, 9]);
   });
 
   it('lists a written pointer to a doc with the link that replaces it, and warns', async () => {
@@ -1302,7 +1303,7 @@ describe('links in component docs and topic descriptions', () => {
     expect(pointer.line).toEqual(expect.any(Number));
     expect(pointer.message).toBe(
       `component "AcmeButton" (field usage.description, line ${pointer.line}) points at a doc with the written command \`astryx docs theme\`. ` +
-        'Replace `astryx docs theme`, code ticks included, with {@link @astryxdesign/cli:generic:theme}: the CLI prints the same command, and doctor checks the link.',
+        'Replace `astryx docs theme`, code ticks included, with {@link @astryxdesign/cli:generic:theme}: the CLI prints the command that opens the doc, and doctor checks the link.',
     );
     expect(data.issues).toContainEqual({
       code: 'stray_doc_pointer',
