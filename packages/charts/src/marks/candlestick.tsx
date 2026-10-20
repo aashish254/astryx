@@ -49,10 +49,6 @@ function candleSlot(resolved: ResolvedPoint[], ctx: SeriesContext): number {
 }
 
 export function candlestick(options: CandlestickOptions): SeriesDef {
-  // Emitted core semantic tokens (data-viz --color-data-* tokens aren't CSS vars).
-  const upColor = options.upColor ?? 'var(--color-success)';
-  const downColor = options.downColor ?? 'var(--color-error)';
-
   return {
     type: 'candlestick',
     key: `ohlc-${options.close}`,
@@ -76,7 +72,9 @@ export function candlestick(options: CandlestickOptions): SeriesDef {
     },
 
     render(resolved, ctx) {
-      const {data, yScale} = ctx;
+      const {data, yScale, colors} = ctx;
+      const upColor = options.upColor ?? colors.semantic.positive;
+      const downColor = options.downColor ?? colors.semantic.negative;
       const bodyWidth = Math.max(1, candleSlot(resolved, ctx) * 0.6);
 
       return (

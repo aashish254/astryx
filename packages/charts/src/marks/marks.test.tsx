@@ -269,9 +269,24 @@ describe('candlestick', () => {
     const wicks = plot.querySelectorAll('line');
     expect(rects).toHaveLength(3);
     expect(wicks).toHaveLength(3);
-    expect(rects[0]).toHaveAttribute('fill', 'var(--color-success)');
-    expect(rects[1]).toHaveAttribute('fill', 'var(--color-error)');
-    expect(rects[2]).toHaveAttribute('fill', 'var(--color-success)');
+    expect(rects[0]).toHaveAttribute('fill', '#0B991F');
+    expect(rects[1]).toHaveAttribute('fill', '#F5394F');
+    expect(rects[2]).toHaveAttribute('fill', '#0B991F');
+  });
+
+  it('lets explicit up/down colors override the data-viz semantic defaults', () => {
+    const custom = candlestick({
+      open: 'o',
+      high: 'h',
+      low: 'l',
+      close: 'c',
+      upColor: '#123456',
+      downColor: '#abcdef',
+    });
+    const {plot} = renderMarks([custom], OHLC);
+    const rects = plot.querySelectorAll('rect');
+    expect(rects[0]).toHaveAttribute('fill', '#123456');
+    expect(rects[1]).toHaveAttribute('fill', '#abcdef');
   });
 
   it('skips candles missing any OHLC field', () => {

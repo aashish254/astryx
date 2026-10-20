@@ -229,13 +229,24 @@ export function Chart({
         data,
         xKey,
         series,
+        colors: chartColors,
         width: innerWidth,
         height: innerHeight,
         yBaseline,
         yDomain,
         xDomain,
       }),
-    [data, xKey, series, innerWidth, innerHeight, yBaseline, yDomain, xDomain],
+    [
+      data,
+      xKey,
+      series,
+      chartColors,
+      innerWidth,
+      innerHeight,
+      yBaseline,
+      yDomain,
+      xDomain,
+    ],
   );
 
   const seriesCtx = useMemo(
@@ -244,11 +255,12 @@ export function Chart({
       xKey,
       xScale: layout.xScale,
       yScale: layout.yScale,
+      colors: chartColors,
       yBandScale: layout.yBandScale,
       width: innerWidth,
       height: innerHeight,
     }),
-    [data, xKey, layout, innerWidth, innerHeight],
+    [data, xKey, layout, chartColors, innerWidth, innerHeight],
   );
 
   // ─── Event dispatch ───────────────────────────────────────────────────

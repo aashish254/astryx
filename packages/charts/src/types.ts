@@ -8,6 +8,7 @@
 
 import type {ReactNode} from 'react';
 import type {ScaleLinear, ScaleBand} from 'd3-scale';
+import type {ChartColorsAPI} from './getChartColors';
 
 export type ChartScale = ScaleLinear<number, number> | ScaleBand<string>;
 
@@ -62,6 +63,8 @@ export interface SeriesContext {
   xKey: string;
   xScale: ChartScale;
   yScale: ScaleLinear<number, number>;
+  /** Theme-resolved data-visualization colors for mark semantics. */
+  colors: ChartColorsAPI;
   /**
    * Categorical y band scale for row-based marks (e.g. heatmap). Present only
    * when a series declares `layout.yBandKey`; in that case the y-axis is
