@@ -86,12 +86,52 @@ describe('parseIconSetData', () => {
       /size 16 is not in axes.sizes/,
     ],
     [
+      'a match with an unknown confidence',
+      d =>
+        (d.icons[0].matches = [
+          {set: 'heroicons', export: 'XMarkIcon', confidence: 'maybe'},
+        ]),
+      /confidence/,
+    ],
+    [
+      'a match listed twice',
+      d =>
+        (d.icons[0].matches = [
+          {set: 'lucide', export: 'X', confidence: 'exact'},
+          {set: 'lucide', export: 'X', confidence: 'likely'},
+        ]),
+      /listed twice/,
+    ],
+    [
+      'a match with an unknown field',
+      d =>
+        (d.icons[0].matches = [
+          {set: 'lucide', export: 'X', confidence: 'exact', note: 'x'},
+        ]),
+      /Unrecognized key/,
+    ],
+    [
       'an inverted weight range',
       d => (d.axes.weights = {range: {min: 3, max: 1}}),
       /range.min/,
     ],
   ])('rejects %s', (_label, change, message) => {
     expect(() => parseIconSetData(dataWith(change))).toThrow(message);
+  });
+
+  it('accepts reviewed matches with and without a variant', () => {
+    const data = dataWith(d => {
+      d.icons[0].matches = [
+        {
+          set: 'heroicons',
+          export: 'XMarkIcon',
+          variant: '24/outline',
+          confidence: 'exact',
+        },
+        {set: 'lucide', export: 'X', confidence: 'likely'},
+      ];
+    });
+    expect(parseIconSetData(data).icons[0].matches).toHaveLength(2);
   });
 
   it('accepts a weight inside a declared range', () => {

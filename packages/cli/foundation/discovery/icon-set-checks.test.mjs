@@ -106,6 +106,49 @@ describe('iconSetIssues', () => {
     ]);
   });
 
+  it('a match with an unknown confidence or naming the set itself is an error', () => {
+    const unknown = issuesOf({
+      data: data(
+        d =>
+          (d.icons[0].matches = [
+            {set: 'heroicons', export: 'XMarkIcon', confidence: 'maybe'},
+          ]),
+      ),
+    });
+    expect(unknown).toEqual([
+      expect.objectContaining({code: 'invalid_icon_set', severity: 'error'}),
+    ]);
+    expect(unknown[0].message).toMatch(/confidence/);
+    fs.rmSync(dir, {recursive: true});
+    const self = issuesOf({
+      data: data(
+        d =>
+          (d.icons[0].matches = [
+            {set: 'glyphs', export: 'XIcon', confidence: 'exact'},
+          ]),
+      ),
+    });
+    expect(self).toEqual([
+      expect.objectContaining({code: 'invalid_icon_set', severity: 'error'}),
+    ]);
+    expect(self[0].message).toMatch(/names this set itself/);
+    fs.rmSync(dir, {recursive: true});
+    const valid = issuesOf({
+      data: data(
+        d =>
+          (d.icons[0].matches = [
+            {
+              set: 'heroicons',
+              export: 'XMarkIcon',
+              variant: '24/outline',
+              confidence: 'exact',
+            },
+          ]),
+      ),
+    });
+    expect(valid).toEqual([]);
+  });
+
   it('a module that does not resolve from the package is an error', () => {
     const issues = issuesOf({
       data: data(d => (d.icons[0].module = '@acme/glyphs/solid')),

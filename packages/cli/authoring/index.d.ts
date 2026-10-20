@@ -172,6 +172,8 @@ export type {
   IconSetAxes,
   IconSetAxisValues,
   IconSetIcon,
+  IconSetMatch,
+  IconSetMatchConfidence,
   IconSetSource,
   IconSetVariant,
   IconSetWeights,

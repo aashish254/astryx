@@ -75,6 +75,25 @@ export interface IconSetVariant extends IconSetAxisValues {
   module?: string;
 }
 
+/** How sure a reviewed cross-set match is. */
+export type IconSetMatchConfidence = 'exact' | 'strong' | 'likely';
+
+/**
+ * A reviewed equivalent of an icon in another icon set or icon library.
+ * Template icon mapping applies `exact` and `strong` matches and only
+ * suggests `likely` ones.
+ */
+export interface IconSetMatch {
+  /** The other set's name, such as `heroicons`; never this set's own name. */
+  set: string;
+  /** The export that draws the equivalent icon in that set. */
+  export: string;
+  /** Which variant of that set, such as `24/outline`, when it has several. */
+  variant?: string;
+  /** How sure the match is. */
+  confidence: IconSetMatchConfidence;
+}
+
 /** One icon of a set. */
 export interface IconSetIcon {
   /** Lower-kebab identity, unique in the set. */
@@ -89,6 +108,8 @@ export interface IconSetIcon {
   fills?: string[];
   /** Other variants, each naming its axis values and its own export. */
   variants?: IconSetVariant[];
+  /** Reviewed equivalents of this icon in other sets. */
+  matches?: IconSetMatch[];
 }
 
 /** The upstream library and version the data file was generated from. */

@@ -51,7 +51,11 @@ function iconLines(icons) {
         `icons: mapped ${each.source.export} (${each.source.module}) -> ${each.target.export} (${each.target.module}) by ${each.by}`,
     ),
     ...icons.kept.map(
-      each => `icons: kept ${each.export} (${each.module}): ${each.reason}`,
+      each =>
+        `icons: kept ${each.export} (${each.module}): ${each.reason}` +
+        (each.suggestion
+          ? `; likely match: ${each.suggestion.export} (${each.suggestion.module})`
+          : ''),
     ),
   ];
 }

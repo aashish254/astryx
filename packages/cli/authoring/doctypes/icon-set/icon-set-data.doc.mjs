@@ -103,6 +103,12 @@ export const doc = {
           description:
             'Other variants, each naming its axis values (all in `axes`) and its own export.',
         },
+        {
+          name: 'icons[].matches',
+          type: "{set, export, variant?, confidence: 'exact' | 'strong' | 'likely'}[]",
+          description:
+            "Reviewed equivalents of this icon in other icon sets or libraries, such as `{set: 'heroicons', export: 'XMarkIcon', variant: '24/outline', confidence: 'exact'}`. When a copied template imports a matched icon, `exact` and `strong` matches are used before any other rule; a `likely` match is only suggested. A match never names this set itself.",
+        },
       ],
     },
   ],
@@ -131,6 +137,10 @@ export const doc = {
     {
       type: 'prose',
       text: 'A file that fails this schema, repeats an id, gives an icon no words, fills a name that is not an `IconName` or fills one name twice, or names an axis value `axes` does not list is invalid, and its set is withdrawn from every surface until it is fixed. `astryx doctor` names the reason.',
+    },
+    {
+      type: 'prose',
+      text: "A template's icon maps to the project set's icon whose `matches` name it with `exact` or `strong` confidence, else to the icon that fills the same shared icon name, else to the icon with the same id, else to the icon that shares the most words with it. The CLI's own templates import heroicons (`set: 'heroicons'`, `variant` such as `24/outline`) and lucide (`set: 'lucide'`).",
     },
     {
       type: 'prose',

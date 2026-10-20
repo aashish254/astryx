@@ -31,6 +31,9 @@ describe('templateLibraryIcon', () => {
     expect(
       templateLibraryIcon('@heroicons/react/24/solid', 'XMarkIcon'),
     ).toEqual({
+      setName: 'heroicons',
+      export: 'XMarkIcon',
+      variant: '24/solid',
       id: 'x-mark',
       words: ['x', 'mark'],
       fills: ['close'],
@@ -47,16 +50,46 @@ describe('templateLibraryIcon', () => {
 describe('matchIcon', () => {
   it('prefers a shared IconName, then the id, then shared words', () => {
     expect(
-      matchIcon({id: 'x-mark', words: ['x', 'mark'], fills: ['close']}, SET),
+      matchIcon(
+        {
+          setName: 'lib',
+          export: 'A',
+          id: 'x-mark',
+          words: ['x', 'mark'],
+          fills: ['close'],
+        },
+        SET,
+      ),
     ).toMatchObject({by: 'fills', icon: {id: 'x'}});
     expect(
-      matchIcon({id: 'home', words: ['home'], fills: []}, SET),
+      matchIcon(
+        {setName: 'lib', export: 'A', id: 'home', words: ['home'], fills: []},
+        SET,
+      ),
     ).toMatchObject({by: 'id', icon: {id: 'home'}});
     expect(
-      matchIcon({id: 'bin-can', words: ['bin', 'garbage'], fills: []}, SET),
+      matchIcon(
+        {
+          setName: 'lib',
+          export: 'A',
+          id: 'bin-can',
+          words: ['bin', 'garbage'],
+          fills: [],
+        },
+        SET,
+      ),
     ).toMatchObject({by: 'words', icon: {id: 'trash'}});
     expect(
-      matchIcon({id: 'pencil', words: ['pencil', 'edit'], fills: []}, SET),
+      matchIcon(
+        {
+          setName: 'lib',
+          export: 'A',
+          id: 'pencil',
+          words: ['pencil', 'edit'],
+          fills: [],
+        },
+        SET,
+      ),
     ).toBeNull();
   });
 });
@@ -146,5 +179,114 @@ describe('mapTemplateIcons', () => {
       source,
       icons: expect.objectContaining({mapped: [], kept: []}),
     });
+  });
+});
+
+describe('reviewed matches', () => {
+  /** A set whose icons carry reviewed matches for the template libraries. */
+  const REVIEWED = /** @type {any} */ ({
+    ...SET,
+    data: {
+      ...SET.data,
+      icons: SET.data.icons.map((/** @type {any} */ icon) =>
+        icon.id === 'home'
+          ? {
+              ...icon,
+              // An exact match beats the shared-name rule that would pick x.
+              matches: [
+                {
+                  set: 'heroicons',
+                  export: 'XMarkIcon',
+                  variant: '24/outline',
+                  confidence: 'exact',
+                },
+                {set: 'lucide', export: 'Building', confidence: 'likely'},
+              ],
+            }
+          : icon.id === 'trash'
+            ? {
+                ...icon,
+                matches: [
+                  {
+                    set: 'heroicons',
+                    export: 'ArchiveBoxXMarkIcon',
+                    confidence: 'strong',
+                  },
+                  {
+                    set: 'heroicons',
+                    export: 'PencilIcon',
+                    variant: '24/solid',
+                    confidence: 'exact',
+                  },
+                ],
+              }
+            : icon,
+      ),
+    },
+  });
+  /** @param {string} source */
+  const mapReviewed = source =>
+    mapTemplateIcons(source, {
+      sets: [REVIEWED],
+      choice: {status: 'selected', set: REVIEWED, reason: 'only set'},
+    });
+
+  it('an exact or strong match is applied before the shared name, id, and words', () => {
+    const {source, icons} = mapReviewed(
+      "import {XMarkIcon, ArchiveBoxXMarkIcon} from '@heroicons/react/24/outline';\nexport const A = () => <><XMarkIcon /><ArchiveBoxXMarkIcon /></>;\n",
+    );
+    expect(source).toContain(
+      "import {HomeIcon, TrashIcon} from '@acme/glyphs';",
+    );
+    expect(
+      icons.mapped.map(each => [each.source.export, each.target.id, each.by]),
+    ).toEqual([
+      ['XMarkIcon', 'home', 'match'],
+      ['ArchiveBoxXMarkIcon', 'trash', 'match'],
+    ]);
+  });
+
+  it('a match with a variant names only that variant', () => {
+    const {source, icons} = mapReviewed(
+      "import {XMarkIcon} from '@heroicons/react/20/solid';\nexport const A = () => <XMarkIcon />;\n",
+    );
+    // 20/solid is not the reviewed 24/outline variant: the shared name maps it.
+    expect(icons.mapped[0]).toMatchObject({target: {id: 'x'}, by: 'fills'});
+    expect(source).toContain('<XIcon />');
+  });
+
+  it('a likely match is never applied; a kept icon names it as a suggestion', () => {
+    const {source, icons} = mapReviewed(
+      "import {Building} from 'lucide-react';\nexport const A = () => <Building />;\n",
+    );
+    expect(source).toContain("import {Building} from 'lucide-react';");
+    expect(icons.mapped).toEqual([]);
+    expect(icons.kept).toEqual([
+      expect.objectContaining({
+        module: 'lucide-react',
+        export: 'Building',
+        suggestion: {
+          set: 'glyphs',
+          id: 'home',
+          module: '@acme/glyphs',
+          export: 'HomeIcon',
+          confidence: 'likely',
+        },
+      }),
+    ]);
+  });
+
+  it('a variant-specific match applies to that variant only', () => {
+    const solid = mapReviewed(
+      "import {PencilIcon} from '@heroicons/react/24/solid';\nexport const A = () => <PencilIcon />;\n",
+    );
+    expect(solid.icons.mapped[0]).toMatchObject({
+      target: {id: 'trash', export: 'TrashSolidIcon'},
+      by: 'match',
+    });
+    const outline = mapReviewed(
+      "import {PencilIcon} from '@heroicons/react/24/outline';\nexport const A = () => <PencilIcon />;\n",
+    );
+    expect(outline.icons.kept).toHaveLength(1);
   });
 });

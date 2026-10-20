@@ -23,6 +23,16 @@ import {ICON_NAMES} from './icon-names.mjs';
 /** @typedef {import('./type.js').IconSetDoc} IconSetDoc */
 /** @typedef {import('./type.js').IconSetData} IconSetData */
 
+/**
+ * The confidences a reviewed match may carry: template mapping applies the
+ * first two and suggests the last.
+ */
+export const MATCH_CONFIDENCES = /** @type {const} */ ([
+  'exact',
+  'strong',
+  'likely',
+]);
+
 const KEBAB_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const EXPORT_RE = /^[$A-Z_a-z][$\w]*$/u;
@@ -84,6 +94,15 @@ const variantSchema = z
   })
   .strict();
 
+const matchSchema = z
+  .object({
+    set: z.string().regex(KEBAB_RE, 'set must be a lower-kebab set name'),
+    export: exportSchema,
+    variant: nonBlank('variant').optional(),
+    confidence: z.enum(MATCH_CONFIDENCES),
+  })
+  .strict();
+
 const iconSchema = z
   .object({
     id: z
@@ -101,6 +120,7 @@ const iconSchema = z
       .min(1, 'an icon must have at least one word'),
     fills: z.array(z.string()).optional(),
     variants: z.array(variantSchema).optional(),
+    matches: z.array(matchSchema).optional(),
   })
   .strict();
 
@@ -229,6 +249,19 @@ const dataSchema = z
         } else {
           filled.set(name, icon.id);
         }
+      });
+      /** @type {Set<string>} */
+      const named = new Set();
+      (icon.matches ?? []).forEach((match, at) => {
+        const key = `${match.set}\0${match.variant ?? ''}\0${match.export}`;
+        if (named.has(key)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['icons', index, 'matches', at],
+            message: `the match ${match.set}${match.variant ? ` ${match.variant}` : ''} "${match.export}" is listed twice`,
+          });
+        }
+        named.add(key);
       });
       (icon.variants ?? []).forEach((variant, at) => {
         const where = ['icons', index, 'variants', at];

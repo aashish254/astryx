@@ -95,8 +95,8 @@
  * @property {'selected' | 'none' | 'ambiguous' | 'missing'} status The project's icon-set state.
  * @property {string | null} set The project's icon set as `<package>/<set>`, when selected.
  * @property {string} reason Why the project has that set, or none.
- * @property {Array<{source: {module: string, export: string}, target: {set: string, package: string, id: string, module: string, export: string}, by: 'fills' | 'id' | 'words'}>} mapped Icons rewritten to the project's set.
- * @property {Array<{module: string, export: string, reason: string}>} kept Icons left as the template wrote them, with why.
+ * @property {Array<{source: {module: string, export: string}, target: {set: string, package: string, id: string, module: string, export: string}, by: 'match' | 'fills' | 'id' | 'words'}>} mapped Icons rewritten to the project's set, and the rule that chose each one: a reviewed `exact` or `strong` match, a shared icon name, the id, or shared words.
+ * @property {Array<{module: string, export: string, reason: string, suggestion?: {set: string, id: string, module: string, export: string, confidence: 'likely'}}>} kept Icons left as the template wrote them, with why, and a `likely` reviewed match as a suggestion when the project set has one.
  */
 
 /**

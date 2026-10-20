@@ -168,6 +168,16 @@ function readIconSet(root, name, owner) {
     );
   }
   const data = parseIconSetData(raw, `${label} data file`);
+  // A reviewed match names an icon in another set (AST-084 FR3).
+  for (const icon of data.icons) {
+    for (const match of icon.matches ?? []) {
+      if (match.set === name) {
+        throw new Error(
+          `${label} data file is invalid: icon "${icon.id}" has a match that names this set itself; a match names an icon in another set.`,
+        );
+      }
+    }
+  }
 
   const notices = fs
     .readdirSync(dir, {withFileTypes: true})

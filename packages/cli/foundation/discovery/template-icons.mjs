@@ -8,10 +8,14 @@
  * icon import whose module and export belong to a known set's data file, or to
  * one of the libraries the CLI's own templates import, maps to the project
  * set's icon that:
- *   1. fills the same shared icon name (`IconName`);
- *   2. otherwise has the same id;
- *   3. otherwise shares the most words with it, when the overlap meets
+ *   1. names it in a reviewed `matches` entry with `exact` or `strong`
+ *      confidence;
+ *   2. otherwise fills the same shared icon name (`IconName`);
+ *   3. otherwise has the same id;
+ *   4. otherwise shares the most words with it, when the overlap meets
  *      {@link wordsMatch}, ties broken by id.
+ * A `likely` reviewed match is never applied: a kept icon names it as a
+ * suggestion.
  * The import and every reference to the imported name use the mapped export;
  * a name that would collide with another binding in the file is imported
  * under an alias. An icon that names a variant (a solid appearance) maps to
@@ -39,6 +43,11 @@ import {parse} from '@babel/parser';
 /**
  * A source icon: what an imported icon means.
  * @typedef {object} SourceIcon
+ * @property {string} setName the set or library it comes from, as a reviewed
+ *   match names it: an installed set's name, `heroicons`, or `lucide`
+ * @property {string} export the export the template imports
+ * @property {string} [variant] which variant of its set, as a reviewed match
+ *   names it: `24/outline` for heroicons, an installed set's appearance
  * @property {string} id
  * @property {string[]} words
  * @property {string[]} fills
@@ -51,7 +60,8 @@ import {parse} from '@babel/parser';
  * @typedef {object} MappedIcon
  * @property {{module: string, export: string}} source
  * @property {{set: string, package: string, id: string, module: string, export: string}} target
- * @property {'fills' | 'id' | 'words'} by
+ * @property {'match' | 'fills' | 'id' | 'words'} by `match`: a reviewed
+ *   `exact` or `strong` match in the project set's data names the source icon
  */
 
 /**
@@ -60,6 +70,8 @@ import {parse} from '@babel/parser';
  * @property {string} module
  * @property {string} export
  * @property {string} reason
+ * @property {{set: string, id: string, module: string, export: string, confidence: 'likely'}} [suggestion]
+ *   a `likely` reviewed match, suggested and never applied
  */
 
 /**
@@ -138,7 +150,7 @@ export const TEMPLATE_LIBRARY_FILLS = Object.freeze({
   }),
 });
 
-const HEROICONS_RE = /^@heroicons\/react\/(?:16|20|24)\/(outline|solid)$/u;
+const HEROICONS_RE = /^@heroicons\/react\/(16|20|24)\/(outline|solid)$/u;
 
 /**
  * `XMarkIcon` → `x-mark`; `ArrowUp` → `arrow-up`; `Bars3Icon` → `bars-3`.
@@ -166,11 +178,18 @@ export function templateLibraryIcon(module, exportName) {
   let fills;
   /** @type {string | undefined} */
   let appearance;
+  /** @type {string} */
+  let setName;
+  /** @type {string | undefined} */
+  let variant;
   if (hero) {
     fills = TEMPLATE_LIBRARY_FILLS.heroicons;
-    appearance = hero[1];
+    appearance = hero[2];
+    setName = 'heroicons';
+    variant = `${hero[1]}/${hero[2]}`;
   } else if (module === 'lucide-react') {
     fills = TEMPLATE_LIBRARY_FILLS.lucide;
+    setName = 'lucide';
   } else {
     return null;
   }
@@ -178,6 +197,9 @@ export function templateLibraryIcon(module, exportName) {
   const id = kebabOf(exportName);
   const fill = fills[exportName];
   return {
+    setName,
+    export: exportName,
+    ...(variant ? {variant} : {}),
     id,
     words: id.split('-'),
     fills: fill ? [fill] : [],
@@ -198,6 +220,7 @@ function indexSets(sets) {
     for (const icon of set.data.icons) {
       const module = icon.module ?? set.data.module;
       const base = {
+        setName: set.name,
         id: icon.id,
         words: icon.words,
         fills: icon.fills ?? [],
@@ -206,14 +229,21 @@ function indexSets(sets) {
       const key = `${module}\0${icon.export}`;
       if (!index.has(key)) {
         const appearance = set.data.default?.appearance;
-        index.set(key, {...base, ...(appearance ? {appearance} : {})});
+        index.set(key, {
+          ...base,
+          export: icon.export,
+          ...(appearance ? {appearance, variant: appearance} : {}),
+        });
       }
       for (const variant of icon.variants ?? []) {
         const variantKey = `${variant.module ?? module}\0${variant.export}`;
         if (!index.has(variantKey)) {
           index.set(variantKey, {
             ...base,
-            ...(variant.appearance ? {appearance: variant.appearance} : {}),
+            export: variant.export,
+            ...(variant.appearance
+              ? {appearance: variant.appearance, variant: variant.appearance}
+              : {}),
           });
         }
       }
@@ -234,12 +264,51 @@ export function wordsMatch(shared, a, b) {
 }
 
 /**
- * The project-set icon a source icon maps to (FR11), or null.
+ * The target-set icon whose reviewed `matches` name the source icon with one
+ * of `confidences`, ties broken by the order the confidences are given and
+ * then by id. A match with a `variant` names only that variant of its set; a
+ * match without one names every variant.
  * @param {SourceIcon} source
  * @param {DiscoveredIconSet} target
- * @returns {{icon: IconSetIcon, by: 'fills' | 'id' | 'words'} | null}
+ * @param {readonly string[]} confidences
+ * @returns {IconSetIcon | null}
+ */
+export function reviewedMatch(source, target, confidences) {
+  /** @type {{icon: IconSetIcon, rank: number} | null} */
+  let best = null;
+  for (const icon of target.data.icons) {
+    for (const match of icon.matches ?? []) {
+      const rank = confidences.indexOf(match.confidence);
+      if (
+        rank === -1 ||
+        match.set !== source.setName ||
+        match.export !== source.export ||
+        (match.variant != null && match.variant !== source.variant)
+      ) {
+        continue;
+      }
+      if (
+        !best ||
+        rank < best.rank ||
+        (rank === best.rank && icon.id < best.icon.id)
+      ) {
+        best = {icon, rank};
+      }
+    }
+  }
+  return best?.icon ?? null;
+}
+
+/**
+ * The project-set icon a source icon maps to (FR11), or null: a reviewed
+ * `exact` or `strong` match, then a shared name, then the id, then words.
+ * @param {SourceIcon} source
+ * @param {DiscoveredIconSet} target
+ * @returns {{icon: IconSetIcon, by: 'match' | 'fills' | 'id' | 'words'} | null}
  */
 export function matchIcon(source, target) {
+  const reviewed = reviewedMatch(source, target, ['exact', 'strong']);
+  if (reviewed) return {icon: reviewed, by: 'match'};
   const icons = target.data.icons;
   for (const name of source.fills) {
     const icon = icons.find(each => (each.fills ?? []).includes(name));
@@ -485,10 +554,21 @@ export function mapTemplateIcons(source, {sets, choice}) {
       const {record, match} = plan;
       if (!match) {
         keep.push(specifier);
+        const likely = reviewedMatch(record, target, ['likely']);
         icons.kept.push({
           module,
           export: imported,
-          reason: `no icon in ${icons.set} ${record.fills.length > 0 ? `fills "${record.fills.join('", "')}" or ` : ''}has id "${record.id}", and none shares enough words with it`,
+          reason: `no icon in ${icons.set} is a reviewed match for it, ${record.fills.length > 0 ? `fills "${record.fills.join('", "')}", ` : ''}or has id "${record.id}", and none shares enough words with it`,
+          ...(likely
+            ? {
+                suggestion: {
+                  set: target.name,
+                  id: likely.id,
+                  ...targetExport(likely, target, record.appearance),
+                  confidence: /** @type {const} */ ('likely'),
+                },
+              }
+            : {}),
         });
         continue;
       }
