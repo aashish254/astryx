@@ -11,6 +11,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {requireCoreDir} from '../../foundation/fs/paths.mjs';
 import {Project} from '../../foundation/config/project.mjs';
 import {
   BUNDLED_THEME_PACKAGE,
@@ -792,4 +793,15 @@ export async function useThemeInApp(slug, options = {}) {
     state.defaultSlug !== recordedSlug,
     available,
   );
+}
+
+/**
+ * The Core theme targets are read from: the project's, else the release's
+ * own, installed into the per-user cache first when needed (a network install
+ * and an npm subprocess; spec AST-081 FR3). Throws as requireCoreDir does.
+ * @param {string} cwd
+ * @returns {string}
+ */
+export function requireThemeCoreDir(cwd) {
+  return requireCoreDir(cwd);
 }

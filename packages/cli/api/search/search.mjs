@@ -82,11 +82,8 @@
 
 import {withListingCache} from '../../foundation/fs/listing-cache.mjs';
 import {readDocView} from '../../foundation/doc-compiler/read.mjs';
-import {
-  discoverExternalPackages,
-  findCoreDir,
-  requireCoreDir,
-} from '../../foundation/fs/paths.mjs';
+import {discoverExternalPackages} from '../../foundation/fs/paths.mjs';
+import {findSearchCoreDir, requireSearchCoreDir} from './_adapter.mjs';
 import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {
   discoverComponents,
@@ -1945,7 +1942,7 @@ async function searchOnce(query, options) {
   // Asked for by name, a domain that reads Core fetches the carried Core
   // when it must; an open search answers from whatever Core is at hand.
   const coreDir =
-    type && needsCore ? coreDirOrThrow(requireCoreDir, cwd) : needsCore ? findCoreDir(cwd) : null;
+    type && needsCore ? coreDirOrThrow(requireSearchCoreDir, cwd) : needsCore ? findSearchCoreDir(cwd) : null;
 
   // Gather candidates from each requested domain in parallel.
   /** @param {string} d */
