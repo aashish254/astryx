@@ -49,6 +49,7 @@ deciding_specs:
     spec:AST-012/DEC-4,
     spec:AST-017/DEC-1,
     spec:AST-082/DEC-2,
+    spec:AST-082/DEC-5,
   ]
 ---
 
@@ -87,8 +88,9 @@ source configuration independently.
 - syntax tokens;
 - `onDark` / `onLight` surface overrides;
 - ordered environmental `adaptations` with a fixed named width map; and
-- an optional experimental `experimental.surfaces` section of surface-only
-  visual intent, keyed by native surface (`spec:AST-082`).
+- an optional experimental `experimental.native` section of native-only visual
+  intent: durable members plus platform entries scoped to OS version ranges
+  (`spec:AST-082`).
 
 `defineTheme` resolves that input into a flat `DefinedTheme`. An extended theme
 contains the resolved values it inherits, so its normalized representation is
@@ -104,7 +106,8 @@ Normalization follows one precedence order:
 6. inherited and explicit theme-local declarations, validated against the
    resolved token, component, and media surfaces; and
 7. inherited and explicit icon/indicator registry entries; and
-8. inherited and explicit experimental surface members, per surface.
+8. inherited and explicit experimental native members, then each platform's
+   scoped entries.
 
 Explicit values win within their surface. Component maps merge by component,
 style key, and CSS property rather than replacing the entire inherited target.
@@ -154,11 +157,13 @@ style key, and CSS property rather than replacing the entire inherited target.
   derive, or normalize input into a durable typed theme value used by a current
   supported consumer; validating and returning the exact input unchanged is
   insufficient.
-- **INV13 — Surface intent is carried, never compiled for the web.**
-  `experimental.surfaces` passes through normalization and extension surface by
-  surface and member by member, and appears unchanged in `DefinedTheme` and in a
-  built theme. It produces no web output. Its readers are native surface
-  implementations; `spec:AST-082` owns its vocabulary and experimental status.
+- **INV13 — Native intent is carried, never compiled for the web.**
+  `experimental.native` passes through normalization and extension: durable
+  members merge member by member, and a child's scoped entry list for a platform
+  replaces the base's list for that platform. It appears unchanged in
+  `DefinedTheme` and in a built theme and produces no web output. Its readers
+  are native platform implementations; `spec:AST-082` owns its vocabulary,
+  scoping, and experimental status.
 
 This record does not own:
 
@@ -183,8 +188,8 @@ public surface belongs to
   field or `define*` helper construct, and how do runtime and static build consume
   it?** No concrete answer keeps it out of Core runtime authoring. An admitted
   field's normalization, precedence, inheritance, validation, template exposure,
-  and negative tests change together. The experimental surfaces section answers
-  it with INV13: native surfaces read the normalized section, and runtime and
+  and negative tests change together. The experimental native section answers
+  it with INV13: native platforms read the normalized section, and runtime and
   static build carry it without compiling it.
 - Validation-only theme data stays in theme-package tests, internal test utilities,
   or an explicit CLI checker/doctor workflow used by a current supported consumer.
@@ -242,9 +247,9 @@ Its 2026-09-12 amendment makes key validity and ownership prefix-independent whi
 retaining exact owner metadata, lineage, collisions, cycles, and legacy unenrolled
 behavior. AST-012 decisions 1–4 establish the fixed width map, named closed conditions,
 ordered rule cascade, and source/built adaptation metadata parity. AST-017 decision 1
-owns released compatibility classification and migration. AST-082 decision 2
-admits surface-only visual intent as an experimental theme section, keyed by
-surface, that the web never reads.
+owns released compatibility classification and migration. AST-082 decisions 2 and 5
+admit native-only visual intent as an experimental theme section that the web
+never reads, with durable members and OS-version-scoped platform entries.
 
 ## Known conformance and verification gaps
 
