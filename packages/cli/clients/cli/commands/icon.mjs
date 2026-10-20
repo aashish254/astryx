@@ -85,6 +85,18 @@ const axesText = value => {
 /**
  * @param {import('commander').Command} program
  */
+
+/**
+ * The variant axes `icon add` takes, as numbers where they are numeric.
+ * @param {Record<string, unknown>} options
+ */
+function axisOptions(options) {
+  const appearance = /** @type {string | undefined} */ (options.appearance);
+  const size = options.size != null ? Number(options.size) : undefined;
+  const weight = options.weight != null ? Number(options.weight) : undefined;
+  return {appearance, size, weight};
+}
+
 export function registerIcon(program) {
   const iconCli = defineCommand(program, iconCommand, {
     fn: iconFn,
@@ -361,9 +373,7 @@ export function registerIcon(program) {
                 ? options.words.split(',')
                 : undefined,
             useDefault: options.default === true,
-            appearance: /** @type {string | undefined} */ (options.appearance),
-            size: options.size != null ? Number(options.size) : undefined,
-            weight: options.weight != null ? Number(options.weight) : undefined,
+            ...axisOptions(options),
             id: /** @type {string | undefined} */ (options.id),
           }),
         result => {

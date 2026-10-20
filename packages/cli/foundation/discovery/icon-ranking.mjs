@@ -92,7 +92,7 @@ const squash = value => value.toLowerCase().replace(/[\s_-]+/g, '');
  * @property {boolean} name the query is the id, or a word that is an id part
  * @property {boolean} meaning the query is one of the icon's tags (never
  *   both: a tag is a word that is not the id or one of its parts)
- * @property {number} order within-tier key, lower first: for a name match 0
+ * @property {number} rank within-tier key, lower first: for a name match 0
  *   (whole id) or 1 (an id part); for a meaning match the tag's position
  * @property {string} reason
  */
@@ -112,7 +112,7 @@ export function matchIcon(query, icon, definitions = []) {
       tier: 'definition',
       name: false,
       meaning: false,
-      order: 0,
+      rank: 0,
       reason: `definition "${definition}"`,
     };
   }
@@ -127,7 +127,7 @@ export function matchIcon(query, icon, definitions = []) {
       tier: 'exact',
       name: wholeId || partWord,
       meaning: !wholeId && !partWord,
-      order: wholeId ? 0 : partWord ? 1 : tagAt,
+      rank: wholeId ? 0 : partWord ? 1 : tagAt,
       reason: wholeId ? `id "${icon.id}"` : `word "${query}"`,
     };
   }
@@ -137,7 +137,7 @@ export function matchIcon(query, icon, definitions = []) {
       tier: 'prefix',
       name: false,
       meaning: false,
-      order: 0,
+      rank: 0,
       reason: `word "${prefix}" starts with "${query}"`,
     };
   }
@@ -147,7 +147,7 @@ export function matchIcon(query, icon, definitions = []) {
       tier: 'partial',
       name: false,
       meaning: false,
-      order: 0,
+      rank: 0,
       reason: `partial "${contains}"`,
     };
   }
@@ -162,7 +162,7 @@ export function matchIcon(query, icon, definitions = []) {
         tier: 'partial',
         name: false,
         meaning: false,
-        order: 0,
+        rank: 0,
         reason: `partial "${tokens.join(' ')}"`,
       };
     }
@@ -250,14 +250,14 @@ export function rankIcons(sets, query) {
       },
       // Within an exact score: a name match keeps whole id before id part,
       // a meaning match its tag position.
-      order: match.tier === 'exact' ? match.order : 0,
+      rank: match.tier === 'exact' ? match.rank : 0,
       setIndex,
     };
   });
   found.sort(
     (a, b) =>
       b.entry.score - a.entry.score ||
-      a.order - b.order ||
+      a.rank - b.rank ||
       a.setIndex - b.setIndex ||
       (a.entry.id < b.entry.id ? -1 : a.entry.id > b.entry.id ? 1 : 0),
   );

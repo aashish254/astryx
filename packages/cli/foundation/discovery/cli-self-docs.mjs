@@ -423,18 +423,15 @@ function iconDefinitionSection(doc) {
       'Yes: every icon set maps it, and Core renders it.',
     ]);
   }
-  return {
-    id: routeSegment(doc.name),
-    title: doc.name,
-    content: [
-      {type: 'prose', text: doc.description},
-      {type: 'table', headers: ['Field', 'Value'], rows},
-      {
-        type: 'prose',
-        text: `An icon set registers the icon that draws this definition in its data file: \`"map": {"${doc.name}": "<icon id>"}\`. Find it in each installed set: \`astryx icon ${doc.name}\`.`,
-      },
-    ],
-  };
+  const content = [
+    {type: 'prose', text: doc.description},
+    {type: 'table', headers: ['Field', 'Value'], rows},
+    {
+      type: 'prose',
+      text: `An icon set registers the icon that draws this definition in its data file: \`"map": {"${doc.name}": "<icon id>"}\`. Find it in each installed set: \`astryx icon ${doc.name}\`.`,
+    },
+  ];
+  return {id: routeSegment(doc.name), title: doc.name, content};
 }
 
 /**
