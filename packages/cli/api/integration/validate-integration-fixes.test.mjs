@@ -1131,6 +1131,57 @@ describe('source_without_component_doc fixes hold when followed', () => {
   });
 });
 
+describe('source_without_template_doc fixes hold when followed', () => {
+  it('adds the named doc, which resolves the warning', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({templates: './templates'}),
+      'templates/hero.tsx': componentSource('Hero'),
+      'templates/hero.test.tsx': componentSource('HeroTest'),
+    });
+
+    const message = only(await issuesOf(dir), 'source_without_template_doc');
+    expect(message).toBe(
+      "Template source \"hero.tsx\" has no same-stem metadata file hero.doc.mjs, so `astryx template` never lists it. Fix: add hero.doc.mjs beside it with type: 'page' or 'block'; `astryx docs authoring integration-template-doc` lists its fields. If it is not a template, move it out of the templates root.",
+    );
+
+    const fixed = follow(dir, {
+      write: {
+        'templates/hero.doc.mjs': `export default {type: 'page', name: 'hero', displayName: 'Hero'};\n`,
+      },
+    });
+    expect(await issuesOf(fixed)).toEqual([]);
+  });
+
+  it('names a nested source by its path under the templates root', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({templates: './templates'}),
+      'templates/blocks/Carousel.tsx': componentSource('Carousel'),
+    });
+
+    const message = only(await issuesOf(dir), 'source_without_template_doc');
+    expect(message).toContain(
+      'Template source "blocks/Carousel.tsx" has no same-stem metadata file Carousel.doc.mjs',
+    );
+
+    const fixed = follow(dir, {
+      write: {
+        'templates/blocks/Carousel.doc.mjs': `export default {type: 'block', name: 'Carousel', displayName: 'Carousel', aspectRatio: 1};\n`,
+      },
+    });
+    expect(await issuesOf(fixed)).toEqual([]);
+  });
+
+  it('accepts a released .template.mjs spec as the metadata', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({templates: './templates'}),
+      'templates/hero.tsx': componentSource('Hero'),
+      'templates/hero.template.mjs': `export default {type: 'page', name: 'hero', displayName: 'Hero'};\n`,
+    });
+
+    expect(await issuesOf(dir)).toEqual([]);
+  });
+});
+
 describe('codemod fixes hold when followed', () => {
   it('moves a stray codemod into a version folder, and renames a mis-named one', async () => {
     const dir = writePackage({
