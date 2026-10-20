@@ -33,12 +33,9 @@ for (const dir of ['ltr', 'rtl'] as const) {
     }, testInfo) => {
       await page.setViewportSize({width: 390, height: 900});
       await page.goto(
-        `${storybook.origin}/iframe.html?id=${story}&viewMode=story`,
+        `${storybook.origin}/iframe.html?id=${story}&viewMode=story&globals=direction:${dir}`,
       );
       await expect(page.locator('#storybook-root ol').first()).toBeVisible();
-      await page.evaluate(direction => {
-        document.documentElement.dir = direction;
-      }, dir);
       await page.evaluate(async () => document.fonts.ready);
       const lists = await page
         .locator('#storybook-root ol')
@@ -69,6 +66,7 @@ for (const dir of ['ltr', 'rtl'] as const) {
                     Number.parseFloat(getComputedStyle(marker).lineHeight) / 2 -
                     (labelRect.top + labelLine / 2);
               return {
+                direction: getComputedStyle(item).direction,
                 firstLineOffset,
                 textStart: rtl ? c.right : c.left,
                 markerHeight: m.height,
@@ -91,6 +89,7 @@ for (const dir of ['ltr', 'rtl'] as const) {
           1,
         );
         for (const item of items) {
+          expect(item.direction).toBe(dir);
           expect(item.markerHeight).toBeLessThanOrEqual(item.lineHeight + 1);
           expect(item.markerScrollWidth).toBeLessThanOrEqual(
             item.markerWidth + 1,
