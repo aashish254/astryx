@@ -1122,7 +1122,7 @@ describe.skipIf(!POSIX)(
       ).toMatchObject({package: '@acme/widgets'});
     });
 
-    it('G40 pnpm global folders: one shared folder before pnpm 11, a folder per package since', () => {
+    it('G40 pnpm global folders: one shared folder before pnpm 11, a folder per package since, with or without the global virtual store', () => {
       const pc = computer();
       // Before pnpm 11: the CLI's files are in `global/5/.pnpm`, and
       // `global/5/package.json` lists everything installed globally.
@@ -1199,6 +1199,53 @@ describe.skipIf(!POSIX)(
       );
       expect(docs11.data.map((/** @type {any} */ t) => t.topic)).toContain(
         'acme-pnpm11',
+      );
+
+      // pnpm 12: no global virtual store, so the CLI's files sit inside its
+      // own global folder, under `.pnpm`.
+      const pc3 = computer();
+      const g12 = path.join(
+        pc3.home,
+        '.local',
+        'share',
+        'pnpm',
+        'global',
+        'v11',
+      );
+      const own = path.join(g12, 'c3');
+      writeJson(path.join(own, 'package.json'), {
+        dependencies: {'@astryxdesign/cli': '9.0.0'},
+      });
+      const inner = placeCli(
+        path.join(
+          own,
+          'node_modules',
+          '.pnpm',
+          '@astryxdesign+cli@9.0.0',
+          'node_modules',
+          '@astryxdesign',
+          'cli',
+        ),
+        '9.0.0',
+      );
+      fs.mkdirSync(path.join(own, 'node_modules', '@astryxdesign'), {
+        recursive: true,
+      });
+      fs.symlinkSync(
+        inner.dir,
+        path.join(own, 'node_modules', '@astryxdesign', 'cli'),
+      );
+      const sibling = path.join(g12, 'd4');
+      writeJson(path.join(sibling, 'package.json'), {
+        dependencies: {'@acme/widgets': '1.0.0'},
+      });
+      acmeWidgets(sibling, {topic: 'acme-pnpm12'});
+      const docs12 = JSON.parse(
+        run(inner.bin, ['docs', '--json'], {cwd: tempDir('empty'), pc: pc3})
+          .stdout,
+      );
+      expect(docs12.data.map((/** @type {any} */ t) => t.topic)).toContain(
+        'acme-pnpm12',
       );
     });
 
