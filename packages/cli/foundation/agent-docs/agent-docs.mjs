@@ -1064,6 +1064,7 @@ const CREATED_HEADING =
  * The agent files whose writes and removals go through the protections
  * upgrade applies to consumer files (`spec:AST-040` FR2): a file the layout
  * adds or edits beside the ones a project commits as a matter of course.
+ * @type {ReadonlySet<string>}
  */
 const GUARDED_AGENT_DOCS = new Set([GEMINI_MD, CLAUDE_DIR_MD]);
 
