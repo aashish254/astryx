@@ -34,7 +34,7 @@ export const doc = {
       flag: '--type <kind>',
       param: 'options.type',
       description:
-        'Only one kind: component, template, doc, theme, codemod, or agent-doc. In the list, only packages that add it; in a search, only items of that kind.',
+        'Only one kind: component, template, doc, theme, codemod, agent-doc, or icon-set. In the list, only packages that add it; in a search, only items of that kind.',
     },
     {
       flag: '--installed',

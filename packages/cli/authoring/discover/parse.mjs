@@ -21,6 +21,7 @@ export const DISCOVER_KINDS = /** @type {const} */ ([
   'theme',
   'codemod',
   'agent-doc',
+  'icon-set',
 ]);
 
 const text = (/** @type {number} */ max) => z.string().min(1).max(max);
@@ -31,6 +32,8 @@ const contributionSchema = z.object({
   title: z.string().max(512).optional(),
   summary: z.string().max(4096).optional(),
   keywords: z.array(z.string().max(128)).max(64).optional(),
+  iconCount: z.number().int().min(0).optional(),
+  fills: z.array(z.string().max(128)).max(512).optional(),
 });
 
 const versionSchema = z.object({

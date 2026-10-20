@@ -13,19 +13,29 @@
 
 /** Kinds of item a package can add. */
 export type DiscoverKind =
-  'component' | 'template' | 'doc' | 'theme' | 'codemod' | 'agent-doc';
+  | 'component'
+  | 'template'
+  | 'doc'
+  | 'theme'
+  | 'codemod'
+  | 'agent-doc'
+  | 'icon-set';
 
 /** One item a package version adds. */
 export interface DiscoverContribution {
   kind: DiscoverKind;
   /**
    * The name the CLI uses for it: a component name, template id, doc topic,
-   * theme slug, or codemod id.
+   * theme slug, codemod id, or icon set name.
    */
   name: string;
   title?: string;
   summary?: string;
   keywords?: string[];
+  /** For an icon set: how many icons it has. */
+  iconCount?: number;
+  /** For an icon set: the shared icon names it fills. */
+  fills?: string[];
 }
 
 /** One published version of a package. */

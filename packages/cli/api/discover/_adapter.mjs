@@ -21,12 +21,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {Project} from '../../foundation/config/project.mjs';
-import {
-  scanAllPackages,
-  findComponentInPackages,
-} from './_package-scanner.mjs';
+import {scanAllPackages, findComponentInPackages} from './_package-scanner.mjs';
 import {loadDocs} from '../../foundation/discovery/component-loader.mjs';
 import {collectIdentities} from '../../foundation/integrations/contribution-inventory.mjs';
+import {discoverIntegrationIconSets} from '../../foundation/discovery/icon-set-discovery.mjs';
 import {detectPackageManager} from '../../foundation/env/package-manager.mjs';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
 import {parseDiscoverCatalog} from '../../authoring/discover/parse.mjs';
@@ -56,7 +54,21 @@ const DEPENDENCY_FIELDS = [
  *   docs?: string[],
  *   themes?: string[],
  *   codemods?: string[],
+ *   iconSets?: string[],
+ *   iconSetDetails?: IconSetSummary[],
  * }} InstalledPackage
+ */
+
+/**
+ * What discover shows about one installed icon set (spec:AST-084 FR16).
+ * @typedef {object} IconSetSummary
+ * @property {string} name
+ * @property {string} displayName
+ * @property {string} description
+ * @property {string} license
+ * @property {number} iconCount
+ * @property {{appearance?: string, size?: number, weight?: number}} [default]
+ * @property {string[]} fills
  */
 
 /**
@@ -98,8 +110,7 @@ function validateDocs(docs) {
     return 'docs.name is missing or not a string';
   if (!d.usage || typeof d.usage.description !== 'string')
     return 'docs.usage.description is missing or not a string';
-  if (d.props && !Array.isArray(d.props))
-    return 'docs.props must be an array';
+  if (d.props && !Array.isArray(d.props)) return 'docs.props must be an array';
   if (d.components && !Array.isArray(d.components))
     return 'docs.components must be an array';
   if (d.usage?.bestPractices && !Array.isArray(d.usage.bestPractices))
@@ -178,12 +189,29 @@ export async function describeInstalled(project, scanned) {
       ...integration,
       components: undefined,
     });
+    // Icon sets are listed the way every icon surface sees them: a set that
+    // is invalid or whose module does not resolve answers nothing (FR9).
+    const {sets} = discoverIntegrationIconSets(integration, {
+      projectDir: project.cwd,
+    });
     installed.push({
       ...base,
       templates: identities.templates.map(t => t.id),
       docs: identities.docs,
       themes: identities.themes.map(t => t.slug),
       codemods: identities.codemods.map(c => `${c.version}/${c.id}`),
+      iconSets: sets.map(set => set.name),
+      iconSetDetails: sets.map(set => ({
+        name: set.name,
+        displayName: set.displayName,
+        description: set.description,
+        license: set.license,
+        iconCount: set.data.icons.length,
+        ...(set.data.default ? {default: set.data.default} : {}),
+        fills: [
+          ...new Set(set.data.icons.flatMap(icon => icon.fills ?? [])),
+        ].sort(),
+      })),
     });
   }
   return installed;
@@ -371,7 +399,10 @@ export async function callSources(project, request = {}, options = {}) {
   }
   for (const integration of project.loadedIntegrations) {
     if (integration.__discoverError) {
-      origins.push({from: integration.name, error: integration.__discoverError});
+      origins.push({
+        from: integration.name,
+        error: integration.__discoverError,
+      });
     } else if (integration.__discover) {
       origins.push({from: integration.name, source: integration.__discover});
     }
@@ -382,7 +413,10 @@ export async function callSources(project, request = {}, options = {}) {
   /** @type {Set<string>} */
   const seen = new Set();
   const ask = request.package
-    ? {package: request.package, ...(request.version ? {version: request.version} : {})}
+    ? {
+        package: request.package,
+        ...(request.version ? {version: request.version} : {}),
+      }
     : {};
   for (const {from, source, error} of origins) {
     if (source == null) {
@@ -410,7 +444,12 @@ export async function callSources(project, request = {}, options = {}) {
       const message = err instanceof Error ? err.message : String(err);
       const saved = readSavedCopy(file, label);
       if (saved == null) {
-        result.sources.push({name: from, from, status: 'failed', error: message});
+        result.sources.push({
+          name: from,
+          from,
+          status: 'failed',
+          error: message,
+        });
         continue;
       }
       catalog = saved.catalog;
@@ -441,6 +480,7 @@ export const KIND_FIELDS = /** @type {const} */ ([
   ['theme', 'themes'],
   ['codemod', 'codemods'],
   ['agent-doc', 'agentDocs'],
+  ['icon-set', 'iconSets'],
 ]);
 
 /**
@@ -493,7 +533,10 @@ export async function loadValidatedDoc(result, {lang, zh}) {
   try {
     docs = await loadDocs(
       result.docPath,
-      /** @type {{zh?: boolean, dense?: boolean, lang?: string}} */ ({zh, lang}),
+      /** @type {{zh?: boolean, dense?: boolean, lang?: string}} */ ({
+        zh,
+        lang,
+      }),
     );
   } catch (e) {
     throw new AstryxError(

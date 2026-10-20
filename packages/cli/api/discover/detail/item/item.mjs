@@ -37,6 +37,29 @@ export function item(packages, packageName, itemName, options = {}) {
       if (kind === 'component') continue;
       const names = /** @type {Record<string, unknown>} */ (pkg)[field];
       if (Array.isArray(names) && names.includes(itemName)) {
+        const set =
+          kind === 'icon-set'
+            ? pkg.iconSetDetails?.find(entry => entry.name === itemName)
+            : undefined;
+        if (set) {
+          return {
+            type: 'discover.item',
+            data: {
+              package: packageName,
+              ...(pkg.version ? {version: pkg.version} : {}),
+              kind,
+              name: itemName,
+              title: set.displayName,
+              summary: set.description,
+              license: set.license,
+              iconCount: set.iconCount,
+              ...(set.default ? {default: set.default} : {}),
+              fills: set.fills,
+              command: `astryx icon <words> --set ${packageName}/${itemName}`,
+              installed: true,
+            },
+          };
+        }
         return {
           type: 'discover.item',
           data: {
@@ -67,6 +90,11 @@ export function item(packages, packageName, itemName, options = {}) {
       ...(found.title ? {title: found.title} : {}),
       ...(found.summary ? {summary: found.summary} : {}),
       ...(found.keywords ? {keywords: found.keywords} : {}),
+      ...(found.iconCount != null ? {iconCount: found.iconCount} : {}),
+      ...(found.fills ? {fills: found.fills} : {}),
+      ...(found.kind === 'icon-set' && pkg != null
+        ? {command: `astryx icon <words> --set ${packageName}/${found.name}`}
+        : {}),
       installed: pkg != null,
       ...(pkg == null && installedAs ? {installedAs} : {}),
       ...(pkg == null && !installedAs && add
