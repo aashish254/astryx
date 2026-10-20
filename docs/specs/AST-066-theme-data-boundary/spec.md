@@ -3,12 +3,12 @@ schema_version: 4
 template_version: 1
 kind: system-spec
 id: spec:AST-066
-authority: draft
+authority: current
 archive_reason: null
 superseded_by: null
-approved_by: null
-approved_at: null
-phase: proposed
+approved_by: cixzhang
+approved_at: 2026-10-20
+phase: accepted
 owners: [cixzhang]
 affects_architecture:
   [
@@ -534,7 +534,7 @@ this decision removes and make runtime/static ownership mode-dependent.
 ### DEC-9 — Prebuilt Core CSS defines the public data-variable entry
 
 **Reference:** `spec:AST-066/DEC-9`
-**Decider:** `cixzhang`, `<pending>`
+**Decider:** `cixzhang`, `2026-10-20`
 
 The prebuilt public `dataVars` entry contains CSS `var()` references with no
 surviving `defineVars()` call. A prebuilt-CSS consumer cannot retain defaults by
