@@ -1804,6 +1804,22 @@ describe.skipIf(!POSIX)(
         fs.existsSync(path.join(pc.home, '.agents', 'skills', 'astryx')),
       ).toBe(false);
     });
+
+    it('G54 a folder deeper than the nearby look in a project with its own CLI: that CLI answers, and no false hint', () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.5', {root: pc.home});
+      const dir = makeProject({core: '9.0.0', cli: '9.0.0'});
+      for (const rel of [
+        ['src', 'a', 'b', 'c', 'd', 'e'],
+        ['src', 'app', '(shop)', 'orders', '[id]', 'edit', 'deeper'],
+      ]) {
+        const deep = path.join(dir, ...rel);
+        fs.mkdirSync(deep, {recursive: true});
+        const r = run(g.bin, ['--version'], {cwd: deep, pc});
+        expect(r.stdout).toBe('9.0.0');
+        expect(r.lines).toEqual([handedTo('9.0.0')('9.0.5')]);
+      }
+    });
   },
 );
 
@@ -1812,6 +1828,6 @@ it('names every row of the table exactly once', () => {
   const rows = [
     ...text.matchAll(/^\s+it(?:\.skipIf\([^)]*\)\()?\(?\s*['"](G\d+) /gmu),
   ].map(m => m[1]);
-  expect(rows).toEqual(Array.from({length: 53}, (_, i) => `G${i + 1}`));
+  expect(rows).toEqual(Array.from({length: 54}, (_, i) => `G${i + 1}`));
   expect(os.EOL).toBeTypeOf('string');
 });
