@@ -40,19 +40,24 @@ describe('icon.search ranking', () => {
   const byId = (/** @type {string} */ id) =>
     /** @type {any} */ (icons.find(each => each.id === id));
 
-  it('scores each tier: fills, id, word, prefix, partial', () => {
+  it('scores each tier: fills, exact in the leading reading, exact in the other, prefix, partial', () => {
     expect(scoreIcon('close', byId('x'))).toEqual({
       score: 100,
       reason: 'fills "close"',
     });
-    expect(scoreIcon('trash', byId('trash'))).toEqual({
+    expect(scoreIcon('trash', byId('trash'), 'name')).toEqual({
       score: 90,
       reason: 'id "trash"',
     });
-    expect(scoreIcon('delete', byId('trash'))).toEqual({
+    expect(scoreIcon('trash', byId('trash'), 'meaning')).toEqual({
       score: 80,
+      reason: 'id "trash"',
+    });
+    expect(scoreIcon('delete', byId('trash'))).toEqual({
+      score: 90,
       reason: 'word "delete"',
     });
+    expect(scoreIcon('delete', byId('trash'), 'name')?.score).toBe(80);
     expect(scoreIcon('garb', byId('trash'))?.score).toBe(60);
     expect(scoreIcon('arbag', byId('trash'))?.score).toBe(40);
     expect(scoreIcon('ma', byId('search'))?.score).toBe(60);
@@ -98,7 +103,7 @@ describe('icon.search ranking', () => {
         {appearance: 'solid', module: '@acme/glyphs', export: 'TrashSolidIcon'},
       ],
       reason: 'word "delete"',
-      score: 80,
+      score: 90,
     });
   });
 
@@ -134,6 +139,89 @@ describe('icon.search ranking', () => {
   it('a project with no icon set answers an empty list', async () => {
     fs.rmSync(path.join(cwd, 'node_modules'), {recursive: true});
     expect((await search('close')).matches).toEqual([]);
+  });
+});
+
+describe('icon.search: an exact query reads as a name or a meaning', () => {
+  /**
+   * @param {Array<[string, string[]]>} icons id and words
+   * @returns {any}
+   */
+  const set = icons => ({
+    name: 'lines',
+    package: '@acme/lines',
+    data: {
+      module: '@acme/lines',
+      icons: icons.map(([id, words]) => ({
+        id,
+        export: `${id.replace(/(^|-)(\w)/g, (_, _s, c) => c.toUpperCase())}Icon`,
+        words,
+      })),
+    },
+  });
+  /** @param {any} s @param {string} q */
+  const ranked = (s, q) =>
+    rankIcons([s], q).map(m => [m.id, m.score, m.reason]);
+
+  it('meaning wins: `delete` finds trash before the icon that draws the Delete key', () => {
+    // The shape of a large outline library's data: an icon's own id words
+    // come first, then its tags.
+    const lines = set([
+      ['delete', ['delete', 'backspace', 'key']],
+      ['trash', ['trash', 'delete', 'remove', 'bin']],
+    ]);
+    expect(ranked(lines, 'delete')).toEqual([
+      ['trash', 90, 'word "delete"'],
+      ['delete', 80, 'id "delete"'],
+    ]);
+  });
+
+  it('a word many icons are named for stays a name: `user` keeps the user icon ahead of one only tagged user', () => {
+    const lines = set([
+      ['contact', ['contact', 'user', 'person']],
+      ['user', ['user', 'person', 'account']],
+      ['user-plus', ['user', 'plus', 'add']],
+    ]);
+    expect(ranked(lines, 'user')).toEqual([
+      ['user', 90, 'id "user"'],
+      ['user-plus', 90, 'word "user"'],
+      ['contact', 80, 'word "user"'],
+    ]);
+  });
+
+  it('within the leading reading the tag listed earlier wins, and a tie in counts lets meaning lead', () => {
+    const lines = set([
+      ['eraser', ['eraser', 'rubber', 'clear', 'delete']],
+      ['trash', ['trash', 'delete', 'remove', 'bin']],
+      ['delete', ['delete', 'backspace', 'key']],
+      ['x', ['x', 'close', 'delete']],
+    ]);
+    expect(ranked(lines, 'delete').map(([id, score]) => [id, score])).toEqual([
+      ['trash', 90],
+      ['x', 90],
+      ['eraser', 90],
+      ['delete', 80],
+    ]);
+    const both = set([
+      ['bin', ['bin', 'trash']],
+      ['trash', ['trash', 'bin']],
+    ]);
+    // 1 name (trash) and 1 meaning (bin, tagged trash): meaning leads.
+    expect(ranked(both, 'trash').map(([id, score]) => [id, score])).toEqual([
+      ['bin', 90],
+      ['trash', 80],
+    ]);
+  });
+
+  it('a shared IconName still comes first', () => {
+    const lines = set([['trash', ['trash', 'delete']]]);
+    lines.data.icons.push({
+      id: 'x',
+      export: 'XIcon',
+      words: ['x', 'close'],
+      fills: ['close'],
+    });
+    expect(ranked(lines, 'close')[0]).toEqual(['x', 100, 'fills "close"']);
   });
 });
 
