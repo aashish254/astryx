@@ -168,7 +168,7 @@ export const butterTheme = defineTheme({
     '--color-on-info-muted': ['#203a6c', '#FDEE8C'],
     '--color-on-success-muted': ['#004800', '#99d94b'],
     '--color-on-warning-muted': ['#413e00', '#f7be00'],
-    '--color-on-error-muted': ['#6d211c', '#ffb4a6'],
+    '--color-on-error-muted': ['#6d211c', '#ffc7bc'],
 
     // Icon
     '--color-icon-accent': ['#225BFF', '#FDEE8C'],

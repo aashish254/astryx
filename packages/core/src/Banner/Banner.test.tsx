@@ -142,25 +142,6 @@ describe('Banner', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps built-in controls on the status surface content color', () => {
-    render(
-      <Banner status="warning" title="Warning" isDismissable>
-        Details
-      </Banner>,
-    );
-
-    const titleClasses = new Set(
-      screen.getByText('Warning').className.split(' '),
-    );
-    for (const button of screen.getAllByRole('button')) {
-      expect(
-        button.className
-          .split(' ')
-          .some(className => titleClasses.has(className)),
-      ).toBe(true);
-    }
-  });
-
   it('calls onDismiss when dismiss button is clicked', async () => {
     const user = userEvent.setup();
     const onDismiss = vi.fn();

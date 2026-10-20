@@ -11,6 +11,6 @@
 '@astryxdesign/theme-y2k': patch
 ---
 
-[feature] Add a complete public semantic status-color model: `info` tokens for informational fills, `on-*-muted` pairs for pale surfaces, and `status-foreground-*` roles for text, icons, and boundaries on plain surfaces. Core status components now select the appropriate role from their surface, and every first-party theme provides matching values.
+[feature] Status colors previously reused `--color-accent` and `--color-info/success/warning/error` across strong fills, plain-surface text/icons/borders, and pale surfaces. These jobs now have separate public roles: strong fills use the base semantic colors with `--color-on-*`, pale surfaces use `--color-*-muted` with `--color-on-*-muted`, and plain surfaces use `--color-status-foreground-*`. Custom themes can preserve their previous appearance by assigning the old values to the corresponding new roles; Banner overrides that previously set `--color-accent-muted` or `--color-text-*` should set the matching muted/on-muted roles instead.
 
 @rubyycheung

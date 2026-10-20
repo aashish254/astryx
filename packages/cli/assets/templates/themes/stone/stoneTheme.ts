@@ -190,9 +190,9 @@ export const stoneTheme = defineTheme({
     '--color-status-foreground-warning': ['#524622', '#f4e1b7'],
     '--color-status-foreground-error': ['#58413e', '#f9dcd7'],
     '--color-on-info-muted': ['#3c4856', '#d7e4f5'],
-    '--color-on-success-muted': ['#374c36', '#d0e9ce'],
-    '--color-on-warning-muted': ['#524622', '#f4e1b7'],
-    '--color-on-error-muted': ['#58413e', '#f9dcd7'],
+    '--color-on-success-muted': 'var(--color-text-green)',
+    '--color-on-warning-muted': 'var(--color-text-yellow)',
+    '--color-on-error-muted': 'var(--color-text-red)',
 
     // Icon — H=291
     '--color-icon-accent': ['#25252a', '#f3f3f5'], // light: Stone Neutral T15
@@ -205,13 +205,14 @@ export const stoneTheme = defineTheme({
     '--color-background-popover': ['#ffffff', '#25252a'], // dark: Stone Neutral T15
     '--color-background-inverted': ['#25252a', '#f3f3f5'], // light: Stone Neutral T15
 
-    // Status / Sentiment — T50 from palette for icons/borders (visible color)
+    // Status / Sentiment — strong fills use T30/T80. Muted surfaces reuse
+    // the categorical T90/T35 background and T30/T90 text pairs below.
     '--color-success': ['#374c36', '#b4cdb2'], // Green T30 / T80
-    '--color-success-muted': ['#d0e9ce', '#b4cdb2'], // Green T90 / T80
+    '--color-success-muted': 'var(--color-background-green)',
     '--color-error': ['#58413e', '#dcc0bc'], // Red T30 / T80
-    '--color-error-muted': ['#f9dcd7', '#dcc0bc'], // Red T90 / T80
+    '--color-error-muted': 'var(--color-background-red)',
     '--color-warning': ['#524622', '#d7c59c'], // Yellow T30 / T80
-    '--color-warning-muted': ['#f4e1b7', '#d7c59c'], // Yellow T90 / T80
+    '--color-warning-muted': 'var(--color-background-yellow)',
 
     // Border — H=291
     '--color-border': ['#e2e2e8', '#f3f3f51a'], // light: Stone Neutral T90 / dark: T96 · 10%

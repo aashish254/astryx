@@ -707,7 +707,6 @@ export function Banner({
                   />
                 }
                 onClick={handleToggleExpand}
-                xstyle={styles.statusForeground}
                 aria-expanded={isExpanded}
                 aria-controls={showContent ? contentId : undefined}
                 isIconOnly
@@ -721,7 +720,6 @@ export function Banner({
                 tooltip={dismissTooltip}
                 icon={<Icon icon="close" size="sm" color="inherit" />}
                 onClick={handleDismiss}
-                xstyle={styles.statusForeground}
                 isIconOnly
               />
             )}

@@ -99,7 +99,7 @@ describe('neutral theme palette mappings', () => {
         neutralPalettes.red.dark[65],
       ),
       '--color-status-foreground-info': lightDark(
-        neutralPalettes.blue.light[50],
+        neutralPalettes.blue.light[45],
         neutralPalettes.blue.dark[80],
       ),
       '--color-status-foreground-success': lightDark(
@@ -111,7 +111,7 @@ describe('neutral theme palette mappings', () => {
         neutralPalettes.yellow.light[80],
       ),
       '--color-status-foreground-error': lightDark(
-        neutralPalettes.red.light[50],
+        neutralPalettes.red.light[45],
         neutralPalettes.red.dark[80],
       ),
       '--color-on-info-muted': lightDark(
@@ -332,7 +332,7 @@ describe('neutral semantic status roles', () => {
   it('keeps public plain-surface and on-muted roles on reviewed palette stops', () => {
     expect(neutralTheme.tokens).toMatchObject({
       '--color-status-foreground-info': lightDark(
-        neutralPalettes.blue.light[50],
+        neutralPalettes.blue.light[45],
         neutralPalettes.blue.dark[80],
       ),
       '--color-status-foreground-success': lightDark(
@@ -344,7 +344,7 @@ describe('neutral semantic status roles', () => {
         neutralPalettes.yellow.light[80],
       ),
       '--color-status-foreground-error': lightDark(
-        neutralPalettes.red.light[50],
+        neutralPalettes.red.light[45],
         neutralPalettes.red.dark[80],
       ),
       '--color-on-info-muted': lightDark(
@@ -392,11 +392,9 @@ describe('neutral semantic status roles', () => {
     expect(neutralTheme.components).not.toHaveProperty('status-dot');
     expect(neutralTheme.components).not.toHaveProperty('avatar-status-dot');
     expect(neutralTheme.components).not.toHaveProperty('step-indicator');
-    expect(
-      neutralTheme.components?.['progress-bar']?.['variant:warning'],
-    ).toEqual({
-      backgroundColor: neutralPalettes.yellow.light[85],
-    });
+    expect(neutralTheme.components?.['progress-bar']).not.toHaveProperty(
+      'variant:warning',
+    );
     expect(neutralTheme.components?.['progress-bar']).not.toHaveProperty(
       'variant:success',
     );
@@ -439,13 +437,13 @@ describe('neutral semantic status roles', () => {
     });
   });
 
-  it('keeps plain-surface status roles at their required contrast in light mode', () => {
-    const surface = neutralPalettes.neutral.light[100];
+  it('keeps plain-surface status roles at their required contrast on the page background in light mode', () => {
+    const surface = neutralPalettes.neutral.light[95];
     for (const foreground of [
-      neutralPalettes.blue.light[50],
+      neutralPalettes.blue.light[45],
       neutralPalettes.green.light[45],
       neutralPalettes.yellow.light[45],
-      neutralPalettes.red.light[50],
+      neutralPalettes.red.light[45],
     ]) {
       expect(contrastRatio(foreground, surface)).toBeGreaterThanOrEqual(4.5);
     }

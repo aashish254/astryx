@@ -166,10 +166,10 @@ export const neutralTheme = defineTheme({
     '--color-info-muted': [blue.light[85], withAlpha(blue.dark[75], '3D')],
     '--color-on-info': [neutral.light[100], neutral.dark[5]],
 
-    '--color-status-foreground-info': [blue.light[50], blue.dark[80]],
+    '--color-status-foreground-info': [blue.light[45], blue.dark[80]],
     '--color-status-foreground-success': [green.light[45], green.light[75]],
     '--color-status-foreground-warning': [yellow.light[45], yellow.light[80]],
-    '--color-status-foreground-error': [red.light[50], red.dark[80]],
+    '--color-status-foreground-error': [red.light[45], red.dark[80]],
 
     '--color-on-info-muted': [blue.light[25], blue.dark[80]],
     '--color-on-success-muted': [green.light[25], green.light[75]],
@@ -411,9 +411,6 @@ export const neutralTheme = defineTheme({
     'progress-bar': {
       base: {
         '--color-background-muted': 'var(--color-border-emphasized)',
-      },
-      'variant:warning': {
-        backgroundColor: yellow.light[85],
       },
     },
 

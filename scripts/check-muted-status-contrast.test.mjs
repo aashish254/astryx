@@ -4,12 +4,13 @@
  * @file Pale semantic surface contrast guard.
  *
  * Banner, FieldStatus, and ChatComposer pair each `--color-*-muted` surface
- * with its matching `--color-on-*-muted` content role. This resolves those
- * Core pairings through every first-party theme, including Banner-local token
- * overrides, and requires normal-size text contrast in both colour schemes.
+ * with its matching `--color-on-*-muted` content role. This resolves the global
+ * pairs used by FieldStatus and ChatComposer separately from the effective
+ * Banner pairs after Banner-local token overrides, and requires normal-size
+ * text contrast in both colour schemes.
  *
  * @input The seven first-party theme objects and their Banner overrides.
- * @output Fails when a pale semantic surface/content pair drops below 4.5:1.
+ * @output Fails when a global or Banner pale semantic pair drops below 4.5:1.
  * @position Repo-level guard, sibling of the other scripts/check-*.
  */
 
@@ -127,53 +128,53 @@ function surfaceOf(theme, modeIndex) {
     : {r: 0, g: 0, b: 0, a: 1};
 }
 
+function measurePair(themeName, theme, scope, variant, modeIndex) {
+  const bgHex = resolve(`var(--color-${variant}-muted)`, theme, modeIndex);
+  const fgHex = resolve(`var(--color-on-${variant}-muted)`, theme, modeIndex);
+  if (!bgHex || !fgHex) {
+    return {
+      theme: themeName,
+      scope,
+      mode: MODES[modeIndex],
+      variant,
+      fg: fgHex,
+      bg: bgHex,
+      ratio: null,
+    };
+  }
+
+  const surface = surfaceOf(theme, modeIndex);
+  const bg = flatten(parseHex(bgHex), surface);
+  const fg = flatten(parseHex(fgHex), bg);
+  return {
+    theme: themeName,
+    scope,
+    mode: MODES[modeIndex],
+    variant,
+    fg: fgHex,
+    bg: bgHex,
+    ratio: contrast(fg, bg),
+  };
+}
+
 function mutedPairs() {
   const rows = [];
   for (const [themeName, theme] of Object.entries(THEMES)) {
     for (const variant of VARIANTS) {
       const override = theme.components?.banner?.[`status:${variant}`] ?? {};
-      const tokens = {
+      const bannerTokens = {
         ...theme.tokens,
         ...Object.fromEntries(
           Object.entries(override).filter(([key]) => key.startsWith('--')),
         ),
       };
-      const effectiveTheme = {...theme, tokens};
+      const bannerTheme = {...theme, tokens: bannerTokens};
 
       for (let modeIndex = 0; modeIndex < MODES.length; modeIndex++) {
-        const bgHex = resolve(
-          `var(--color-${variant}-muted)`,
-          effectiveTheme,
-          modeIndex,
+        rows.push(
+          measurePair(themeName, theme, 'global', variant, modeIndex),
+          measurePair(themeName, bannerTheme, 'banner', variant, modeIndex),
         );
-        const fgHex = resolve(
-          `var(--color-on-${variant}-muted)`,
-          effectiveTheme,
-          modeIndex,
-        );
-        if (!bgHex || !fgHex) {
-          rows.push({
-            theme: themeName,
-            mode: MODES[modeIndex],
-            variant,
-            fg: fgHex,
-            bg: bgHex,
-            ratio: null,
-          });
-          continue;
-        }
-
-        const surface = surfaceOf(effectiveTheme, modeIndex);
-        const bg = flatten(parseHex(bgHex), surface);
-        const fg = flatten(parseHex(fgHex), bg);
-        rows.push({
-          theme: themeName,
-          mode: MODES[modeIndex],
-          variant,
-          fg: fgHex,
-          bg: bgHex,
-          ratio: contrast(fg, bg),
-        });
       }
     }
   }
@@ -182,12 +183,15 @@ function mutedPairs() {
 
 describe('pale semantic surface content contrast', () => {
   const rows = mutedPairs();
-  const label = row => `${row.theme}/${row.mode} status:${row.variant}`;
+  const label = row =>
+    `${row.theme}/${row.mode}/${row.scope} status:${row.variant}`;
 
-  it('resolves all four pairs in every first-party theme and mode', () => {
+  it('resolves global and Banner pairs in every first-party theme and mode', () => {
     const missing = rows.filter(row => row.ratio == null).map(label);
     expect(missing).toEqual([]);
-    expect(rows).toHaveLength(Object.keys(THEMES).length * MODES.length * 4);
+    expect(rows).toHaveLength(
+      Object.keys(THEMES).length * MODES.length * VARIANTS.length * 2,
+    );
   });
 
   it('keeps every pair at normal-text AA without an allowlist', () => {
