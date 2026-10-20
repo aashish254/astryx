@@ -26,7 +26,7 @@ import {
   assertAgentDocsTarget,
   installAgentDocs,
   renderAgentDocsBlock,
-  resolveAgentDocsRoot,
+  agentDocsTargetDir,
 } from '../../../foundation/agent-docs/agent-docs.mjs';
 import {themeTemplate} from '../../theme/template/template.mjs';
 import {listTemplates} from '../../template/template.mjs';
@@ -99,7 +99,7 @@ async function applyAgents(cwd, options, invocation, data) {
     // The docs belong at the project root, not in the subfolder init ran in;
     // with no project above, they go where init ran, as before. Explicit
     // --agent-docs-path entries stay relative to where init ran.
-    const root = resolveAgentDocsRoot(cwd) ?? cwd;
+    const root = agentDocsTargetDir(cwd);
     const targetDir = paths ? cwd : root;
     assertAgentDocsTarget(targetDir);
     const renderedBlock = await renderAgentDocsBlock(root);

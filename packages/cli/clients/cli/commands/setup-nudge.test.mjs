@@ -161,6 +161,27 @@ describe('enforcement layer 3 — per-command setup nudge', () => {
     expect(r.stderr).toMatch(NUDGE);
   });
 
+  // Inside a git repository the project-root check above adds nothing to the
+  // walk up to the repository root: the same outcomes as without it.
+  it('inside a repository, is quiet in a nested package once init has written the docs at the project root', async () => {
+    fs.mkdirSync(path.join(tmp, '.git'));
+    write('package.json', JSON.stringify({name: 'app', dependencies: {'@astryxdesign/core': '0.7.0'}}));
+    write('AGENTS.md', MARKER);
+    write('functions/package.json', '{"name":"functions"}');
+    const r = await runCli(['docs', 'tokens'], path.join(tmp, 'functions'));
+    expect(r.stderr).not.toMatch(NUDGE);
+  });
+
+  it('inside a repository, still nudges when the only docs lie above the repository root', async () => {
+    write('package.json', JSON.stringify({name: 'outer', dependencies: {'@astryxdesign/core': '0.7.0'}}));
+    write('AGENTS.md', MARKER);
+    fs.mkdirSync(path.join(tmp, 'repo', '.git'), {recursive: true});
+    write('repo/package.json', '{"name":"repo"}');
+    write('repo/functions/package.json', '{"name":"functions"}');
+    const r = await runCli(['docs', 'tokens'], path.join(tmp, 'repo', 'functions'));
+    expect(r.stderr).toMatch(NUDGE);
+  });
+
   it('does not nudge for the installer command itself', async () => {
     asProject();
     expect((await runCli(['init'], tmp)).stderr).not.toMatch(NUDGE);

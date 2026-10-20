@@ -480,6 +480,17 @@ export function resolveAgentDocsRoot(cwd) {
 }
 
 /**
+ * The folder `init` run in `cwd` writes the agent docs to: the project root
+ * {@link resolveAgentDocsRoot} finds, else `cwd` itself. The one definition
+ * that init, its removal, and the per-command setup nudge all use.
+ * @param {string} cwd
+ * @returns {string}
+ */
+export function agentDocsTargetDir(cwd) {
+  return resolveAgentDocsRoot(cwd) ?? cwd;
+}
+
+/**
  * Agent tool presets — maps tool names to their file search paths.
  * Order matters: first existing file wins, last entry is the default (created if none exist).
  */
@@ -1146,7 +1157,7 @@ export function removeAgentDocs(targetDir, {shownFrom = targetDir} = {}) {
  *   resolves outside its folder; nothing is changed.
  */
 export function removeProjectAgentDocs(cwd) {
-  const root = resolveAgentDocsRoot(cwd) ?? cwd;
+  const root = agentDocsTargetDir(cwd);
   const dirs = realDir(root) === realDir(cwd) ? [cwd] : [root, cwd];
   for (const dir of dirs) assertRemovableWithin(dir);
   return dirs.flatMap(dir =>

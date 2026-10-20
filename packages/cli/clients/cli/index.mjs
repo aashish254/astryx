@@ -27,9 +27,9 @@ import {installJsonShim} from './lib/json-shim.mjs';
 import {addDocHelp, markReportsResult} from './lib/define-command.mjs';
 import {doc as manifestDoc} from './commands/manifest.doc.mjs';
 import {
+  agentDocsTargetDir,
   isAstryxInitialized,
   isAstryxPromptInReach,
-  resolveAgentDocsRoot,
 } from '../../foundation/agent-docs/agent-docs.mjs';
 import {CLI_ROOT} from '../../foundation/fs/paths.mjs';
 import * as debug from '../../foundation/debug/index.mjs';
@@ -578,12 +578,12 @@ export async function createProgram() {
       if (INTEGRATION_MANIFEST_FILES.some(file => fs.existsSync(path.join(cwd, file)))) return;
       if (inOwnSourceCheckout(cwd)) return; // developing Astryx itself, not an app
       if (isAstryxPromptInReach(cwd)) return; // already set up — stay quiet
-      // Init writes the docs at the project root, which can sit above a
-      // nested package such as functions/. Inside a git repository the walk
-      // above already reaches it; outside one it checks only cwd, so look
-      // there too.
-      const docsRoot = resolveAgentDocsRoot(cwd);
-      if (docsRoot && isAstryxInitialized(docsRoot)) return;
+      // Where init writes the docs, by init's own rule: the project root, which
+      // can sit above a nested package such as functions/. Inside a git
+      // repository the walk above already reaches it (the root never lies
+      // above the repository root), so this changes nothing there; outside a
+      // repository the walk checks only cwd, and this finds the root.
+      if (isAstryxInitialized(agentDocsTargetDir(cwd))) return;
       // Same wording as the core/cli postinstall nudges. #4151's getCliInvocation()
       // renders the correct form for THIS project — scoped `npx @astryxdesign/cli`
       // one-off, or `<pm> astryx` when installed — never the bare `npx astryx` footgun.
