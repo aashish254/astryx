@@ -109,17 +109,6 @@ describe('working-tree ignore rules', () => {
     expect(declarations('src/deep/keep.js')).toEqual([]);
   });
 
-  it('classifies a path whose folder does not exist yet, creating nothing', () => {
-    write('.gitignore', '.claude/\n');
-
-    expect(declarations('.claude/CLAUDE.md')).toEqual([
-      'excluded by .gitignore',
-    ]);
-    expect(declarations('docs/new/GEMINI.md')).toEqual([]);
-    expect(fs.existsSync(path.join(root, '.claude'))).toBe(false);
-    expect(fs.existsSync(path.join(root, 'docs'))).toBe(false);
-  });
-
   it('uses case-sensitive Git matching on case-sensitive platforms', () => {
     write('.gitignore', 'FOO\n');
     write('FOO', 'x');

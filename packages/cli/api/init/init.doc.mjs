@@ -27,10 +27,8 @@ export const doc = {
     'In the home folder, or in a settings folder in it outside a project, it writes none: every ' +
     'folder of the home folder whose name starts with a dot is a settings folder, and such a folder itself never ' +
     'counts as a project, even with a package.json; a folder below it with a package.json does. ' +
-    'An existing CLAUDE.md, .claude/CLAUDE.md, or GEMINI.md is left as it is, and reported in ' +
-    '`docsError`, when the project ignores it, it is marked generated or vendored, or it is reached ' +
-    "through a link (spec:AST-040); one that holds only init's own output is refreshed. A missing " +
-    'file is created as above. It then ' +
+    'The managed block is Astryx-owned: it is written, refreshed, and removed whatever ignore rules ' +
+    'or generated markers say, and the text around it is never changed. It then ' +
     "prints getting-started guidance; `features` / `all` print only the chosen features' " +
     'guidance instead (the theme feature also writes the annotated theme template). ' +
     'With `removeAgents` it removes the managed agent-docs block, at the project root and ' +

@@ -120,14 +120,14 @@ async function applyAgents(cwd, options, invocation, data) {
           );
     data.docsWritten = written;
     logger.log(`[ok] AI agent docs installed -> ${written.join(', ')}`);
-    // A file left as it is (protected, or a GEMINI.md that resolves outside
-    // the project) is reported in docsError with one note; the exit code
-    // stays 0. Only a refusal 0.7.1 made too, a path that escapes the
-    // project, fails the run (below).
+    // A file only this layout writes (GEMINI.md) that resolves outside the
+    // project is left as it is, reported in docsError with one note; the
+    // exit code stays 0. A file 0.7.1 wrote whose path escapes the project
+    // still fails the run (below).
     if (skipped.length > 0) {
       const message =
         `Left as ${skipped.length === 1 ? 'it is' : 'they are'}: ${skipped.join('; ')}. ` +
-        'To have init write the Astryx block there, remove the protection, or copy the block from AGENTS.md by hand.';
+        'To have init write the Astryx block there, make it a regular file inside the project, or copy the block from AGENTS.md by hand.';
       logger.warn(`Note: ${message}`);
       data.docsError = {kind: 'install-failed', message};
     }

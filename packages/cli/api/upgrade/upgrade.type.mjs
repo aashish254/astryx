@@ -48,7 +48,6 @@
  * @property {string[]} files Files rewritten (apply) or that would be rewritten (dry-run).
  * @property {boolean} refreshed True only when a block was actually rewritten (apply mode).
  * @property {'refreshed' | 'would-refresh' | 'nudge-init' | 'error' | 'none'} action
- * @property {Array<{file: string, reason: string}>} [protectedFiles] Stale agent docs left as they are because a protection covers them (generated, vendored, ignored, a symbolic link, or outside the project); present only when there are any. They are not in `files`, and `refreshed` never counts them.
  */
 
 /**

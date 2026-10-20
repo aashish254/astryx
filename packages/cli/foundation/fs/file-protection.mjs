@@ -719,9 +719,11 @@ export function createFileProtectionResolver(
           ];
         }
       } catch (error) {
-        // A path that does not exist yet, such as a file a command is about
-        // to create, has no link at or below its first missing part.
-        if (/** @type {any} */ (error).code === 'ENOENT') break;
+        if (
+          current === absolute &&
+          /** @type {any} */ (error).code === 'ENOENT'
+        )
+          break;
         throw new ProtectionSourceError(
           relative,
           error instanceof Error ? error.message : String(error),

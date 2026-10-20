@@ -30,9 +30,8 @@ import {
 } from '../../assets/codemods/integration-discovery.mjs';
 import {runIntegrationCodemods} from '../../assets/codemods/integration-runner.mjs';
 import {
-  inspectAgentDocs,
   installAgentDocs,
-  protectedAgentDocs,
+  inspectAgentDocs,
   renderAgentDocsBlock,
 } from '../../foundation/agent-docs/agent-docs.mjs';
 import {
@@ -338,16 +337,9 @@ export async function prepareAgentDocsRefresh({
   const inspection = inspectAgentDocs(cwd, installedVersion, renderedBlock);
   summary.status = inspection.status;
   summary.fromVersions = inspection.blockVersions;
-  // A stale file a protection covers is left as it is and reported apart
-  // (spec:AST-040 FR2, FR7), in a dry run as in an applied one.
-  const protectedFiles = protectedAgentDocs(cwd, inspection.staleFiles);
-  const left = new Set(protectedFiles.map(item => item.file));
-  summary.files = inspection.staleFiles.filter(file => !left.has(file));
-  if (protectedFiles.length > 0) summary.protectedFiles = protectedFiles;
+  summary.files = inspection.staleFiles;
   if (inspection.status === 'current') return {cwd, renderedBlock, summary};
 
-  if (protectedFiles.length > 0) logProtectedAgentDocs(protectedFiles);
-  if (summary.files.length === 0) return {cwd, renderedBlock, summary};
   summary.action = 'would-refresh';
   if (!apply) {
     logger.warn(
@@ -355,20 +347,6 @@ export async function prepareAgentDocsRefresh({
     );
   }
   return {cwd, renderedBlock, summary};
-}
-
-/**
- * Say which stale agent docs stay as they are, and why.
- * @param {Array<{file: string, reason: string}>} protectedFiles
- */
-function logProtectedAgentDocs(protectedFiles) {
-  logger.warn(
-    `Note: agent docs left as they are: ${protectedFiles
-      .map(item => `${item.file} (${item.reason})`)
-      .join(
-        '; ',
-      )}. Remove the protection, or copy the block from AGENTS.md by hand.`,
-  );
 }
 
 /**
@@ -382,22 +360,13 @@ export function applyAgentDocsRefresh(plan) {
     return summary;
 
   try {
-    /** @type {Array<{file: string, reason: string}>} */
-    const skipped = [];
     const written = installAgentDocs(cwd, {
       onlyReplace: true,
       renderedBlock,
-      onSkipped: (file, reason) => skipped.push({file, reason}),
+      // A GEMINI.md that resolves outside the project is left as it is.
+      onSkipped: (file, reason) =>
+        logger.warn(`Note: ${file} left as it is (${reason}).`),
     });
-    // A file left as it is is never counted as refreshed.
-    const known = new Set(
-      (summary.protectedFiles ?? []).map(item => item.file),
-    );
-    const newly = skipped.filter(item => !known.has(item.file));
-    if (newly.length > 0) {
-      summary.protectedFiles = [...(summary.protectedFiles ?? []), ...newly];
-      logProtectedAgentDocs(newly);
-    }
     summary.refreshed = written.length > 0;
     summary.files = written;
     summary.action = summary.refreshed ? 'refreshed' : 'error';
