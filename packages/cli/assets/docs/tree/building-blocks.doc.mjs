@@ -34,6 +34,7 @@ export const docs = {
         'One component, or a whole library of them.',
         'Components together with themes and templates.',
         'Only docs, if that is all you need.',
+        'An icon set, so apps find your icons by meaning and templates use them.',
         'Agent guidance, so the AI agents in an app follow your library.',
         'Codemods that update app code across your breaking changes.',
       ],

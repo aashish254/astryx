@@ -498,7 +498,7 @@ icons it uses.
 ### DEC-5 — An exact query asks for a meaning unless the sets mostly use it as a name
 
 **Reference:** `spec:AST-084/DEC-5`
-**Decider:** `joeyfarina`, `2026-10-20`
+**Decider:** `josephfarina`, `2026-10-20`
 
 An icon's `id` names its artwork; its other words say what it is for. A
 library may name an icon for a key or an object (`delete` draws the Delete
