@@ -59,7 +59,7 @@ npx @astryxdesign/cli init --features agents --agent all       # every agent fil
         },
         {
           type: 'prose',
-          text: 'With `--agent all`, `GEMINI.md` keeps its one-line import of `AGENTS.md`. With `--agent claude` or `--agent all`, as by default, when `CLAUDE.md` gets the instructions, `.claude/CLAUDE.md` gets none and a copy already there is removed. `init --remove-agents` removes them at the project root and in the folder it runs in.',
+          text: 'With `--agent all`, `GEMINI.md` keeps its one-line import of `AGENTS.md`. With `--agent claude` or `--agent all`, as by default, when `CLAUDE.md` gets the instructions, `.claude/CLAUDE.md` gets none and a copy already there is removed, unless the project ignores `CLAUDE.md`: a fresh clone does not have it, so `.claude/CLAUDE.md` keeps its copy, and `--agent all` writes one there. `init --remove-agents` removes them at the project root and in the folder it runs in.',
         },
       ],
     },

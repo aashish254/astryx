@@ -59,7 +59,9 @@ export const doc = {
       name: 'options.agent',
       type: 'string',
       description:
-        'Agent preset: claude, cursor, codex, hermes, muse, all. Used only when the agents feature runs.',
+        'Agent preset: claude, cursor, codex, hermes, muse, all. `all` writes every existing agent doc except GEMINI.md, ' +
+        'which keeps its one-line import of AGENTS.md. With claude and all, when CLAUDE.md gets the block, a block in ' +
+        '.claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md. Used only when the agents feature runs.',
     },
     {
       name: 'options.agentDocsPath',

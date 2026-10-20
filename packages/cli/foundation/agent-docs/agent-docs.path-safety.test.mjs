@@ -636,6 +636,97 @@ describe('a GEMINI.md linked outside in its own layout, and an ignored root CLAU
   });
 });
 
+describe('third astracat round: first-run copy beside an ignored root, escapes below the root', () => {
+  it('puts the copy in a committed .claude/CLAUDE.md on the first run while root CLAUDE.md is ignored', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, '# Team\n');
+
+    const written = installAgentDocs(project, {renderedBlock: BLOCK});
+
+    expect(written).toEqual([
+      'AGENTS.md',
+      'CLAUDE.md',
+      '.claude/CLAUDE.md',
+      'GEMINI.md',
+    ]);
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+  });
+
+  it('gives .claude/CLAUDE.md no copy on the first run when it is ignored too', () => {
+    const {project} = layout();
+    fs.writeFileSync(
+      path.join(project, '.gitignore'),
+      '/CLAUDE.md\n.claude/\n',
+    );
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, '# Team\n');
+
+    expect(installAgentDocs(project, {renderedBlock: BLOCK})).toEqual([
+      'AGENTS.md',
+      'CLAUDE.md',
+      'GEMINI.md',
+    ]);
+    expect(fs.readFileSync(copy, 'utf-8')).toBe('# Team\n');
+  });
+
+  it('--agent all writes .claude/CLAUDE.md beside an ignored root CLAUDE.md', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, '# Team\n');
+
+    const written = installAgentDocs(project, {
+      agent: 'all',
+      renderedBlock: BLOCK,
+    });
+
+    expect(written).toEqual(
+      expect.arrayContaining(['CLAUDE.md', '.claude/CLAUDE.md']),
+    );
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+  });
+
+  it('run from a subfolder, skips a root CLAUDE.md linked outside with a note and exits 0', async () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+    const shared = path.join(outside, 'CLAUDE.md');
+    fs.writeFileSync(shared, '# Shared\n');
+    fs.symlinkSync(shared, path.join(project, 'CLAUDE.md'));
+    const sub = path.join(project, 'src');
+    fs.mkdirSync(sub);
+
+    const json = await runCli(['init', '--features', 'agents', '--json'], sub);
+    expect(json.status).toBe(0);
+    const {data} = JSON.parse(json.stdout);
+    expect(data.docsWritten).toEqual(['../AGENTS.md', '../GEMINI.md']);
+    expect(data.docsError).toEqual({
+      kind: 'install-failed',
+      message: expect.stringMatching(
+        /^Left as it is: CLAUDE\.md \(.*outside the project root/u,
+      ),
+    });
+
+    const text = await runCli(['init', '--features', 'agents'], sub);
+    expect(text.status).toBe(0);
+    expect(text.stderr).toMatch(/^Note: Left as it is: CLAUDE\.md/mu);
+    expect(text.stderr).not.toMatch(/Error:/u);
+    expect(fs.readFileSync(shared, 'utf-8')).toBe('# Shared\n');
+
+    // Run at the root, where 0.7.1 wrote it too, the escape still exits 1.
+    const atRoot = await runCli(['init', '--features', 'agents'], project);
+    expect(atRoot.status).toBe(1);
+    expect(fs.readFileSync(shared, 'utf-8')).toBe('# Shared\n');
+  }, 60_000);
+});
+
 describe('init exit codes and output', () => {
   it('an ignored GEMINI.md with notes: written through, exit 0, nothing on stderr', async () => {
     const {project} = layout();

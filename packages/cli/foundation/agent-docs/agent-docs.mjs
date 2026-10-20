@@ -1070,13 +1070,65 @@ const CREATED_HEADING =
  * @returns {boolean}
  */
 function rootClaudeIgnored(targetDir) {
+  return ignoredHere(targetDir, CLAUDE_MD, true);
+}
+
+/**
+ * Whether the project's ignore rules exclude `rel` in `targetDir`, read with
+ * the working-tree ignore reader upgrade uses; `unreadable` when an ignore
+ * file cannot be read.
+ * @param {string} targetDir
+ * @param {string} rel
+ * @param {boolean} unreadable
+ * @returns {boolean}
+ */
+function ignoredHere(targetDir, rel, unreadable) {
   try {
     return createFileProtectionResolver(targetDir)
-      .classify(path.join(targetDir, CLAUDE_MD))
+      .classify(path.join(targetDir, rel))
       .some(item => item.reason === 'ignored');
   } catch {
-    return true;
+    return unreadable;
   }
+}
+
+/**
+ * Whether .claude/CLAUDE.md keeps a copy beside root CLAUDE.md: while the
+ * project ignores root CLAUDE.md (a fresh clone lacks it), a .claude/CLAUDE.md
+ * the project commits gets the copy, and one that already holds a block keeps
+ * it (DEC-2: an extra copy beats none).
+ * @param {string} targetDir
+ * @returns {boolean}
+ */
+function claudeDirKeepsCopy(targetDir) {
+  if (!rootClaudeIgnored(targetDir)) return false;
+  return (
+    hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD)) ||
+    !ignoredHere(targetDir, CLAUDE_DIR_MD, false)
+  );
+}
+
+/**
+ * `rels` without the files that resolve outside `targetDir`, each reported
+ * through `onSkipped`.
+ * @param {string} targetDir
+ * @param {readonly string[]} rels
+ * @param {((rel: string, reason: string) => void) | undefined} onSkipped
+ * @returns {Set<string>} the files skipped
+ */
+function skipEscaping(targetDir, rels, onSkipped) {
+  /** @type {Set<string>} */
+  const skipped = new Set();
+  for (const p of rels) {
+    try {
+      assertWithin(p, targetDir, {label: 'agent docs path'});
+    } catch (err) {
+      if (!(err instanceof PathSafetyError)) throw err;
+      skipped.add(p);
+      onSkipped?.(p, err.message);
+    }
+  }
+  return skipped;
 }
 
 /**
@@ -1229,9 +1281,11 @@ export function removeProjectAgentDocs(cwd) {
  * @param {string} compressedIndex
  * @param {boolean} onlyReplace
  * @param {((rel: string, reason: string) => void) | undefined} onSkipped
+ * @param {boolean} [refuseEscapes] whether a file 0.7.1 wrote that escapes
+ *   `targetDir` refuses the run
  * @returns {string[]} files written
  */
-function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyReplace, onSkipped) {
+function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyReplace, onSkipped, refuseEscapes = true) {
   /** @param {string} p */
   const marked = p => hasManagedMarker(path.join(targetDir, p));
   /** @param {string} p */
@@ -1247,22 +1301,15 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
   const targets = existing.filter(p => !wrappers.has(p) && !isImport(p));
   const writes = targets.filter(p => !onlyReplace || marked(p));
   const strips = [...wrappers.keys()].filter(marked);
-  /** @type {Set<string>} */
-  const skipped = new Set();
-  // GEMINI.md is a file 0.7.1 did not write here: one that resolves outside
-  // the project is skipped and reported, as in the default layout, and the
-  // rest is written. A path of any other file that escapes the project
-  // refuses the run, as in 0.7.1.
-  for (const p of [...writes, ...strips]) {
-    if (p !== GEMINI_MD) continue;
-    try {
-      assertWithin(p, targetDir, {label: 'agent docs path'});
-    } catch (err) {
-      if (!(err instanceof PathSafetyError)) throw err;
-      skipped.add(p);
-      onSkipped?.(p, err.message);
-    }
-  }
+  // A file 0.7.1 did not write here (GEMINI.md, or any file when init runs
+  // below the project root) that resolves outside the project is skipped and
+  // reported, as in the default layout, and the rest is written. A path of a
+  // file 0.7.1 wrote that escapes the project refuses the run, as in 0.7.1.
+  const skipped = skipEscaping(
+    targetDir,
+    [...writes, ...strips].filter(p => !refuseEscapes || p === GEMINI_MD),
+    onSkipped,
+  );
   assertTargetsWithin(
     targetDir,
     [...writes, ...strips].filter(p => !skipped.has(p)),
@@ -1279,7 +1326,12 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
   for (const p of wrappers.keys()) {
     if (skipped.has(p)) continue;
     // The copy in .claude/CLAUDE.md goes only once root CLAUDE.md holds it.
-    if (p === CLAUDE_DIR_MD && !rootClaudeHolds(targetDir, compressedIndex)) continue;
+    if (
+      p === CLAUDE_DIR_MD &&
+      (skipped.has(CLAUDE_MD) || !rootClaudeHolds(targetDir, compressedIndex))
+    ) {
+      continue;
+    }
     if (stripManagedBlock(path.join(targetDir, p), compressedIndex)) written.push(p);
   }
   return written;
@@ -1364,18 +1416,15 @@ function planDefaultAgentDocs(targetDir, existing, wrappers, aliases) {
  * @param {Set<string>} aliases
  * @param {string} compressedIndex
  * @param {((rel: string, reason: string) => void) | undefined} onSkipped
+ * @param {boolean} [refuseEscapes] whether a file 0.7.1 wrote that escapes
+ *   `targetDir` refuses the run
  * @returns {string[]} files written, in {@link AGENT_DOC_PATHS} order
  */
-function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compressedIndex, onSkipped) {
+function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compressedIndex, onSkipped, refuseEscapes = true) {
   const plan = planDefaultAgentDocs(targetDir, existing, wrappers, aliases);
-  // While root CLAUDE.md is one the project ignores, the committed copy in
-  // .claude/CLAUDE.md is refreshed rather than removed: a fresh clone has
-  // only that copy.
-  if (
-    plan.get(CLAUDE_DIR_MD) === 'strip' &&
-    hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD)) &&
-    rootClaudeIgnored(targetDir)
-  ) {
+  // While root CLAUDE.md is one the project ignores, .claude/CLAUDE.md gets
+  // the copy too, first run included: a fresh clone has only that file.
+  if (plan.get(CLAUDE_DIR_MD) === 'strip' && claudeDirKeepsCopy(targetDir)) {
     plan.set(CLAUDE_DIR_MD, 'block');
   }
   const foundLegacy = existing.filter(p => LEGACY_DOC_PATHS.includes(p));
@@ -1383,6 +1432,8 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
   const legacy = p =>
     foundLegacy.includes(p) || (p === AGENTS_MD && foundLegacy.length === 0);
 
+  /** @type {Set<string>} */
+  const escaped = new Set();
   for (const [p, action] of [...plan]) {
     // A strip writes only a file that carries a block.
     if (action === 'strip' && !hasManagedMarker(path.join(targetDir, p))) {
@@ -1392,8 +1443,9 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
     try {
       assertWithin(p, targetDir, {label: 'agent docs path'});
     } catch (err) {
-      if (!(err instanceof PathSafetyError) || legacy(p)) throw err;
+      if (!(err instanceof PathSafetyError) || (refuseEscapes && legacy(p))) throw err;
       plan.delete(p);
+      escaped.add(p);
       onSkipped?.(p, err.message);
     }
   }
@@ -1406,7 +1458,12 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
     const filePath = path.join(targetDir, p);
     if (action === 'strip') {
       // The copy in .claude/CLAUDE.md goes only once root CLAUDE.md holds it.
-      if (p === CLAUDE_DIR_MD && !rootClaudeHolds(targetDir, compressedIndex)) continue;
+      if (
+        p === CLAUDE_DIR_MD &&
+        (escaped.has(CLAUDE_MD) || !rootClaudeHolds(targetDir, compressedIndex))
+      ) {
+        continue;
+      }
       if (stripManagedBlock(filePath, compressedIndex)) written.push(p);
       continue;
     }
@@ -1519,8 +1576,12 @@ function stripManagedBlock(filePath, compressedIndex) {
  * @param {string} [options.renderedBlock] - Fully rendered expected block. Init
  *   and upgrade pass one shared block to every target.
  * @param {(rel: string, reason: string) => void} [options.onSkipped] - Called
- *   for each file the default layout skips because it resolves outside
- *   `targetDir` (a file 0.7.0 never wrote, such as GEMINI.md).
+ *   for each file skipped because it resolves outside `targetDir` and 0.7.1
+ *   never wrote it: GEMINI.md, or any file when `refuseEscapes` is false.
+ * @param {boolean} [options.refuseEscapes] - Whether a file 0.7.1 wrote that
+ *   resolves outside `targetDir` refuses the run (default). Init passes false
+ *   when it runs below the project root, where 0.7.1 wrote in the folder it
+ *   ran in instead.
  * @returns {string[]} List of files written
  * @throws {import('../fs/path-safety.mjs').PathSafetyError} when a file it would
  *   write resolves outside `targetDir`; nothing is written.
@@ -1538,6 +1599,7 @@ export function installAgentDocs(
     topics,
     renderedBlock,
     onSkipped,
+    refuseEscapes = true,
   } = {},
 ) {
   assertAgentDocsTarget(targetDir);
@@ -1588,18 +1650,31 @@ export function installAgentDocs(
     // block goes in CLAUDE.md, .claude/CLAUDE.md gets none, and a block there
     // is removed.
     const claudeRoot = inject.includes(CLAUDE_MD);
-    const injectHere = claudeRoot ? inject.filter(p => p !== CLAUDE_DIR_MD) : inject;
+    // While root CLAUDE.md is ignored, .claude/CLAUDE.md keeps its copy, and
+    // `all` writes it there too.
+    const keepDirCopy = claudeRoot && claudeDirKeepsCopy(targetDir);
+    const injectAll =
+      claudeRoot && !(keepDirCopy && agent === 'all')
+        ? inject.filter(p => p !== CLAUDE_DIR_MD)
+        : inject;
     const strip =
-      claudeRoot && hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD))
+      claudeRoot && !keepDirCopy && hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD))
         ? [CLAUDE_DIR_MD]
         : [];
-    // A path that escapes the project refuses the run, as in 0.7.0.
-    assertTargetsWithin(targetDir, [...injectHere, ...create, ...strip]);
+    // A path that escapes the project refuses the run, as in 0.7.0; below the
+    // project root, where 0.7.1 wrote nothing, it is skipped and reported.
+    const escaping = refuseEscapes
+      ? new Set()
+      : skipEscaping(targetDir, [...injectAll, ...create, ...strip], onSkipped);
+    const injectHere = injectAll.filter(p => !escaping.has(p));
+    const createHere = create.filter(p => !escaping.has(p));
+    const stripHere = escaping.has(CLAUDE_MD) ? [] : strip.filter(p => !escaping.has(p));
+    assertTargetsWithin(targetDir, [...injectHere, ...createHere, ...stripHere]);
     for (const p of injectHere) {
       injectXdsBlock(path.join(targetDir, p), compressedIndex);
       written.push(p);
     }
-    for (const p of create) {
+    for (const p of createHere) {
       const filePath = path.join(targetDir, p);
       const dir = path.dirname(filePath);
       if (dir !== targetDir) {
@@ -1611,7 +1686,7 @@ export function installAgentDocs(
       });
       written.push(p);
     }
-    for (const p of strip) {
+    for (const p of stripHere) {
       if (!rootClaudeHolds(targetDir, compressedIndex)) continue;
       if (stripManagedBlock(path.join(targetDir, p), compressedIndex)) written.push(p);
     }
@@ -1630,7 +1705,7 @@ export function installAgentDocs(
       agentsAliases,
     );
     if (claudeCopy != null) wrappers.delete(claudeCopy);
-    return writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, true, onSkipped);
+    return writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, true, onSkipped, refuseEscapes);
   }
   // A wrapper that imports something other than AGENTS.md, or two agent docs
   // that are one file, mean the project chose its own layout: keep the
@@ -1639,7 +1714,7 @@ export function installAgentDocs(
   const {agentsAliases, otherShared} = findSharedAgentDocs(targetDir, existing);
   if (otherShared || [...wrappers.values()].some(targets => !targets.has(AGENTS_MD))) {
     const ownWrappers = findAgentDocWrappers(readAgentDocImports(targetDir, existing));
-    return writeEachAgentDoc(targetDir, existing, ownWrappers, compressedIndex, false, onSkipped);
+    return writeEachAgentDoc(targetDir, existing, ownWrappers, compressedIndex, false, onSkipped, refuseEscapes);
   }
   return writeDefaultAgentDocs(
     targetDir,
@@ -1648,5 +1723,6 @@ export function installAgentDocs(
     agentsAliases,
     compressedIndex,
     onSkipped,
+    refuseEscapes,
   );
 }

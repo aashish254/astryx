@@ -69,6 +69,24 @@ export function getNextSteps(invocation) {
 }
 
 /**
+ * Whether two paths name one folder, links resolved.
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function sameFolder(a, b) {
+  /** @param {string} p */
+  const real = p => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  return real(a) === real(b);
+}
+
+/**
  * Install the agent-docs block; records the outcome (or soft error) on `data`.
  * Mirrors the CLI's historical soft-error policy: a PathSafetyError surfaces its
  * precise message and flags a non-zero exit; any other failure prints the
@@ -110,6 +128,10 @@ async function applyAgents(cwd, options, invocation, data) {
       paths,
       renderedBlock,
       onSkipped: (rel, reason) => skipped.push(`${rel} (${reason})`),
+      // Below the project root, 0.7.1 wrote in the folder init ran in, so a
+      // project-root file that escapes the project is skipped and reported,
+      // not refused.
+      refuseEscapes: sameFolder(targetDir, cwd),
     });
     // Each file is reported from where init ran, as before.
     const written =
@@ -120,10 +142,10 @@ async function applyAgents(cwd, options, invocation, data) {
           );
     data.docsWritten = written;
     logger.log(`[ok] AI agent docs installed -> ${written.join(', ')}`);
-    // A file only this layout writes (GEMINI.md) that resolves outside the
-    // project is left as it is, reported in docsError with one note; the
-    // exit code stays 0. A file 0.7.1 wrote whose path escapes the project
-    // still fails the run (below).
+    // A file 0.7.1 did not write (GEMINI.md, or a project-root file when init
+    // runs below the root) that resolves outside the project is left as it
+    // is, reported in docsError with one note; the exit code stays 0. A file
+    // 0.7.1 wrote whose path escapes the project still fails the run (below).
     if (skipped.length > 0) {
       const message =
         `Left as ${skipped.length === 1 ? 'it is' : 'they are'}: ${skipped.join('; ')}. ` +

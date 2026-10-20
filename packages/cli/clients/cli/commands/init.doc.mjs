@@ -65,7 +65,7 @@ export const doc = {
         'Target AI tool for agent docs: claude (CLAUDE.md or .claude/CLAUDE.md, else creates .claude/CLAUDE.md), cursor (.cursorrules if present, else AGENTS.md), ' +
         'codex and muse (AGENTS.md), hermes (.hermes.md or HERMES.md if present, else AGENTS.md), all (every existing agent doc except GEMINI.md, which keeps its ' +
         'one-line import of AGENTS.md, else AGENTS.md and .claude/CLAUDE.md). With claude and all, when CLAUDE.md gets the block, .claude/CLAUDE.md gets none and ' +
-        'a block already there is removed. ' +
+        'a block already there is removed, unless the project ignores CLAUDE.md: then .claude/CLAUDE.md keeps its copy, and all writes one there. ' +
         'An unknown tool exits 1 with ERR_UNKNOWN_AGENT. ' +
         'Used only when agent docs are installed (the default, --all, or --features agents); --agent-docs-path takes precedence',
     },
