@@ -1078,13 +1078,11 @@ function assertTargetsWithin(targetDir, relPaths) {
 }
 
 /**
- * Remove Astryx section from all known agent doc files.
+ * Throw `ERR_PATH_TRAVERSAL` when an agent doc in `targetDir` that holds a
+ * managed block resolves outside `targetDir`.
  * @param {string} targetDir
- * @returns {string[]} the project-relative files a block was removed from.
- * @throws {PathSafetyError} `ERR_PATH_TRAVERSAL` when a file it would change
- *   resolves outside `targetDir`; nothing is changed.
  */
-export function removeAgentDocs(targetDir) {
+function assertRemovableWithin(targetDir) {
   const allPaths = discoverAgentDocs(targetDir);
   try {
     assertTargetsWithin(
@@ -1096,6 +1094,21 @@ export function removeAgentDocs(targetDir) {
     if (!(err instanceof PathSafetyError)) throw err;
     throw new PathSafetyError(err.message, ERROR_CODES.ERR_PATH_TRAVERSAL);
   }
+}
+
+/**
+ * Remove Astryx section from all known agent doc files.
+ * @param {string} targetDir
+ * @param {object} [options]
+ * @param {string} [options.shownFrom] - Folder the logged paths are shown
+ *   relative to; defaults to `targetDir`.
+ * @returns {string[]} the project-relative files a block was removed from.
+ * @throws {PathSafetyError} `ERR_PATH_TRAVERSAL` when a file it would change
+ *   resolves outside `targetDir`; nothing is changed.
+ */
+export function removeAgentDocs(targetDir, {shownFrom = targetDir} = {}) {
+  assertRemovableWithin(targetDir);
+  const allPaths = discoverAgentDocs(targetDir);
 
   /** @type {string[]} */
   const removedFrom = [];
@@ -1109,14 +1122,36 @@ export function removeAgentDocs(targetDir) {
         fs.unlinkSync(filePath);
       }
       removedFrom.push(p);
+      const shown = path.relative(shownFrom, filePath).split(path.sep).join('/') || p;
       if (!fs.existsSync(filePath)) {
-        humanLog(`[ok] Removed empty ${p}`);
+        humanLog(`[ok] Removed empty ${shown}`);
       } else {
-        humanLog(`[ok] Removed design system section from ${p}`);
+        humanLog(`[ok] Removed design system section from ${shown}`);
       }
     }
   }
   return removedFrom;
+}
+
+/**
+ * Remove the managed block where init writes it, the project root (see
+ * {@link resolveAgentDocsRoot}), and in `cwd`, so a block an earlier version
+ * wrote in that folder goes too. Each folder is checked before anything is
+ * written, and a file is confined to the folder it sits in.
+ * @param {string} cwd
+ * @returns {string[]} files a block was removed from, relative to `cwd`.
+ * @throws {PathSafetyError} `ERR_PATH_TRAVERSAL` when a file it would change
+ *   resolves outside its folder; nothing is changed.
+ */
+export function removeProjectAgentDocs(cwd) {
+  const root = resolveAgentDocsRoot(cwd) ?? cwd;
+  const dirs = realDir(root) === realDir(cwd) ? [cwd] : [root, cwd];
+  for (const dir of dirs) assertRemovableWithin(dir);
+  return dirs.flatMap(dir =>
+    removeAgentDocs(dir, {shownFrom: cwd}).map(rel =>
+      path.relative(cwd, path.join(dir, rel)).split(path.sep).join('/'),
+    ),
+  );
 }
 
 /**

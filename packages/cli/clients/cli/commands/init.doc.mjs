@@ -18,11 +18,13 @@ export const doc = {
     'Non-interactive project setup (no prompts, so it behaves the same for humans, ' +
     'agents, and CI). By default it writes the agent-docs block, including guidance ' +
     'from configured integrations, to AGENTS.md and to the Claude Code file the project ' +
-    'has (CLAUDE.md, else .claude/CLAUDE.md), and a one-line import of AGENTS.md to ' +
-    'GEMINI.md unless GEMINI.md already imports it. It then prints getting-started ' +
-    'steps. Agent docs go to the project root: the nearest folder at or above this one ' +
-    'whose package.json declares an @astryxdesign package, else the nearest with any ' +
-    'package.json, else this folder. In the home folder, or in a settings folder in it ' +
+    'has (CLAUDE.md, else .claude/CLAUDE.md; when CLAUDE.md exists, a block in ' +
+    '.claude/CLAUDE.md is removed), and a one-line import of AGENTS.md to GEMINI.md ' +
+    'unless GEMINI.md already imports it. It then prints getting-started steps. Agent ' +
+    'docs go to the project root: the nearest folder at or above this one whose ' +
+    'package.json declares an @astryxdesign package, else the nearest with any ' +
+    'package.json, else this folder. The search stops at a repository root and never ' +
+    'counts the home folder. In the home folder, or in a settings folder in it ' +
     'such as ~/.gemini outside a project, no agent docs are written; a project inside a ' +
     'settings folder, such as an agent worktree, works. --features and --all print only ' +
     "the chosen features' " +
@@ -46,7 +48,8 @@ export const doc = {
       flag: '--remove-agents',
       param: 'options.removeAgents',
       description:
-        'Remove the managed block from AGENTS.md, CLAUDE.md, .claude/CLAUDE.md, GEMINI.md, .cursorrules, .hermes.md and HERMES.md ' +
+        'Remove the managed block from AGENTS.md, CLAUDE.md, .claude/CLAUDE.md, GEMINI.md, .cursorrules, .hermes.md and HERMES.md, ' +
+        'at the project root (where init writes them) and in this folder ' +
         "(deleting AGENTS.md or .claude/CLAUDE.md when only init's heading is left, and GEMINI.md when nothing is left) and do nothing else. " +
         '--features, --all, --agent and --agent-docs-path are refused; a file written with --agent-docs-path keeps its block',
     },

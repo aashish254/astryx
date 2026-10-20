@@ -44,7 +44,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: 'By default this writes the instructions to `AGENTS.md` (the tool-agnostic standard most agents read), in the project root. Claude Code skips `AGENTS.md` when the project has a `CLAUDE.md` or `.claude/CLAUDE.md`, so init also writes them to that file (root `CLAUDE.md` when both exist), even when it imports `AGENTS.md`: Claude Code does not follow that import in a session started in a subfolder. Gemini CLI reads only `GEMINI.md`, so init adds a one-line import of `AGENTS.md` there, unless `GEMINI.md` already imports it. `upgrade` keeps the copies in sync. To target a specific tool\'s file instead:',
+          text: 'By default this writes the instructions to `AGENTS.md` (the tool-agnostic standard most agents read), in the project root: the nearest folder whose `package.json` declares an Astryx package, else the nearest with any `package.json`. The search stops at the repository root. Claude Code skips `AGENTS.md` when the project has a `CLAUDE.md` or `.claude/CLAUDE.md`, so init also writes them to that file, even when it imports `AGENTS.md`: Claude Code does not follow that import in a session started in a subfolder. When both files exist, root `CLAUDE.md` gets the copy and a copy in `.claude/CLAUDE.md` is removed. Gemini CLI reads only `GEMINI.md`, so init adds a one-line import of `AGENTS.md` there, unless `GEMINI.md` already imports it. `upgrade` keeps the copies in sync. To target a specific tool\'s file instead:',
         },
         {
           type: 'code',
@@ -59,7 +59,7 @@ npx @astryxdesign/cli init --features agents --agent all       # every agent fil
         },
         {
           type: 'prose',
-          text: 'With `--agent all`, `GEMINI.md` keeps its one-line import of `AGENTS.md`. With `--agent claude` or `--agent all`, when `CLAUDE.md` gets the instructions, `.claude/CLAUDE.md` gets none and a copy already there is removed, so Claude Code reads them once.',
+          text: 'With `--agent all`, `GEMINI.md` keeps its one-line import of `AGENTS.md`. With `--agent claude` or `--agent all`, as by default, when `CLAUDE.md` gets the instructions, `.claude/CLAUDE.md` gets none and a copy already there is removed. `init --remove-agents` removes them at the project root and in the folder it runs in.',
         },
       ],
     },

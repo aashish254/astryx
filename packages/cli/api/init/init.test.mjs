@@ -245,7 +245,7 @@ describe('init() — ASCII output', () => {
     const lines = [];
     const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => lines.push(a.join(' ')));
     const errSpy = vi.spyOn(console, 'error').mockImplementation((...a) => lines.push(a.join(' ')));
-    const empty = fs.mkdtempSync(path.join(process.cwd(), '.astryx-init-remove-'));
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-init-remove-'));
     logger.setSilent(false);
     try {
       await init({}, {cwd: tmpDir});

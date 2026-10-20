@@ -209,6 +209,28 @@ describe('astryx init in the home folder', () => {
     expect(read('.claude/CLAUDE.md')).toBe(personal);
   });
 
+  it('--remove-agents in a folder in home never reaches the home folder', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.claude', 'CLAUDE.md'),
+      `${personal}\n<!-- ASTRYX:START -->\nAstryx v0.7.0\n<!-- ASTRYX:END -->\n`,
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
+    const scratch = path.join(tmpDir, 'scratch');
+    fs.mkdirSync(scratch);
+
+    const json = await runCli(['init', '--remove-agents', '--json'], {cwd: scratch});
+    expect(JSON.parse(json.stdout).data.removed).toBe(false);
+    expect(read('.claude/CLAUDE.md')).toContain('<!-- ASTRYX:START -->');
+
+    // Run in the home folder itself, it still removes the block there.
+    const home = await runCli(['init', '--remove-agents', '--json'], {cwd: tmpDir});
+    expect(JSON.parse(home.stdout).data.removed).toBe(true);
+    expect(read('.claude/CLAUDE.md')).toBe(personal);
+  });
+
   it.each(['.gemini', '.claude'])('refuses the settings folder ~/%s', async folder => {
     const dir = path.join(tmpDir, folder);
     fs.mkdirSync(dir, {recursive: true});
@@ -300,6 +322,28 @@ describe('astryx init and the project root', () => {
 });
 
 describe('astryx init --remove-agents', () => {
+  it('run in a subfolder, removes what init wrote at the project root, with the same JSON shape', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({name: 'app', dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
+    const sub = path.join(tmpDir, 'src', 'app');
+    fs.mkdirSync(sub, {recursive: true});
+    await runCli(['init'], {cwd: sub});
+    expect(exists('AGENTS.md')).toBe(true);
+
+    const text = await runCli(['init', '--remove-agents'], {cwd: sub});
+    expect(text.status).toBe(0);
+    expect(text.stdout).toMatch(/Removed empty \.\.\/\.\.\/AGENTS\.md/);
+    expect(exists('AGENTS.md')).toBe(false);
+    expect(exists('GEMINI.md')).toBe(false);
+
+    await runCli(['init'], {cwd: sub});
+    const json = await runCli(['init', '--remove-agents', '--json'], {cwd: sub});
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout)).toEqual({apiVersion: 1, type: 'init.remove', data: {removed: true}});
+  });
+
   it('removes the Astryx section it previously installed', async () => {
     await runCli(['init', '--features', 'agents'], {cwd: tmpDir});
     expect(exists('AGENTS.md')).toBe(true);

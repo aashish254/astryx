@@ -37,7 +37,7 @@
  * @typedef {object} InitOptions
  * @property {string} [features] Comma-separated features to install (agents, theme, template).
  * @property {boolean} [all] Install all features.
- * @property {boolean} [removeAgents] Remove the managed agent-docs block instead of installing.
+ * @property {boolean} [removeAgents] Remove the managed agent-docs block, at the project root and in the folder init runs in, instead of installing.
  * @property {string} [agent] Agent preset: claude, cursor, codex, hermes, muse, all.
  * @property {string | string[]} [agentDocsPath] Explicit agent-docs file path(s).
  * @property {string} [templateName] Scaffold a named page template (programmatic only; the CLI never sets it).

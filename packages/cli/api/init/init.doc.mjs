@@ -18,13 +18,17 @@ export const doc = {
   description:
     'Sets a project up with NO prompts, so it behaves identically for humans, ' +
     'agents, CI, and piped I/O. By default it writes the agent-docs cheat sheet, ' +
-    'including guidance from configured integrations, at the project root: to AGENTS.md, ' +
-    "to the project's Claude Code file (CLAUDE.md, else .claude/CLAUDE.md), and as a " +
+    'including guidance from configured integrations, at the project root (the nearest ' +
+    'package.json that declares an @astryxdesign package, else the nearest package.json, ' +
+    'searching no higher than the repository root): to AGENTS.md, ' +
+    "to the project's Claude Code file (CLAUDE.md, else .claude/CLAUDE.md; when CLAUDE.md " +
+    'exists, a block in .claude/CLAUDE.md is removed), and as a ' +
     'one-line import of AGENTS.md in GEMINI.md unless GEMINI.md already imports it. ' +
     'In the home folder, or in a settings folder in it outside a project, it writes none. It then ' +
     "prints getting-started guidance; `features` / `all` print only the chosen features' " +
     'guidance instead (the theme feature also writes the annotated theme template). ' +
-    'With `removeAgents` it removes the managed agent-docs block instead of installing.',
+    'With `removeAgents` it removes the managed agent-docs block, at the project root and ' +
+    'in `ctx.cwd`, instead of installing.',
   importPath: '@astryxdesign/cli/api',
   signature:
     'init(options?: InitOptions, ctx?: {cwd?: string}): Promise<InitRunResponse | InitRemoveResponse>',
@@ -44,7 +48,8 @@ export const doc = {
     {
       name: 'options.removeAgents',
       type: 'boolean',
-      description: 'Remove the managed agent-docs block instead of installing.',
+      description:
+        'Remove the managed agent-docs block, at the project root and in `ctx.cwd`, instead of installing.',
     },
     {
       name: 'options.agent',
@@ -105,7 +110,7 @@ export const doc = {
     },
     {
       code: 'ERR_PATH_TRAVERSAL',
-      when: 'the template output path resolves outside cwd (for example through a symlinked src directory), or, with removeAgents, a managed agent-docs file resolves outside cwd through a symlink',
+      when: 'the template output path resolves outside cwd (for example through a symlinked src directory), or, with removeAgents, a managed agent-docs file at the project root or in cwd resolves outside that folder through a symlink',
     },
   ],
   examples: [

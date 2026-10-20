@@ -4,15 +4,16 @@
  * @file init.remove leaf — the `--remove-agents` path behind `astryx init`.
  *
  * `remove(ctx)` deletes the managed agent-docs block from every agent-doc file
- * and returns an `init.remove` receipt. The removal engine lives in
- * lib/agent-docs; this leaf only wires the cwd.
+ * at the project root, where init writes it, and in the working folder, and
+ * returns an `init.remove` receipt. The removal engine lives in
+ * foundation/agent-docs; this leaf only wires the cwd.
  *
  * Note: removeAgentDocs() still logs its own per-file lines via humanLog
  * (shared lib behavior) — so a programmatic remove is not perfectly silent yet.
  * Threading a logger through agent-docs is a separate cleanup.
  */
 
-import {removeAgentDocs} from '../../../foundation/agent-docs/agent-docs.mjs';
+import {removeProjectAgentDocs} from '../../../foundation/agent-docs/agent-docs.mjs';
 import {logger} from '../../logger.mjs';
 
 /**
@@ -23,7 +24,7 @@ import {logger} from '../../logger.mjs';
  * @returns {Promise<import('../init.type.mjs').InitRemoveResponse>}
  */
 export async function remove({cwd = process.cwd()} = {}) {
-  const removedFrom = removeAgentDocs(cwd);
+  const removedFrom = removeProjectAgentDocs(cwd);
   const removed = removedFrom.length > 0;
   logger.log(
     removed
