@@ -11,7 +11,10 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {requireCoreDir} from '../../foundation/fs/paths.mjs';
+import {
+  findCarriedCoreDir,
+  requireCoreDir,
+} from '../../foundation/fs/paths.mjs';
 import {Project} from '../../foundation/config/project.mjs';
 import {
   BUNDLED_THEME_PACKAGE,
@@ -804,4 +807,15 @@ export async function useThemeInApp(slug, options = {}) {
  */
 export function requireThemeCoreDir(cwd) {
   return requireCoreDir(cwd);
+}
+
+/**
+ * The Core a theme build reads outside a project: the one the answering copy
+ * carries, installed into the per-user cache first when needed (a network
+ * install and an npm subprocess; spec AST-081 FR3); null when there is none.
+ * @param {string} cwd
+ * @returns {string | null}
+ */
+export function fetchCarriedThemeCoreDir(cwd) {
+  return findCarriedCoreDir(cwd, {fetch: true});
 }

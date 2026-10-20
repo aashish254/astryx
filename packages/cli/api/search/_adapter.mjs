@@ -11,7 +11,7 @@
  * @position packages/cli/api/search — imported by search.mjs only
  */
 
-import {findCoreDir, requireCoreDir} from '../../foundation/fs/paths.mjs';
+import {requireCoreDir} from '../../foundation/fs/paths.mjs';
 
 /**
  * The Core a typed search reads: the project's, else the release's own,
@@ -22,13 +22,4 @@ import {findCoreDir, requireCoreDir} from '../../foundation/fs/paths.mjs';
  */
 export function requireSearchCoreDir(cwd) {
   return requireCoreDir(cwd);
-}
-
-/**
- * The Core a search reads when one is there, installing nothing.
- * @param {string} cwd
- * @returns {string | null}
- */
-export function findSearchCoreDir(cwd) {
-  return findCoreDir(cwd);
 }
