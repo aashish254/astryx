@@ -15,7 +15,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {search, scoreCandidate, SEARCH_DOMAINS} from '../../../api/search/search.mjs';
+import {search} from '../../../api/search/search.mjs';
+import {scoreCandidate} from '../../../api/search/_candidate-score.mjs';
+import {SEARCH_DOMAINS} from '../../../api/search/_query.mjs';
 import {runCli} from '../../../test-utils/run-cli.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -27,15 +27,11 @@ import {fileURLToPath} from 'node:url';
 import {docs} from '../docs/docs.mjs';
 import {listAvailableThemes} from '../theme/_adapter.mjs';
 import {doc as themeAddCommandDoc} from '../../clients/cli/commands/theme-add.doc.mjs';
-import {
-  headingWithPhrase,
-  titleInQuery,
-  search,
-  scoreCandidate,
-  scoreQuery,
-  tokenizeQuery,
-  SEARCH_DOMAINS,
-} from './search.mjs';
+import {search} from './search.mjs';
+import {scoreQuery} from './_score.mjs';
+import {headingWithPhrase, titleInQuery} from './_titles.mjs';
+import {scoreCandidate} from './_candidate-score.mjs';
+import {SEARCH_DOMAINS, tokenizeQuery} from './_query.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const cwd = REPO;

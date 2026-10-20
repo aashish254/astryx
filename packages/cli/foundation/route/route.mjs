@@ -8,7 +8,14 @@
  * null to pass. A dispatcher scores nothing: it names the children that should
  * answer, best first, with a confidence from 0 to 1. Below its floor, or when
  * none of the children it named answers, its fallback searcher answers. A
- * dispatcher's children may be dispatchers, so trees nest.
+ * dispatcher's children may be dispatchers, so trees nest. A classifier is a
+ * dispatcher whose route is a static word-weight classifier: the request's
+ * tokens vote for a class, and a class with a searcher takes the request when
+ * the classifier is sure enough.
+ *
+ * A tree file types the helpers for its command once, by taking them from
+ * `routeKit` typed as `RouteKit<Request, Context, Answer>` (see
+ * api/search/tree.mjs); each node is then plain `{id, summary, run}`.
  *
  * Every node gets the same context, so any node can be run, measured, and
  * tuned on its own: `runTree` takes an optional `tuning` with weights that
@@ -77,6 +84,89 @@
  * @property {Readonly<Record<string, unknown>>} [weights] Weights by node id, replacing that node's shipped weights for this call.
  * @property {(step: TraceStep) => void} [onTrace]
  */
+
+/**
+ * Static classifier weights: one row of numbers per token, one number per
+ * class. A request's score for a class is the sum of its tokens' numbers.
+ * @typedef {object} ClassifierWeights
+ * @property {readonly string[]} classes
+ * @property {Readonly<Record<string, readonly number[]>>} tokens
+ */
+
+/**
+ * @template Request, Context
+ * @typedef {object} ClassifierSpec
+ * @property {string} id
+ * @property {string} summary
+ * @property {Readonly<Record<string, string>>} searchers Class name -> the
+ *   searcher that answers it. A class with no searcher goes to the fallback.
+ * @property {string} fallback The searcher that keeps every other request.
+ * @property {number} floor A searcher takes a request only when its class's
+ *   probability is at least this.
+ * @property {(request: Request, ctx: Context) => readonly string[]} features
+ *   The request's tokens.
+ * @property {(ctx: Context) => ClassifierWeights} weights The shipped weights,
+ *   which the command's adapter put in the context.
+ */
+
+/**
+ * The helpers, typed for one command's request, context, and answer.
+ * @template Request, Context, Answer
+ * @typedef {object} RouteKit
+ * @property {(node: Omit<Searcher<Request, Context, Answer>, 'kind'>) => Searcher<Request, Context, Answer>} defineSearcher
+ * @property {(node: Omit<Dispatcher<Request, Context>, 'kind'>) => Dispatcher<Request, Context>} defineDispatcher
+ * @property {(spec: ClassifierSpec<Request, Context>) => Dispatcher<Request, Context>} defineClassifier
+ * @property {(root: string, nodes: readonly TreeNode<Request, Context, Answer>[]) => Tree<Request, Context, Answer>} defineTree
+ */
+
+/**
+ * The probability of each class for these tokens: a softmax over the summed
+ * rows of the tokens the weights know.
+ * @param {ClassifierWeights} weights
+ * @param {readonly string[]} tokens
+ * @returns {number[]}
+ */
+export function classify(weights, tokens) {
+  const score = weights.classes.map(() => 0);
+  for (const token of tokens) {
+    const row = weights.tokens[token];
+    if (row) for (let k = 0; k < score.length; k++) score[k] += row[k];
+  }
+  const top = Math.max(...score);
+  const e = score.map(x => Math.exp(x - top));
+  const sum = e.reduce((a, b) => a + b, 0);
+  return e.map(x => x / sum);
+}
+
+/**
+ * A dispatcher whose route is a static classifier. The most probable class
+ * (the first on a tie) is handed to its searcher; a class with no searcher,
+ * or the fallback's own class, stays with the fallback. Tuning weights for
+ * this node replace its shipped weights.
+ * @template Request, Context
+ * @param {ClassifierSpec<Request, Context>} spec
+ * @returns {Dispatcher<Request, Context>}
+ */
+export function defineClassifier(spec) {
+  const {searchers, fallback} = spec;
+  return defineDispatcher({
+    id: spec.id,
+    summary: spec.summary,
+    children: [...new Set([fallback, ...Object.values(searchers)])],
+    floor: spec.floor,
+    fallback,
+    route: (request, ctx, override) => {
+      const weights =
+        /** @type {ClassifierWeights | null} */ (override) ?? spec.weights(ctx);
+      const p = classify(weights, spec.features(request, ctx));
+      const best = p.indexOf(Math.max(...p));
+      const target = searchers[weights.classes[best]];
+      return target && target !== fallback
+        ? {ids: [target], confidence: p[best]}
+        : {ids: [fallback], confidence: 1};
+    },
+  });
+}
 
 /**
  * @template Request, Context, Answer
@@ -218,3 +308,15 @@ async function runNode(tree, id, request, ctx, tuning, depth, fallback) {
   }
   return runNode(tree, node.fallback, request, ctx, tuning, depth + 1, true);
 }
+
+/**
+ * The helpers in one object, for a tree file to type once (see the file
+ * comment).
+ * @type {RouteKit<any, any, any>}
+ */
+export const routeKit = {
+  defineSearcher,
+  defineDispatcher,
+  defineClassifier,
+  defineTree,
+};

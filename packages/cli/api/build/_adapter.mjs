@@ -126,6 +126,20 @@ export function loadWeights() {
   return weights ?? null;
 }
 
+/** @type {import('../../foundation/route/route.mjs').ClassifierWeights | undefined} */
+let treeWeights;
+
+/**
+ * The classifier weights of build's root (tree.weights.json), read once.
+ * @returns {import('../../foundation/route/route.mjs').ClassifierWeights}
+ */
+export function loadTreeWeights() {
+  treeWeights ??= JSON.parse(
+    fs.readFileSync(new URL('./tree.weights.json', import.meta.url), 'utf8'),
+  );
+  return /** @type {import('../../foundation/route/route.mjs').ClassifierWeights} */ (treeWeights);
+}
+
 /**
  * Whether a parsed weights file has the shape the kit reads: every row has a
  * weight per candidate, every bias a number per candidate, and three blend

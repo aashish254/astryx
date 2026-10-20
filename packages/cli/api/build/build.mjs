@@ -17,7 +17,7 @@ import {AstryxError} from '../error.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
 import {buildHelp} from './help/help.mjs';
 import {buildKit} from './kit/kit.mjs';
-import {withListingCache} from './_adapter.mjs';
+import {loadTreeWeights, withListingCache} from './_adapter.mjs';
 import {runTree} from '../../foundation/route/route.mjs';
 import {BUILD_TREE} from './tree.mjs';
 
@@ -48,7 +48,11 @@ export async function build(query, options = {}) {
   return withListingCache(
     async () =>
       /** @type {import('./build.type.mjs').BuildKitResponse} */ (
-        await runTree(BUILD_TREE, {query, options}, null)
+        await runTree(
+          BUILD_TREE,
+          {query, options},
+          {weights: loadTreeWeights()},
+        )
       ),
   );
 }

@@ -16,26 +16,18 @@
 
 import {withListingCache} from '../../foundation/fs/listing-cache.mjs';
 import {gatherCandidates} from './_adapter.mjs';
-import {checkSearchArgs, rankLexical} from './_lexical.mjs';
+import {rankLexical} from './_lexical.mjs';
+import {checkSearchArgs} from './_result.mjs';
 import {runTree} from '../../foundation/route/route.mjs';
 import {SEARCH_TREE} from './tree.mjs';
 
-export {
-  SYNONYMS,
-  SEARCH_DOMAINS,
-  STOPWORDS,
-  compoundHit,
-  domainPriority,
-  headingWithPhrase,
-  sameWord,
-  scoreCandidate,
-  scoreQuery,
-  searchedComponents,
-  spellIdentifiers,
-  stem,
-  titleInQuery,
-  tokenizeQuery,
-} from './_lexical.mjs';
+// The domains a search covers (the command handler lists them), and what
+// build reads from search: its word vocabulary, the components a search
+// read, and the keywords of Core's components.
+export {SEARCH_DOMAINS, STOPWORDS} from './_query.mjs';
+export {SYNONYMS} from './_synonyms.mjs';
+export {stem} from './_words.mjs';
+export {searchedComponents} from './_result.mjs';
 export {componentKeywords} from './_adapter.mjs';
 
 /**

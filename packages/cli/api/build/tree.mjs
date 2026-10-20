@@ -1,45 +1,41 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file How build answers: a dispatcher that sends each request to the
- * searcher that should answer it. Today every request goes to the main
- * searcher, the kit ranker; topic searchers join as children of the root.
- * @input {request: {query, options}} from build()
+ * @file How build answers: a root classifier sends each request to the
+ * searcher that should answer it. Its weights (tree.weights.json) have one
+ * class today, so every request goes to the main searcher, the kit ranker.
+ * @input {query, options} and the data build's adapter gathered
  * @output the build.kit response
  * @position api/build; build.mjs runs it with the shared route helper
  */
 
-import {
-  defineDispatcher,
-  defineSearcher,
-  defineTree,
-} from '../../foundation/route/route.mjs';
+import {routeKit} from '../../foundation/route/route.mjs';
 import {buildKit} from './kit/kit.mjs';
 
 /**
  * @typedef {{query: string, options: NonNullable<Parameters<typeof buildKit>[1]>}} BuildRequest
+ * @typedef {{weights: import('../../foundation/route/route.mjs').ClassifierWeights}} BuildContext
  * @typedef {import('./build.type.mjs').BuildKitResponse} BuildAnswer
  */
 
-const main = defineSearcher(
-  /** @type {Omit<import('../../foundation/route/route.mjs').Searcher<BuildRequest, null, BuildAnswer>, 'kind'>} */ ({
-    id: 'main',
-    summary:
-      'Ranks page templates, blocks, and components by the words of the request and starts from the best page template.',
-    run: request => buildKit(request.query, request.options),
-  }),
-);
+/** @type {import('../../foundation/route/route.mjs').RouteKit<BuildRequest, BuildContext, BuildAnswer>} */
+const {defineSearcher, defineClassifier, defineTree} = routeKit;
 
-const root = defineDispatcher(
-  /** @type {Omit<import('../../foundation/route/route.mjs').Dispatcher<BuildRequest, null>, 'kind'>} */ ({
-    id: 'root',
-    summary: 'Sends every request to the main searcher.',
-    children: ['main'],
-    floor: 0,
-    fallback: 'main',
-    route: () => ({ids: ['main'], confidence: 1}),
-  }),
-);
+const main = defineSearcher({
+  id: 'main',
+  summary:
+    'Ranks page templates, blocks, and components by the words of the request and starts from the best page template.',
+  run: request => buildKit(request.query, request.options),
+});
 
-/** @type {import('../../foundation/route/route.mjs').Tree<BuildRequest, null, BuildAnswer>} */
+const root = defineClassifier({
+  id: 'root',
+  summary: 'Classifies the request and hands it to the searcher for its class.',
+  searchers: {},
+  fallback: 'main',
+  floor: 1,
+  features: () => ['#bias'],
+  weights: ctx => ctx.weights,
+});
+
 export const BUILD_TREE = defineTree('root', [root, main]);

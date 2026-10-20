@@ -21,7 +21,10 @@ import {describe, it, expect} from 'vitest';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {docs} from '../docs/docs.mjs';
-import {domainPriority, search, scoreQuery, tokenizeQuery} from './search.mjs';
+import {search} from './search.mjs';
+import {domainPriority} from './_priority.mjs';
+import {scoreQuery} from './_score.mjs';
+import {tokenizeQuery} from './_query.mjs';
 
 const REPO = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
