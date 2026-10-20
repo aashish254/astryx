@@ -673,8 +673,20 @@ function docFinderOver(catalog, tree, fromProvider, summaries = true) {
         parsed.kind,
         parsed.name,
       );
-      if (link)
+      if (link) {
+        // The summary is the target doc's own text, so its links resolve
+        // against the target's provider, never the linking doc's: a Core
+        // component's against the CLI's docs, like its other fields.
+        if (summaries && link.summary.includes('{@link')) {
+          link.summary = await linkSummary(
+            catalog,
+            tree,
+            provider === CORE_COMPONENT_PROVIDER ? CLI_PROVIDER_ID : provider,
+            link.summary,
+          );
+        }
         return {link: {target, ...link}, kind: parsed.kind, typed: null};
+      }
     }
     const searchType =
       parsed.kind === 'component'
@@ -726,6 +738,15 @@ function bareLinkHint(error, target, catalog, identities, fromProvider) {
   }
   return `${error}, and no topic is named "${name}". Link a doc that exists, as \`{@link generic:<topic>}\` (\`astryx docs\` lists the topics), or remove the link.`;
 }
+
+/** The provider Core's components and templates belong to. */
+const CORE_COMPONENT_PROVIDER = (() => {
+  try {
+    return normalizeProviderId(CORE_PACKAGE);
+  } catch {
+    return CORE_PACKAGE;
+  }
+})();
 
 /** The doc kinds no docs tree holds: components and templates. */
 const CONTRIBUTED_KINDS = new Set(['component', 'page', 'block']);

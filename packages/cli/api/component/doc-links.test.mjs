@@ -235,3 +235,118 @@ describe("a link in a guide's description, as the docs tree shows it", () => {
     SLOW,
   );
 });
+
+describe("a reference block's summary of another package's component", () => {
+  it(
+    "resolves the summary's links against the component's own package",
+    async () => {
+      const write = (
+        /** @type {string} */ file,
+        /** @type {string} */ text,
+      ) => {
+        fs.mkdirSync(path.dirname(path.join(tmpDir, file)), {recursive: true});
+        fs.writeFileSync(path.join(tmpDir, file), text);
+      };
+      const doc = (/** @type {object} */ value) =>
+        `export default ${JSON.stringify(value)};\n`;
+      write('package.json', JSON.stringify({name: 'consumer'}));
+      write(
+        'astryx.config.mjs',
+        "export default {integrations: ['@acme/widgets', '@acme/other']};\n",
+      );
+      const widgets = 'node_modules/@acme/widgets';
+      write(
+        `${widgets}/package.json`,
+        JSON.stringify({name: '@acme/widgets', version: '1.0.0'}),
+      );
+      write(
+        `${widgets}/astryx.integration.mjs`,
+        "export default {docs: './docs'};\n",
+      );
+      write(
+        `${widgets}/docs/acme-ref.doc.mjs`,
+        doc({
+          type: 'generic',
+          name: 'acme-ref',
+          title: 'Acme ref',
+          description: 'Where the card is documented.',
+          sections: [
+            {
+              title: 'Overview',
+              content: [
+                {
+                  type: 'reference',
+                  target: '@acme/other:component:OtherCardBody',
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      const other = 'node_modules/@acme/other';
+      write(
+        `${other}/package.json`,
+        JSON.stringify({name: '@acme/other', version: '1.0.0'}),
+      );
+      write(
+        `${other}/astryx.integration.mjs`,
+        "export default {components: './components', docs: './docs'};\n",
+      );
+      write(
+        `${other}/docs/other-setup.doc.mjs`,
+        doc({
+          type: 'generic',
+          name: 'other-setup',
+          title: 'Other setup',
+          description: 'Set up Other.',
+          sections: [
+            {
+              title: 'Overview',
+              content: [{type: 'prose', text: 'Install it.'}],
+            },
+          ],
+        }),
+      );
+      write(
+        `${other}/components/OtherCard.doc.mjs`,
+        doc({
+          type: 'component',
+          name: 'OtherCard',
+          displayName: 'Other Card',
+          usage: {description: 'A card.'},
+          props: [],
+        }),
+      );
+      write(
+        `${other}/components/OtherCard.tsx`,
+        'export function OtherCard() { return null; }\n',
+      );
+      write(
+        `${other}/components/OtherCardBody.doc.mjs`,
+        doc({
+          type: 'component',
+          name: 'OtherCardBody',
+          displayName: 'Other Card Body',
+          subComponentOf: 'OtherCard',
+          description: 'Its body, set up as {@link generic:other-setup} says.',
+          props: [],
+        }),
+      );
+      write(
+        `${other}/components/OtherCardBody.tsx`,
+        'export function OtherCardBody() { return null; }\n',
+      );
+
+      const read = /** @type {any} */ (
+        await docs('acme-ref', undefined, {cwd: tmpDir, full: true})
+      );
+
+      // `other-setup` is @acme/other's topic: from @acme/widgets, the
+      // linking package, the same link names no doc.
+      expect(read.data.sections[0].content[0].text).toContain(
+        'Its body, set up as `astryx docs other-setup` says.',
+      );
+    },
+    SLOW,
+  );
+});
