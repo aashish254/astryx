@@ -496,11 +496,13 @@ describe.skipIf(!POSIX)(
       });
       const before = filesIn(dir);
       expect(run(g.bin, ['--version'], {cwd: dir, pc}).stdout).toBe('9.0.1');
-      // A release that must be fetched fails without touching the project.
+      // A release that must be fetched and cannot be: the starting copy
+      // answers, as before global mode, without touching the project.
       const missing = makeProject({core: '9.0.7'});
       const missingBefore = filesIn(missing);
-      const r = run(g.bin, ['--version', '--json'], {cwd: missing, pc});
-      expect(JSON.parse(r.stdout).code).toBe('ERR_VERSIONS_UNAVAILABLE');
+      const r = run(g.bin, ['--version'], {cwd: missing, pc});
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe('9.0.0');
       expect(filesIn(missing)).toEqual(missingBefore);
       expect(filesIn(dir)).toEqual(before);
     });
@@ -525,7 +527,7 @@ describe.skipIf(!POSIX)(
     );
 
     it.skipIf(ROOT)(
-      'G17 the cache cannot be written: the global copy still answers outside, and a needed release fails with ERR_VERSIONS_UNAVAILABLE',
+      'G17 the cache cannot be written: the global copy still answers outside, and in a project that needs a release it answers instead, with a warning and copy fallback',
       () => {
         const pc = computer();
         const g = globalCli('npm', '9.0.0', {root: pc.home});
@@ -539,9 +541,17 @@ describe.skipIf(!POSIX)(
           expect(outside.status).toBe(0);
           expect(outside.stdout).toBe('9.0.0');
           const dir = makeProject({core: '9.0.1'});
-          const r = run(g.bin, ['--version', '--json'], {cwd: dir, pc});
-          expect(r.status).toBe(1);
-          expect(JSON.parse(r.stdout).code).toBe('ERR_VERSIONS_UNAVAILABLE');
+          const text = run(g.bin, ['--version'], {cwd: dir, pc});
+          expect(text.status).toBe(0);
+          expect(text.stdout).toBe('9.0.0');
+          expect(text.lines).toEqual([
+            expect.stringMatching(
+              /^astryx: could not get Astryx 9\.0\.1 to match this project's Core \(the release cache .* cannot be written.*\); answering with CLI 9\.0\.0 instead$/u,
+            ),
+          ]);
+          const json = run(g.bin, ['docs', '--json'], {cwd: dir, pc});
+          expect(json.status).toBe(0);
+          expect(JSON.parse(json.stdout).meta.answeredBy.copy).toBe('fallback');
         } finally {
           fs.chmodSync(pc.astryxCache, 0o755);
         }
@@ -861,7 +871,7 @@ describe.skipIf(!POSIX)(
       expect(filesIn(dir)).toEqual(before);
     });
 
-    it('G31 a damaged cached release is not used: the run installs it again, or fails with ERR_VERSIONS_UNAVAILABLE when it cannot', () => {
+    it('G31 a damaged cached release is not used: the run installs it again, or, when it cannot, the starting copy answers instead', () => {
       const pc = computer();
       const g = globalCli('npm', '9.0.0', {root: pc.home});
       const cached = seedPackedRelease(pc.astryxCache, '9.0.2');
@@ -876,9 +886,12 @@ describe.skipIf(!POSIX)(
           'package.json',
         ),
       );
-      const r = run(g.bin, ['--version', '--json'], {cwd: dir, pc});
-      expect(r.status).toBe(1);
-      expect(JSON.parse(r.stdout).code).toBe('ERR_VERSIONS_UNAVAILABLE');
+      const r = run(g.bin, ['--version'], {cwd: dir, pc});
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe('9.0.0');
+      expect(r.lines.filter(l => l.includes('could not get'))).toEqual([
+        expect.stringMatching(/^astryx: could not get Astryx 9\.0\.2 /u),
+      ]);
     });
 
     it('G32 a workspace whose own CLI sits beside its own Core answers with that CLI', () => {
@@ -1384,6 +1397,117 @@ describe.skipIf(!POSIX)(
       expect(onPath.status).toBe('pass');
       expect(onPath.message).toContain(path.join(prefix, 'bin', 'astryx'));
     });
+
+    it("G45 the agent guide: the global copy's first run writes one file and links Claude Code's folder to it; a folder Astryx did not create is kept and doctor names it; --remove-agents removes the file and the link", async () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      const file = path.join(
+        pc.home,
+        '.agents',
+        'skills',
+        'astryx',
+        'SKILL.md',
+      );
+      const claude = path.join(pc.home, '.claude', 'skills', 'astryx');
+      run(g.bin, ['--version'], {cwd: tempDir('empty'), pc});
+      for (let i = 0; i < 100 && !fs.existsSync(claude); i++) {
+        await new Promise(done => setTimeout(done, 100));
+      }
+      expect(fs.readFileSync(file, 'utf8')).toContain('name: astryx');
+      expect(fs.lstatSync(claude).isSymbolicLink()).toBe(true);
+      expect(fs.readFileSync(path.join(claude, 'SKILL.md'), 'utf8')).toBe(
+        fs.readFileSync(file, 'utf8'),
+      );
+      const removed = run(g.bin, ['init', '--user', '--remove-agents'], {
+        cwd: tempDir('empty'),
+        pc,
+      });
+      expect(removed.status).toBe(0);
+      expect(fs.existsSync(file)).toBe(false);
+      expect(fs.existsSync(claude)).toBe(false);
+
+      // A folder someone else put there is never replaced.
+      fs.mkdirSync(claude, {recursive: true});
+      fs.writeFileSync(path.join(claude, 'SKILL.md'), 'mine\n');
+      expect(
+        run(g.bin, ['init', '--user'], {cwd: tempDir('empty'), pc}).status,
+      ).toBe(0);
+      expect(fs.readFileSync(path.join(claude, 'SKILL.md'), 'utf8')).toBe(
+        'mine\n',
+      );
+      const doctor = JSON.parse(
+        run(g.bin, ['doctor', '--json'], {cwd: tempDir('empty'), pc}).stdout,
+      );
+      expect(
+        doctor.data.checks.find(
+          (/** @type {any} */ c) => c.id === 'computer-agent-text',
+        ).message,
+      ).toContain(
+        `Not linked, because something Astryx did not create is there: ~${path.sep}${path.join('.claude', 'skills', 'astryx')}`,
+      );
+    });
+
+    it('G46 docs global inside a project whose release predates it: the copy that started the run answers, for this computer, never handed off', () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.5', {root: pc.home});
+      const dir = makeProject({core: '9.0.0', cli: '9.0.0'});
+      for (const args of [
+        ['docs', 'global'],
+        ['docs', 'global/problems'],
+      ]) {
+        const r = run(g.bin, args, {cwd: dir, pc});
+        expect(r.status).toBe(0);
+        expect(r.lines).toEqual([
+          'astryx: answered by CLI 9.0.5 with Core 9.0.5, for this computer',
+        ]);
+      }
+      // Any other docs topic is still the project's.
+      expect(run(g.bin, ['docs'], {cwd: dir, pc}).lines).toEqual([
+        "astryx: answered by this project's CLI 9.0.0, handed over from CLI 9.0.5",
+      ]);
+    });
+
+    it("G47 offline, a project whose CLI is newer than its Core: that project's own CLI answers, as before global mode, with one warning", () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      // Core 9.0.3 needs release 9.0.3, which is not cached and cannot be
+      // fetched; the project's own CLI is 9.0.4.
+      const dir = makeProject({core: '9.0.3', cli: '9.0.4'});
+      const r = run(g.bin, ['--version'], {cwd: dir, pc});
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe('9.0.4');
+      expect(r.lines.filter(l => l.includes('could not get Astryx'))).toEqual([
+        expect.stringMatching(
+          /^astryx: could not get Astryx 9\.0\.3 to match this project's Core \(.+\); answering with CLI 9\.0\.4 instead$/u,
+        ),
+      ]);
+      const json = run(g.bin, ['docs', '--json'], {cwd: dir, pc});
+      expect(json.status).toBe(0);
+      expect(JSON.parse(json.stdout).meta.answeredBy).toMatchObject({
+        cli: '9.0.4',
+        copy: 'fallback',
+      });
+    });
+
+    it('G48 offline, a project that installs only Core: the starting copy answers, with one warning and copy fallback', () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      const dir = makeProject({core: '9.0.3'});
+      const r = run(g.bin, ['--version'], {cwd: dir, pc});
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe('9.0.0');
+      // After the line saying it tries to install the release, one warning.
+      expect(r.lines.filter(l => !l.includes('installing'))).toEqual([
+        expect.stringMatching(
+          /^astryx: could not get Astryx 9\.0\.3 to match this project's Core \(.+\); answering with CLI 9\.0\.0 instead$/u,
+        ),
+      ]);
+      const json = run(g.bin, ['docs', '--json'], {cwd: dir, pc});
+      expect(JSON.parse(json.stdout).meta.answeredBy).toMatchObject({
+        cli: '9.0.0',
+        copy: 'fallback',
+      });
+    });
   },
 );
 
@@ -1392,6 +1516,6 @@ it('names every row of the table exactly once', () => {
   const rows = [
     ...text.matchAll(/^\s+it(?:\.skipIf\([^)]*\)\()?\(?\s*['"](G\d+) /gmu),
   ].map(m => m[1]);
-  expect(rows).toEqual(Array.from({length: 44}, (_, i) => `G${i + 1}`));
+  expect(rows).toEqual(Array.from({length: 48}, (_, i) => `G${i + 1}`));
   expect(os.EOL).toBeTypeOf('string');
 });

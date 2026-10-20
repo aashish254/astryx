@@ -44,7 +44,6 @@ import {astryxCommandsOnSearchPath} from '../env/search-path.mjs';
 import {
   CLI_PACKAGE,
   detectPackageManager,
-  getDlxPrefix,
   getRunPrefix,
 } from '../env/package-manager.mjs';
 import {satisfiesRange, semverCompare} from '../env/semver.mjs';
@@ -290,14 +289,11 @@ export function projectLag({cwd, current, stateDir = userConfigDir()}) {
   const facts = readReleaseFacts(cwd);
   if (!facts.inProject) return null;
   const root = projectRootOf(facts) ?? cwd;
-  const declaresCli = Boolean(facts.cli || facts.declaredCliRange);
   const pm = detectPackageManager(root);
-  const packages = [`@astryxdesign/core@${newest}`];
-  if (declaresCli) packages.push(`${CLI_PACKAGE}@${newest}`);
-  const install = `${ADD[pm] ?? ADD.npm} ${packages.join(' ')}`;
-  const stem = declaresCli
-    ? `${getRunPrefix(root)} astryx`
-    : `${getDlxPrefix(root)} ${CLI_PACKAGE}@${newest}`;
+  // The CLI is always installed beside Core: a project that installed only
+  // Core gets it too, as recommended, so its version is pinned with Core's.
+  const install = `${ADD[pm] ?? ADD.npm} @astryxdesign/core@${newest} ${CLI_PACKAGE}@${newest}`;
+  const stem = `${getRunPrefix(root)} astryx`;
   return {
     root,
     current,

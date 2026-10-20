@@ -261,8 +261,8 @@ describe('globalBehind and projectLag', () => {
       projectLag({cwd: coreOnly, current: '0.7.1', stateDir}),
     ).toMatchObject({
       root: coreOnly,
-      install: 'npm install @astryxdesign/core@0.7.3',
-      upgrade: 'npx @astryxdesign/cli@0.7.3 upgrade --from 0.7.1 --apply',
+      install: 'npm install @astryxdesign/core@0.7.3 @astryxdesign/cli@0.7.3',
+      upgrade: 'npx astryx upgrade --from 0.7.1 --apply',
     });
     const pnpm = project(tempDir(), {
       '@astryxdesign/core': '0.7.1',
@@ -372,7 +372,7 @@ describe.skipIf(process.platform === 'win32')('noticeLines', () => {
     };
     expect(noticeLines({...input, stateDir, now: 10})).toEqual([
       'A new release of Astryx is available: 0.7.1 → 0.7.3',
-      'To upgrade, run: npm install @astryxdesign/core@0.7.3, then npx @astryxdesign/cli@0.7.3 upgrade --from 0.7.1 --apply',
+      'To upgrade, run: npm install @astryxdesign/core@0.7.3 @astryxdesign/cli@0.7.3, then npx astryx upgrade --from 0.7.1 --apply',
       'The astryx command on this computer runs CLI 0.7.1, which answers every folder itself.',
       oldUpgrade,
     ]);
