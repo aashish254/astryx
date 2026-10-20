@@ -48,6 +48,8 @@ export const AUTHORING_SELF_DOCS = [
   'doctypes/template/template.doc.mjs',
   'doctypes/template/integration-template.doc.mjs',
   'doctypes/theme/theme.doc.mjs',
+  'doctypes/icon-set/icon-set.doc.mjs',
+  'doctypes/icon-set/icon-set-data.doc.mjs',
 ];
 
 /** Blocks a self-doc note may carry that a topic section can render. */

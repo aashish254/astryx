@@ -133,7 +133,7 @@ export function rootProblem(root) {
  * declared-but-missing root is a `missing_root` error, a file is an
  * `invalid_root` error, and a folder that cannot be read is an
  * `unreadable_root` error. The contribution checks skip all three.
- * @param {{components?: string, templates?: string, codemods?: string, docs?: string, themes?: string}} resolved
+ * @param {{components?: string, templates?: string, codemods?: string, docs?: string, themes?: string, iconSets?: string}} resolved
  *   absolute resolved roots (undefined when not declared)
  * @param {Issue[]} issues
  */
@@ -144,6 +144,7 @@ function checkRoots(resolved, issues) {
     'codemods',
     'docs',
     'themes',
+    'iconSets',
   ]);
   for (const kind of kinds) {
     const root = resolved[kind];
@@ -457,6 +458,7 @@ export async function validateLoadedIntegration(loaded) {
       codemods: loaded.codemods,
       docs: loaded.docs,
       themes: loaded.themes,
+      iconSets: loaded.iconSets,
     },
     issues,
   );

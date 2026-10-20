@@ -11,7 +11,7 @@
  * `type` directly.
  *
  * Types (config, integration, codemod, and the doc vocabulary —
- * component/hook/reference/template/theme) are re-exported via `./index.ts`.
+ * component/hook/reference/template/theme/icon-set) are re-exported via `./index.ts`.
  */
 
 export {parseConfig} from './config/parse.mjs';
@@ -34,4 +34,5 @@ export {parseCommand} from './doctypes/command/parse.mjs';
 export {parseEnum} from './doctypes/enum/parse.mjs';
 export {parseNamespace} from './doctypes/namespace/parse.mjs';
 export {parseTheme} from './doctypes/theme/parse.mjs';
+export {parseIconSet, parseIconSetData} from './doctypes/icon-set/parse.mjs';
 export {parseLegacyDoc} from './doctypes/legacy.mjs';

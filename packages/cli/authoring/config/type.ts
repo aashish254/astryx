@@ -78,6 +78,13 @@ export interface AstryxConfig {
   integrations?: string[];
   /** Where to file issues/feedback for this project. */
   issuesUrl?: string;
+  /**
+   * The project's icon set: a set name (`"outline"`) or `"<package>/<set>"`.
+   * Without it, the only installed set is the project's set; with two or more
+   * installed and none named, the project has no icon set and Doctor warns.
+   * Copied templates use this set's icons.
+   */
+  iconSet?: string;
   /** Lifecycle hooks. */
   hooks?: {
     postCodemod?: PostCodemodHook[];

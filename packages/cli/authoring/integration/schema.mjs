@@ -77,6 +77,7 @@ export const integrationBaseSchema = z.object({
   codemods: z.string().optional(),
   docs: z.string().optional(),
   themes: z.string().optional(),
+  iconSets: z.string().optional(),
   issuesUrl: z.string().url().optional(),
   docsiteUrl: z.string().url().optional(),
 });

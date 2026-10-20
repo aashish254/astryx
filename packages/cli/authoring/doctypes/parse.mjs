@@ -5,7 +5,7 @@
  * into its typed shape (or throws a readable error), dispatching on the stamped
  * `type` and falling back to legacy shape-sniffing for unstamped docs. Its
  * acceptance set preserves the old permissive `ComponentDocSchema` while new
- * stamped kinds, including `theme`, use their sealed parser.
+ * stamped kinds, including `theme` and `icon-set`, use their sealed parser.
  */
 
 import {parseComponent} from './component/parse.mjs';
@@ -17,6 +17,7 @@ import {parseCommand} from './command/parse.mjs';
 import {parseEnum} from './enum/parse.mjs';
 import {parseNamespace} from './namespace/parse.mjs';
 import {parseTheme} from './theme/parse.mjs';
+import {parseIconSet} from './icon-set/parse.mjs';
 import {parseLegacyDoc} from './legacy.mjs';
 
 /** @typedef {import('./types.js').ComponentDoc} ComponentDoc */
@@ -29,6 +30,7 @@ import {parseLegacyDoc} from './legacy.mjs';
 /** @typedef {import('./types.js').EnumDoc} EnumDoc */
 /** @typedef {import('./types.js').NamespaceDoc} NamespaceDoc */
 /** @typedef {import('./types.js').ThemeDoc} ThemeDoc */
+/** @typedef {import('./types.js').IconSetDoc} IconSetDoc */
 
 /**
  * Validate an unknown loaded doc value into its typed shape, or throw.
@@ -38,7 +40,7 @@ import {parseLegacyDoc} from './legacy.mjs';
  *
  * @param {unknown} input
  * @param {string} [label]
- * @returns {ComponentDoc | HookDoc | FunctionDoc | ReferenceDoc | TemplateDoc | SchemaDoc | CommandDoc | EnumDoc | NamespaceDoc | ThemeDoc}
+ * @returns {ComponentDoc | HookDoc | FunctionDoc | ReferenceDoc | TemplateDoc | SchemaDoc | CommandDoc | EnumDoc | NamespaceDoc | ThemeDoc | IconSetDoc}
  */
 export function parseDoc(input, label = 'doc') {
   const type =
@@ -66,6 +68,8 @@ export function parseDoc(input, label = 'doc') {
       return parseNamespace(input, label);
     case 'theme':
       return parseTheme(input, label);
+    case 'icon-set':
+      return parseIconSet(input, label);
     case undefined:
     default:
       // 0.6.x shape-sniffed unknown stamps. Keep accepting them through the

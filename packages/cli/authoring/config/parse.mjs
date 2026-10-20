@@ -88,6 +88,7 @@ const configSchema = z
   .object({
     integrations: z.array(z.string()).optional(),
     issuesUrl: z.string().url().optional(),
+    iconSet: z.string().min(1).optional(),
     hooks: z
       .object({postCodemod: z.array(postCodemodHookSchema).optional()})
       .strict()

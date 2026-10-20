@@ -38,6 +38,10 @@ export interface AstryxIntegration {
    *  lower-kebab theme directory contains a source module and mandatory
    *  same-stem, strongly typed `.doc.mjs` descriptor. */
   themes?: string;
+  /** Relative path to the icon-set root (resolved to absolute). Each
+   *  lower-kebab directory under it is one icon set holding a strongly typed
+   *  `<name>.doc.mjs` IconSetDoc and its `<name>.icons.json` data file. */
+  iconSets?: string;
   /** Static package guidance appended to the CLI-owned managed agent block. */
   agentDocs?: {
     append?: readonly string[];

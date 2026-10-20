@@ -62,6 +62,13 @@ export const doc = {
       example: "'./themes'",
     },
     {
+      name: 'iconSets',
+      type: 'string',
+      description:
+        "The folder that holds your icon sets, relative to package.json, with one folder per set. Each set folder has a matching `<name>.doc.mjs` IconSetDoc and a `<name>.icons.json` data file. Installed sets answer `astryx icon` and `astryx search`, and copied templates use the project set's icons.",
+      example: "'./icon-sets'",
+    },
+    {
       name: 'agentDocs',
       type: '{ append?: readonly string[] }',
       description:
