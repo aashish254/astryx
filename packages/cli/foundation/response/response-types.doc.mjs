@@ -108,6 +108,23 @@ export const doc = {
         "One post's metadata plus the feed URL and the post's full plaintext body.",
     },
 
+    // icon (installed icon sets, AST-084)
+    {
+      value: 'icon.search',
+      description:
+        'The echoed query, `matchCount` (every match, before `limit`), and matches: icons from the installed icon sets ranked by meaning, each {set, id, package, module, export, import, words, fills, variants, reason, score}.',
+    },
+    {
+      value: 'icon.detail',
+      description:
+        "One icon's fields, as a match names them, with every variant's import line. The envelope names the set's package.",
+    },
+    {
+      value: 'icon.list',
+      description:
+        "The project's icon-set state (status, projectSet, reason), each installed set with its package, license, icon count, default variant, axes, and the shared icon names it fills and does not fill, and each withdrawn set with its reason.",
+    },
+
     // discover (external / integration packages)
     {
       value: 'discover.list',
@@ -139,7 +156,7 @@ export const doc = {
     {
       value: 'search',
       description:
-        'The echoed query, `matchCount` (total matches, before `limit`), and results, a ranked SearchResultEntry[] bounded by `limit`: each {domain, name, package, score, reason, description, command} (package is the npm package that owns the result), plus import (components, hooks), title, parent (the command that opens the level above), and, for a hit on one section, section (docs), or displayName and kind (templates).',
+        'The echoed query, `matchCount` (total matches, before `limit`), and results, a ranked SearchResultEntry[] bounded by `limit`: each {domain, name, package, score, reason, description, command} (package is the npm package that owns the result), plus import (components, hooks, and the import line for an icon), title, parent (the command that opens the level above), and, for a hit on one section, section (docs), or displayName and kind (templates).',
     },
 
     // build

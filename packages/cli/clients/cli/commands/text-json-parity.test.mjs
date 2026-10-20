@@ -31,6 +31,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {runCli} from '../../../test-utils/run-cli.mjs';
+import {writeIconPackage} from '../../../test-utils/icon-set-fixture.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../../../..');
@@ -398,6 +399,26 @@ const CASES = [
     name: 'integration pack',
     args: ['integration', 'pack', '--check'],
     skipFieldChecks: true,
+  },
+  {
+    name: 'icon',
+    args: ['icon', 'remove'],
+    cwd: '__TMP__',
+    // A project with the synthetic icon set installed.
+    setup: dir => {
+      writeIconPackage(path.join(dir, 'node_modules', '@acme', 'glyphs'));
+      fs.writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({name: 'app', dependencies: {'@acme/glyphs': '1.0.0'}}),
+      );
+    },
+    jsonFieldAllowlist: [
+      'matchCount — stated in section heading "Icons for ... (N)"',
+      'query — stated in section heading',
+      'module — part of the import line',
+      'export — part of the import line',
+      'score — the reason states the tier',
+    ],
   },
   {
     name: 'manifest',

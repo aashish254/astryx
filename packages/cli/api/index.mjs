@@ -23,6 +23,7 @@
 export {component} from './component/component.mjs';
 export {docs} from './docs/docs.mjs';
 export {blog} from './blog/blog.mjs';
+export {icon} from './icon/icon.mjs';
 export {discover} from './discover/discover.mjs';
 export {template} from './template/template.mjs';
 export {

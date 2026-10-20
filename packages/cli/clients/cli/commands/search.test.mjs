@@ -318,7 +318,11 @@ describe('search CLI — exit codes + JSON contract', () => {
         }
       }
     }
-    expect(domains).toEqual(new Set(SEARCH_DOMAINS));
+    // Icons answer only from an installed icon set, and the repository has
+    // none; api/search/search.icon.test.mjs covers the icon domain.
+    expect(domains).toEqual(
+      new Set(SEARCH_DOMAINS.filter(domain => domain !== 'icon')),
+    );
   }, 90_000);
 
   it('--verbose exits 0 and prints import/match detail', async () => {
@@ -364,7 +368,7 @@ describe('search CLI — exit codes + JSON contract', () => {
       // The text says the search covered the docs and themes alone.
       const text = await runCli(['search', 'button'], empty);
       expect(text.status).toBe(0);
-      expect(text.stdout).toContain('only the docs and themes were searched');
+      expect(text.stdout).toContain('only the docs, themes, and icons were searched');
       // A themes-only search needs no core, like a docs-only one.
       const themes = await runCli(['--json', 'search', 'warm', '--type', 'theme'], empty);
       expect(themes.status).toBe(0);

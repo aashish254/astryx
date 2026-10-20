@@ -102,6 +102,10 @@ const RUNNERS = {
     runs: SELF_DOCS,
     sites: ['import ../../../api/blog/blog.doc.mjs', 'import ./blog.doc.mjs'],
   },
+  'clients/cli/commands/icon.mjs': {
+    runs: SELF_DOCS,
+    sites: ['import ../../../api/icon/icon.doc.mjs', 'import ./icon.doc.mjs'],
+  },
   'clients/cli/commands/build-theme.mjs': {
     runs: `${SELF_DOCS}; and \`astryx theme build\`, a child process per theme`,
     sites: [

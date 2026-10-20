@@ -84,6 +84,7 @@ export const JSON_SUPPORTED = new Set([
   'blog',
   'discover',
   'search',
+  'icon',
   'build',
   'swizzle',
   'gap-report',
@@ -273,6 +274,7 @@ const commands = [
   {name: 'hook', path: './commands/hook/index.mjs', register: 'registerHook'},
   {name: 'discover', path: './commands/discover.mjs', register: 'registerDiscover'},
   {name: 'search', path: './commands/search.mjs', register: 'registerSearch'},
+  {name: 'icon', path: './commands/icon.mjs', register: 'registerIcon'},
   {name: 'build', path: './commands/build.mjs', register: 'registerBuild'},
   {name: 'doctor', path: './commands/doctor.mjs', register: 'registerDoctor'},
 ];

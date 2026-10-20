@@ -93,7 +93,11 @@ export function registerSearch(program) {
         empty: result.data.matchCount === 0,
         // Nothing matched, so the results cannot say what was searched for —
         // the `--type` filter can, and an open search really did span them all.
-        fallbackKind: options.type ?? 'mixed',
+        // Icons have no result kind of their own; they count as mixed.
+        fallbackKind:
+          options.type == null || options.type === 'icon'
+            ? 'mixed'
+            : options.type,
       });
 
       if (json) {
@@ -104,13 +108,13 @@ export function registerSearch(program) {
       // ── Text output ──────────────────────────────────────────────
       const run = getCliInvocation();
       const {query: q, matchCount, results} = result.data;
-      // Outside an app an open search covers the docs and themes alone. Say
+      // Outside an app an open search covers the docs, themes, and icons. Say
       // so, so that list does not read as "Astryx has no such component".
       const note =
         !options.type && !findCoreDir(process.cwd())
           ? [
               text(
-                '@astryxdesign/core is not installed here, so only the docs and themes were searched.',
+                '@astryxdesign/core is not installed here, so only the docs, themes, and icons were searched.',
               ),
             ]
           : [];

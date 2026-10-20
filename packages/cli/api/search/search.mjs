@@ -113,6 +113,7 @@ import {levenshteinDistance} from '../../foundation/text/string-utils.mjs';
 import {discoverTemplates, extractComponents} from '../template/template.mjs';
 import {templateLookupIds} from '../../foundation/discovery/template-adapter.mjs';
 import {listAvailableThemes} from '../theme/_adapter.mjs';
+import {loadIconSets} from '../icon/_adapter.mjs';
 import {
   guideEntry,
   loadDocsCatalog,
@@ -134,7 +135,7 @@ import {setResultCoverage} from './coverage.mjs';
  * A search candidate gathered from one content domain. Extra underscore-
  * prefixed fields carry domain-specific payload used only by {@link toResult}.
  * @typedef {object} Candidate
- * @property {'component'|'hook'|'doc'|'template'|'theme'} domain
+ * @property {'component'|'hook'|'doc'|'template'|'theme'|'icon'} domain
  * @property {string} name
  * @property {string[]} [aliases] - Other names the candidate answers to, scored
  *   with the same name signals: a theme's display name.
@@ -166,6 +167,8 @@ import {setResultCoverage} from './coverage.mjs';
  * @property {'file'|'doc'} [_hold] - How an integration component holds its
  *   name, for the owner rule.
  * @property {string} [_docPath] - An integration component's doc.
+ * @property {string} [_summary] - The description an icon result shows; an
+ *   icon scores on its words, never on prose.
  */
 
 /**
@@ -540,13 +543,20 @@ const isTypo = (a, b, dist) =>
     TYPO_MIN_LENGTH[/** @type {1 | 2 | 3} */ (dist)];
 
 /** Valid domain filters for `--type`. */
-export const SEARCH_DOMAINS = ['component', 'hook', 'doc', 'template', 'theme'];
+export const SEARCH_DOMAINS = [
+  'component',
+  'hook',
+  'doc',
+  'template',
+  'theme',
+  'icon',
+];
 
 /**
  * The domains a search reads without @astryxdesign/core. An open search outside
  * an app covers these alone.
  */
-const CORELESS_DOMAINS = ['doc', 'theme'];
+const CORELESS_DOMAINS = ['doc', 'theme', 'icon'];
 
 /**
  * Filler words stripped from multi-word queries so natural-language phrasing
@@ -766,6 +776,9 @@ export function domainPriority(
   queryWords = phraseWords(term),
 ) {
   const words = [term, ...tokens];
+  // An icon never jumps ahead of a doc or a component on priority: it ranks
+  // below a component or doc match of equal score (AST-084 FR8).
+  if (candidate.domain === 'icon') return 0;
   if (candidate.domain === 'doc') {
     const topic = String(candidate._topic ?? candidate.name).toLowerCase();
     // The whole query, read as words, is the topic's route, its last
@@ -2118,6 +2131,41 @@ async function gatherThemes(cwd) {
 }
 
 /**
+ * Build icon candidates from the installed icon sets' data files (AST-084
+ * FR8). An icon's name is `<set>/<id>`; its id, words, and filled shared icon
+ * names are its keywords. It carries no prose, so a word only a set's
+ * description holds never finds every icon in the set.
+ * @param {string} cwd
+ * @returns {Promise<Candidate[]>}
+ */
+async function gatherIcons(cwd) {
+  let sets;
+  try {
+    ({sets} = await loadIconSets(cwd));
+  } catch {
+    return [];
+  }
+  return sets.flatMap(set =>
+    set.data.icons.map(icon => {
+      const module = icon.module ?? set.data.module;
+      return {
+        domain: /** @type {const} */ ('icon'),
+        name: `${set.name}/${icon.id}`,
+        keywords: [
+          icon.id.replace(/-/g, ' '),
+          ...icon.words,
+          ...(icon.fills ?? []),
+        ],
+        description: '',
+        _summary: `${set.displayName} icon: ${icon.words.join(', ')}`,
+        _import: `import {${icon.export}} from '${module}';`,
+        _package: set.package,
+      };
+    }),
+  );
+}
+
+/**
  * Map a scored candidate to its public, actionable result shape. Each result
  * carries enough to act on it: the domain, name, a one-line description, and
  * the follow-up command (and import path where relevant).
@@ -2180,6 +2228,14 @@ function toResult(c, score, reason, matchedTerms, queryTerms) {
         command: `astryx theme add ${c.name}`,
       };
       break;
+    case 'icon':
+      result = {
+        ...base,
+        description: c._summary ?? '',
+        import: c._import,
+        command: `astryx icon ${c.name}`,
+      };
+      break;
     default:
       result = base;
   }
@@ -2187,12 +2243,13 @@ function toResult(c, score, reason, matchedTerms, queryTerms) {
 }
 
 /**
- * Unified ranked search across components, hooks, docs, templates, and themes.
+ * Unified ranked search across components, hooks, docs, templates, themes,
+ * and the installed icon sets' icons.
  *
  * @param {string} query - Free-text search term.
  * @param {object} [options]
  * @param {string} [options.cwd]
- * @param {'component'|'hook'|'doc'|'template'|'theme'} [options.type] - Restrict to one domain.
+ * @param {'component'|'hook'|'doc'|'template'|'theme'|'icon'} [options.type] - Restrict to one domain.
  * @param {number} [options.limit] - Max results (default 20).
  * @returns {Promise<import('./search.type.mjs').SearchResponse>}
  */
@@ -2257,17 +2314,30 @@ async function searchOnce(query, options) {
   /** @param {string} d */
   const wants = d =>
     (!type && (coreDir != null || CORELESS_DOMAINS.includes(d))) || type === d;
-  const [components, hooks, docTopics, templates, themes] = await Promise.all([
-    wants('component')
-      ? gatherComponents(/** @type {string} */ (coreDir), cwd)
-      : [],
-    wants('hook') ? gatherHooks(/** @type {string} */ (coreDir)) : [],
-    wants('doc') ? gatherDocs(cwd) : [],
-    wants('template') ? gatherTemplates(cwd) : [],
-    wants('theme') ? gatherThemes(cwd) : [],
-  ]);
+  const [components, hooks, docTopics, templates, themes, icons] =
+    await Promise.all([
+      wants('component')
+        ? gatherComponents(/** @type {string} */ (coreDir), cwd)
+        : [],
+      wants('hook') ? gatherHooks(/** @type {string} */ (coreDir)) : [],
+      wants('doc') ? gatherDocs(cwd) : [],
+      wants('template') ? gatherTemplates(cwd) : [],
+      wants('theme') ? gatherThemes(cwd) : [],
+      wants('icon') ? gatherIcons(cwd) : [],
+    ]);
 
-  const all = [...components, ...hooks, ...docTopics, ...templates, ...themes];
+  const all = [
+    ...components,
+    ...hooks,
+    ...docTopics,
+    ...templates,
+    ...themes,
+    ...icons,
+  ];
+  // How the query is read (as typed, or as the words an identifier spells)
+  // is decided by the catalog's own names, never by an icon's: an icon word
+  // must not change how a component or doc query ranks.
+  const textual = all.filter(candidate => candidate.domain !== 'icon');
 
   // A query that is one identifier counts as the words it spells
   // (`SidebarToggle`), and still matches whole as typed. In a query of several
@@ -2277,7 +2347,7 @@ async function searchOnce(query, options) {
   // entry's name, typed whole or as its words, that entry answers it, and
   // neither reading may add near siblings beside it.
   const spelled = spellIdentifiers(String(query).trim());
-  const exact = all.some(candidate =>
+  const exact = textual.some(candidate =>
     [candidate.name, ...(candidate.aliases ?? [])].some(name => {
       const lower = String(name).toLowerCase();
       return (
@@ -2295,7 +2365,7 @@ async function searchOnce(query, options) {
     !exact &&
     !/\s/.test(term) &&
     spelled !== term &&
-    !all.some(candidate => scoreCandidate(term, candidate));
+    !textual.some(candidate => scoreCandidate(term, candidate));
   const tokens = tokenizeQuery(split ? spelled : term);
   /** @type {string[]} */
   const words = exact
@@ -2426,7 +2496,14 @@ async function searchOnce(query, options) {
   // head goes next, except that a head with domain priority goes ahead of a
   // doc head without it (see domainPriority). Each side keeps its own order.
   /** @type {Record<string, number>} */
-  const domainOrder = {component: 0, hook: 1, doc: 2, template: 3, theme: 4};
+  const domainOrder = {
+    component: 0,
+    hook: 1,
+    doc: 2,
+    template: 3,
+    theme: 4,
+    icon: 5,
+  };
   /**
    * @param {{result: any, key: number}} x
    * @param {{result: any, key: number}} y
