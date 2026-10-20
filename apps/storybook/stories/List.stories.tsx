@@ -291,6 +291,24 @@ export const LongNumberMarkers: Story = {
   ),
 };
 
+export const NumberedFirstLine: Story = {
+  args: {listStyle: 'decimal', start: 9},
+  render: args => (
+    <List {...args}>
+      <ListItem
+        align="first-line"
+        startContent={<Avatar name="Ada Lovelace" size={40} />}
+        label={<>A numbered row with a tall avatar and a wrapped first line.</>}
+      />
+      <ListItem
+        align="first-line"
+        startContent={<Avatar name="Grace Hopper" size={40} />}
+        label={<>The number and avatar follow the same first text line.</>}
+      />
+    </List>
+  ),
+};
+
 export const BulletedList: Story = {
   render: args => (
     <List listStyle="disc" {...args}>

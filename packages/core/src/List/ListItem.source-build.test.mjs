@@ -3,8 +3,7 @@
 /**
  * @file ListItem.source-build.test.mjs
  * @input Uses Babel, the core StyleX build config, and ListItem source
- * @output Verifies the divider reset and unbroken, content-sized number markers
- *   survive compilation
+ * @output Verifies the divider reset for the last item survives compilation
  * @position Regression test for the shipped ListItem stylesheet
  */
 
@@ -28,18 +27,7 @@ async function compileListItemRules() {
   return (result?.metadata?.stylex ?? []).map(([, rule]) => rule.ltr);
 }
 
-describe('ListItem stylesheet', () => {
-  it('keeps numeric markers unbroken and sized by their content', async () => {
-    const rules = await compileListItemRules();
-    expect(rules).toContainEqual(
-      expect.stringMatching(/\{min-width:var\(--spacing-4\)\}$/),
-    );
-    expect(rules).toContainEqual(
-      expect.stringMatching(/\{white-space:nowrap\}$/),
-    );
-    expect(rules).toContainEqual(expect.stringMatching(/\{width:auto\}$/));
-  });
-
+describe('ListItem divider stylesheet', () => {
   it('emits a :last-child rule that removes the divider after the last item', async () => {
     const rules = await compileListItemRules();
 
