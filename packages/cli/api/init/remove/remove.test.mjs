@@ -3,7 +3,7 @@ import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import * as fs from 'node:fs'; import * as path from 'node:path'; import * as os from 'node:os';
 import {init} from '../init.mjs'; import {remove} from './remove.mjs'; import {logger} from '../../logger.mjs';
 let dir;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-rm-')); fs.writeFileSync(path.join(dir,'package.json'),JSON.stringify({name:'c',version:'1.0.0'})); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-rm-')); fs.writeFileSync(path.join(dir,'package.json'),JSON.stringify({name:'c',version:'1.0.0'})); });
 afterEach(() => { fs.rmSync(dir,{recursive:true,force:true}); logger.setSilent(true); });
 describe('init.remove says whether anything was removed', () => {
   it('false on clean', async () => { const r=await remove({cwd:dir}); expect(r.type).toBe('init.remove'); expect(r.data.removed).toBe(false); });

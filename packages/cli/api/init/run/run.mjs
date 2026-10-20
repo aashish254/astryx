@@ -109,7 +109,7 @@ async function applyAgents(cwd, options, invocation, data) {
       agent: options.agent,
       paths,
       renderedBlock,
-      onSkipped: (rel, reason) => skipped.push(`${rel} was not written: ${reason}`),
+      onSkipped: (rel, reason) => skipped.push(`${rel} (${reason})`),
     });
     // Each file is reported from where init ran, as before.
     const written =
@@ -120,11 +120,15 @@ async function applyAgents(cwd, options, invocation, data) {
           );
     data.docsWritten = written;
     logger.log(`[ok] AI agent docs installed -> ${written.join(', ')}`);
-    // A file only the current layout writes (GEMINI.md) that resolves outside
-    // the project is skipped and reported; the exit code stays 0.
+    // A file left as it is (protected, or a GEMINI.md that resolves outside
+    // the project) is reported in docsError with one note; the exit code
+    // stays 0. Only a refusal 0.7.1 made too, a path that escapes the
+    // project, fails the run (below).
     if (skipped.length > 0) {
-      const message = skipped.join(' ');
-      logger.error(`Error: ${message}`);
+      const message =
+        `Left as ${skipped.length === 1 ? 'it is' : 'they are'}: ${skipped.join('; ')}. ` +
+        'To have init write the Astryx block there, remove the protection, or copy the block from AGENTS.md by hand.';
+      logger.warn(`Note: ${message}`);
       data.docsError = {kind: 'install-failed', message};
     }
   } catch (err) {
@@ -137,10 +141,10 @@ async function applyAgents(cwd, options, invocation, data) {
       return;
     }
     // The home folder, and a settings folder in it outside a project, are
-    // refused: nothing is written, the reason is printed, and the exit code
-    // stays the soft-failure one.
+    // refused: nothing is written, the reason is printed as a note, and the
+    // exit code stays 0.
     if (err instanceof AgentDocsHomeError) {
-      logger.error(`Error: ${err.message}`);
+      logger.warn(`Note: ${err.message}`);
       data.docsError = {kind: 'install-failed', message: err.message};
       return;
     }

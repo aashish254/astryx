@@ -188,6 +188,7 @@ describe('astryx init in the home folder', () => {
     const text = await runCli(['init'], {cwd: tmpDir});
     expect(text.status).toBe(0);
     expect(text.stderr).toMatch(/not written into the home folder/);
+    expect(text.stderr).not.toMatch(/Error:/);
 
     expect(read('.claude/CLAUDE.md')).toBe(personal);
     expect(fs.readdirSync(tmpDir)).toEqual(['.claude']);

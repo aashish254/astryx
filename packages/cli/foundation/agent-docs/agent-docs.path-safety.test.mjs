@@ -307,13 +307,14 @@ describe('init --features agents with an agent doc linked outside the project', 
     expect(env.data.docsError).toEqual({
       kind: 'install-failed',
       message: expect.stringMatching(
-        /^GEMINI\.md was not written: .*outside the project root/,
+        /^Left as it is: GEMINI\.md \(.*outside the project root/,
       ),
     });
 
     const text = await runCli(['init', '--features', 'agents'], project);
     expect(text.status).toBe(0);
-    expect(text.stderr).toMatch(/GEMINI\.md was not written/);
+    expect(text.stderr).toMatch(/^Note: Left as it is: GEMINI\.md/m);
+    expect(text.stderr).not.toMatch(/Error:/);
 
     expect(fs.readFileSync(shared, 'utf-8')).toBe('# Shared\n');
   }, 30_000);
@@ -430,21 +431,42 @@ describe('init --remove-agents with an agent doc linked outside the project', ()
   }, 30_000);
 });
 
-describe("GEMINI.md and .claude/CLAUDE.md take upgrade's protections (spec:AST-040 FR2)", () => {
-  /** @param {string} project */
-  const run = project => {
+describe("existing Claude files and GEMINI.md take upgrade's protections (spec:AST-040 FR2)", () => {
+  /** @param {string} project @param {object} [options] */
+  const run = (project, options = {}) => {
     /** @type {Array<[string, string]>} */
     const skipped = [];
     const written = installAgentDocs(project, {
       renderedBlock: BLOCK,
       onSkipped: (rel, reason) => skipped.push([rel, reason]),
+      ...options,
     });
     return {written, skipped};
   };
+  const OLD_BLOCK = '<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->';
+  const INIT_HEADING = (/** @type {string} */ name) =>
+    `# ${name}\n\nProject-specific guidance for AI coding agents.`;
 
-  it('writes no GEMINI.md the project ignores, and reports it', () => {
+  it('creates AGENTS.md and the GEMINI.md import even when ignore rules cover them (INV31)', () => {
+    const {project} = layout();
+    fs.writeFileSync(
+      path.join(project, '.gitignore'),
+      'AGENTS.md\nGEMINI.md\n',
+    );
+
+    const {written, skipped} = run(project);
+
+    expect(written).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(skipped).toEqual([]);
+    expect(fs.readFileSync(path.join(project, 'GEMINI.md'), 'utf-8')).toContain(
+      '@./AGENTS.md',
+    );
+  });
+
+  it('leaves an existing GEMINI.md the project ignores as it is, and reports it', () => {
     const {project} = layout();
     fs.writeFileSync(path.join(project, '.gitignore'), 'GEMINI.md\n');
+    fs.writeFileSync(path.join(project, 'GEMINI.md'), '# My Gemini notes\n');
 
     const {written, skipped} = run(project);
 
@@ -455,7 +477,9 @@ describe("GEMINI.md and .claude/CLAUDE.md take upgrade's protections (spec:AST-0
         expect.stringMatching(/^protected by excluded by \.gitignore/u),
       ],
     ]);
-    expect(fs.existsSync(path.join(project, 'GEMINI.md'))).toBe(false);
+    expect(fs.readFileSync(path.join(project, 'GEMINI.md'), 'utf-8')).toBe(
+      '# My Gemini notes\n',
+    );
   });
 
   it('leaves a generated GEMINI.md as it is', () => {
@@ -474,7 +498,7 @@ describe("GEMINI.md and .claude/CLAUDE.md take upgrade's protections (spec:AST-0
     );
   });
 
-  it('does not write the copy into a .claude/CLAUDE.md the project ignores, and creates none', () => {
+  it("leaves an ignored .claude/CLAUDE.md with the user's text as it is, and creates nothing beside it", () => {
     const {project} = layout();
     fs.writeFileSync(path.join(project, '.gitignore'), '.claude/\n');
     fs.mkdirSync(path.join(project, '.claude'));
@@ -487,47 +511,75 @@ describe("GEMINI.md and .claude/CLAUDE.md take upgrade's protections (spec:AST-0
     expect(
       fs.readFileSync(path.join(project, '.claude', 'CLAUDE.md'), 'utf-8'),
     ).toBe('# Mine\n');
-
-    // --agent claude creates none in an ignored .claude that is missing.
-    const fresh = path.join(tmpDir, 'fresh');
-    fs.mkdirSync(fresh);
-    fs.writeFileSync(path.join(fresh, '.gitignore'), '.claude/\n');
-    /** @type {string[]} */
-    const skippedPreset = [];
-    expect(
-      installAgentDocs(fresh, {
-        agent: 'claude',
-        renderedBlock: BLOCK,
-        onSkipped: rel => skippedPreset.push(rel),
-      }),
-    ).toEqual([]);
-    expect(skippedPreset).toEqual(['.claude/CLAUDE.md']);
-    expect(fs.existsSync(path.join(fresh, '.claude'))).toBe(false);
+    expect(fs.readdirSync(path.join(project, '.claude'))).toEqual([
+      'CLAUDE.md',
+    ]);
   });
 
-  it('creates no folder while it checks a protected target, even when the check is all that runs', () => {
+  it("refreshes an ignored .claude/CLAUDE.md that holds only init's own output, as init regenerates its output (AST-040 FR5)", () => {
+    const {project} = layout();
+    fs.writeFileSync(
+      path.join(project, '.gitignore'),
+      'AGENTS.md\nGEMINI.md\n.claude/CLAUDE.md\n',
+    );
+    fs.mkdirSync(path.join(project, '.claude'));
+    const claude = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(claude, `${INIT_HEADING('CLAUDE')}\n\n${OLD_BLOCK}\n`);
+
+    const {written, skipped} = run(project);
+
+    expect(skipped).toEqual([]);
+    expect(written).toEqual(['AGENTS.md', '.claude/CLAUDE.md', 'GEMINI.md']);
+    expect(fs.readFileSync(claude, 'utf-8')).toBe(
+      `${INIT_HEADING('CLAUDE')}\n\n${BLOCK}\n`,
+    );
+  });
+
+  it('still leaves a linked .claude/CLAUDE.md alone, even when it holds only init output', () => {
+    const {project, outside} = layout();
+    const shared = path.join(outside, 'CLAUDE.md');
+    fs.writeFileSync(shared, `${OLD_BLOCK}\n`);
+    fs.mkdirSync(path.join(project, '.claude'));
+    fs.symlinkSync(shared, path.join(project, '.claude', 'CLAUDE.md'));
+
+    expect(() => run(project)).toThrow(/outside the project root/u);
+    expect(fs.readFileSync(shared, 'utf-8')).toBe(`${OLD_BLOCK}\n`);
+  });
+
+  it('--agent claude creates .claude/CLAUDE.md as its option says, even in an ignored .claude', () => {
     const {project} = layout();
     fs.writeFileSync(path.join(project, '.gitignore'), '.claude/\n');
-    // A project folder nothing may be created in: any folder made for the
-    // check would fail here and show up as a different reason.
-    fs.chmodSync(project, 0o555);
-    try {
-      /** @type {Array<[string, string]>} */
-      const skipped = [];
-      expect(() =>
-        installAgentDocs(project, {
-          agent: 'claude',
-          renderedBlock: BLOCK,
-          onSkipped: (rel, reason) => skipped.push([rel, reason]),
-        }),
-      ).not.toThrow();
-      expect(skipped).toEqual([
-        ['.claude/CLAUDE.md', 'protected by excluded by .gitignore'],
-      ]);
-      expect(fs.readdirSync(project)).toEqual(['.gitignore']);
-    } finally {
-      fs.chmodSync(project, 0o755);
-    }
+
+    const {written, skipped} = run(project, {agent: 'claude'});
+
+    expect(written).toEqual(['.claude/CLAUDE.md']);
+    expect(skipped).toEqual([]);
+    expect(
+      fs.readFileSync(path.join(project, '.claude', 'CLAUDE.md'), 'utf-8'),
+    ).toContain(BLOCK);
+  });
+
+  it('keeps the .claude/CLAUDE.md copy when root CLAUDE.md is left as it is', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, `${BLOCK}\n`);
+
+    const {written, skipped} = run(project);
+
+    expect(skipped.map(([rel]) => rel)).toEqual(['CLAUDE.md']);
+    expect(written).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`${BLOCK}\n`);
+    expect(fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf-8')).toBe(
+      '# Mine\n',
+    );
+
+    // --agent claude keeps it too.
+    const preset = run(project, {agent: 'claude'});
+    expect(preset.skipped.map(([rel]) => rel)).toEqual(['CLAUDE.md']);
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`${BLOCK}\n`);
   });
 
   it('creates the .claude folder for --agent claude when nothing protects it', () => {
@@ -540,6 +592,102 @@ describe("GEMINI.md and .claude/CLAUDE.md take upgrade's protections (spec:AST-0
       true,
     );
   });
+});
+
+describe('a project with its own layout (INV31)', () => {
+  it('gives a standalone GEMINI.md that imports no agent file a copy', () => {
+    const {project} = layout();
+    // AGENTS.md imports CLAUDE.md, so the project keeps its own layout.
+    fs.writeFileSync(path.join(project, 'AGENTS.md'), '@CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Claude\n');
+    fs.writeFileSync(path.join(project, 'GEMINI.md'), '# Gemini\n');
+
+    const written = installAgentDocs(project, {renderedBlock: BLOCK});
+
+    expect(written).toContain('GEMINI.md');
+    expect(fs.readFileSync(path.join(project, 'GEMINI.md'), 'utf-8')).toContain(
+      BLOCK,
+    );
+    expect(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf-8')).toBe(
+      '@CLAUDE.md\n',
+    );
+  });
+});
+
+describe('init exit codes and output for files left as they are', () => {
+  it('a protected file: exit 0, docsError, and one note on stderr, no Error line', async () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+    fs.writeFileSync(path.join(project, '.gitignore'), 'GEMINI.md\n');
+    fs.writeFileSync(path.join(project, 'GEMINI.md'), '# My Gemini notes\n');
+
+    const json = await runCli(
+      ['init', '--features', 'agents', '--json'],
+      project,
+    );
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout).data.docsError).toEqual({
+      kind: 'install-failed',
+      message: expect.stringMatching(
+        /^Left as it is: GEMINI\.md \(protected by excluded by \.gitignore/u,
+      ),
+    });
+
+    const text = await runCli(['init', '--features', 'agents'], project);
+    expect(text.status).toBe(0);
+    const lines = text.stderr.split('\n').filter(Boolean);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^Note: Left as it is: GEMINI\.md/u);
+    expect(text.stderr).not.toMatch(/Error:/u);
+  }, 30_000);
+
+  it('a path that escapes the project still exits 1, as in 0.7.1', async () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+    const shared = path.join(outside, 'CLAUDE.md');
+    fs.writeFileSync(shared, '# Shared\n');
+    fs.symlinkSync(shared, path.join(project, 'CLAUDE.md'));
+
+    const text = await runCli(['init', '--features', 'agents'], project);
+    expect(text.status).toBe(1);
+    expect(fs.readFileSync(shared, 'utf-8')).toBe('# Shared\n');
+  }, 30_000);
+});
+
+describe("the sandbox app's postinstall stays quiet", () => {
+  // apps/sandbox runs `astryx init --features agents` on every install, and its
+  // .gitignore lists the files init writes there.
+  const sandboxIgnore = fs.readFileSync(
+    new URL('../../../../apps/sandbox/.gitignore', import.meta.url),
+    'utf-8',
+  );
+
+  it('prints nothing on stderr on a fresh install, a second install, or with an old .claude/CLAUDE.md init wrote', async () => {
+    const {project} = layout();
+    fs.writeFileSync(
+      path.join(project, 'package.json'),
+      '{"name":"sandbox"}\n',
+    );
+    fs.writeFileSync(path.join(project, '.gitignore'), sandboxIgnore);
+
+    for (let round = 0; round < 2; round++) {
+      const r = await runCli(['init', '--features', 'agents'], project);
+      expect(r.status, `round ${round}`).toBe(0);
+      expect(r.stderr, `round ${round}`).toBe('');
+    }
+
+    // A dev machine where an older init created .claude/CLAUDE.md.
+    fs.mkdirSync(path.join(project, '.claude'), {recursive: true});
+    const claude = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(
+      claude,
+      '# CLAUDE\n\nProject-specific guidance for AI coding agents.\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
+    );
+    const r = await runCli(['init', '--features', 'agents'], project);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
+    expect(fs.readFileSync(claude, 'utf-8')).not.toContain('\nold\n');
+  }, 60_000);
 });
 
 describe('removing the copy in .claude/CLAUDE.md', () => {

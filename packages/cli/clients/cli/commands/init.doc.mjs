@@ -28,9 +28,10 @@ export const doc = {
     'such as ~/.gemini outside a project, no agent docs are written. Every folder of the ' +
     'home folder whose name starts with a dot is a settings folder, and such a folder ' +
     'itself never counts as a project, even with a package.json; a project inside one, ' +
-    'such as an agent worktree with its own package.json, works. GEMINI.md and ' +
-    '.claude/CLAUDE.md are left as they are, and reported, when the project ignores them, ' +
-    'they are marked generated or vendored, or they are reached through a link. ' +
+    'such as an agent worktree with its own package.json, works. An existing CLAUDE.md, ' +
+    '.claude/CLAUDE.md, or GEMINI.md is left as it is, with one note, when the project ignores it, ' +
+    "it is marked generated or vendored, or it is reached through a link; one that holds only init's " +
+    'own output is refreshed. ' +
     '--features and --all print only ' +
     "the chosen features' " +
     'guidance (no getting-started steps); the theme feature also writes an annotated theme template.',

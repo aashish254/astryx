@@ -271,6 +271,42 @@ describe('upgrade() — receipts', () => {
     }
   });
 
+  it('lists a protected stale agent doc apart and never counts it as refreshed (AST-040 FR7)', async () => {
+    writePkg(tmpDir);
+    writeInstalledCore(tmpDir, '0.0.15');
+    writeAgentBlock(tmpDir, 'AGENTS.md', '0.0.1');
+    fs.mkdirSync(path.join(tmpDir, '.claude'));
+    writeAgentBlock(tmpDir, '.claude/CLAUDE.md', '0.0.1');
+    // The user's own text beside the block, in a folder the project ignores.
+    const claude = path.join(tmpDir, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(
+      claude,
+      `# Team notes\n\n${fs.readFileSync(claude, 'utf-8')}`,
+    );
+    fs.writeFileSync(path.join(tmpDir, '.gitignore'), '.claude/\n');
+    const before = fs.readFileSync(claude, 'utf-8');
+
+    const dry = await upgrade({from: '0.0.15'}, {cwd: tmpDir});
+    expect(dry.data.agentDocs.files).toEqual(['AGENTS.md']);
+    expect(dry.data.agentDocs.protectedFiles).toEqual([
+      {
+        file: '.claude/CLAUDE.md',
+        reason: expect.stringMatching(/excluded by \.gitignore/u),
+      },
+    ]);
+
+    const res = await upgrade({from: '0.0.15', apply: true}, {cwd: tmpDir});
+    expect(res.data.agentDocs.action).toBe('refreshed');
+    expect(res.data.agentDocs.files).toEqual(['AGENTS.md']);
+    expect(res.data.agentDocs.protectedFiles).toEqual([
+      {
+        file: '.claude/CLAUDE.md',
+        reason: expect.stringMatching(/excluded by \.gitignore/u),
+      },
+    ]);
+    expect(fs.readFileSync(claude, 'utf-8')).toBe(before);
+  });
+
   it('reports would-refresh on a dry run without writing (honors cwd)', async () => {
     writePkg(tmpDir);
     writeInstalledCore(tmpDir, '0.0.15');

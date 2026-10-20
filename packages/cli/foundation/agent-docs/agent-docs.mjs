@@ -1062,36 +1062,96 @@ const CREATED_HEADING =
 
 /**
  * The agent files whose writes and removals go through the protections
- * upgrade applies to consumer files (`spec:AST-040` FR2): a file the layout
- * adds or edits beside the ones a project commits as a matter of course.
+ * upgrade applies to existing consumer files (`spec:AST-040` FR2): the files
+ * the layout adds or edits beside AGENTS.md. Creating a missing file is not
+ * guarded (AST-040 does not cover new files); it follows
+ * `architecture:cli-surface` INV31.
  * @type {ReadonlySet<string>}
  */
-const GUARDED_AGENT_DOCS = new Set([GEMINI_MD, CLAUDE_DIR_MD]);
+const GUARDED_AGENT_DOCS = new Set([CLAUDE_MD, CLAUDE_DIR_MD, GEMINI_MD]);
 
 /**
- * A check, for one run, of whether a guarded agent file may be written or
- * have its block removed, by the same file-protection resolver upgrade's
- * codemods use: a file inside a dependency or version-control metadata,
- * outside the project, reached through a symbolic link, marked generated or
- * vendored, or excluded by the project's ignore rules is skipped and reported
- * through `onSkipped`. A protection source that cannot be read protects every
- * guarded file (fails closed). Files outside {@link GUARDED_AGENT_DOCS} pass.
+ * Whether the file holds nothing but init's own output: a managed block, the
+ * heading init writes into a file it creates, and whitespace.
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isInitOutput(filePath) {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const block = findManagedBlock(content);
+    const rest = (
+      block ? content.slice(0, block.start) + content.slice(block.end) : content
+    ).trim();
+    return rest === '' ? block != null : CREATED_HEADING.test(rest);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The protections that keep an existing guarded agent file from being
+ * written or having its block removed, by the same file-protection resolver
+ * upgrade's codemods use (`spec:AST-040` FR2): a file inside a dependency or
+ * version-control metadata, outside the project, reached through a symbolic
+ * link, marked generated or vendored, or excluded by the project's ignore
+ * rules. Empty when the file may be changed: it is not guarded, it does not
+ * exist yet, nothing protects it, or it is init's own output that only ignore
+ * rules or a generated marker cover, which init regenerates as AST-040 FR5
+ * has the CLI regenerate its own generators' output. A protection source that
+ * cannot be read protects the file (fails closed).
+ * @returns {(targetDir: string, rel: string) => string[]} a checker that
+ *   loads the resolver once per folder
+ */
+function agentDocProtections() {
+  /** @type {Map<string, {classify: (file: string) => Array<{reason: string, declaration: string}>} | Error>} */
+  const resolvers = new Map();
+  return (targetDir, rel) => {
+    if (!GUARDED_AGENT_DOCS.has(rel)) return [];
+    const file = path.join(targetDir, rel);
+    try {
+      fs.lstatSync(file);
+    } catch {
+      return [];
+    }
+    let resolver = resolvers.get(targetDir);
+    if (resolver == null) {
+      try {
+        resolver = createFileProtectionResolver(targetDir);
+      } catch (error) {
+        resolver = error instanceof Error ? error : new Error(String(error));
+      }
+      resolvers.set(targetDir, resolver);
+    }
+    /** @type {Array<{reason: string, declaration: string}>} */
+    let found;
+    try {
+      if (resolver instanceof Error) throw resolver;
+      found = resolver.classify(file);
+    } catch (error) {
+      return [error instanceof Error ? error.message : String(error)];
+    }
+    if (found.length === 0) return [];
+    const regenerable = found.every(
+      item => item.reason === 'ignored' || item.reason === 'generated',
+    );
+    if (regenerable && isInitOutput(file)) return [];
+    return found.map(item => item.declaration);
+  };
+}
+
+/**
+ * A check, for one run, of whether an agent file may be written or have its
+ * block removed (see {@link agentDocProtections}); a protected file is
+ * reported through `onSkipped` and left as it is.
  * @param {string} targetDir
  * @param {((rel: string, reason: string) => void) | undefined} onSkipped
  * @returns {(rel: string) => boolean}
  */
 function agentDocGuard(targetDir, onSkipped) {
-  /** @type {{classify: (file: string) => Array<{declaration: string}>} | Error | undefined} */
-  let resolver;
+  const protections = agentDocProtections();
   return rel => {
-    if (!GUARDED_AGENT_DOCS.has(rel)) return true;
-    try {
-      resolver ??= createFileProtectionResolver(targetDir);
-    } catch (error) {
-      resolver = error instanceof Error ? error : new Error(String(error));
-    }
-    const declarations =
-      resolver instanceof Error ? [resolver.message] : classifyNew(resolver, targetDir, rel);
+    const declarations = protections(targetDir, rel);
     if (declarations.length === 0) return true;
     onSkipped?.(rel, `protected by ${declarations.join('; ')}`);
     return false;
@@ -1099,21 +1159,21 @@ function agentDocGuard(targetDir, onSkipped) {
 }
 
 /**
- * The declarations that protect `rel` in `targetDir`, a file that may not
- * exist yet: the resolver reads the ignore rules and attributes that apply to
- * its path without anything being created. A source that cannot be read
- * protects the file.
- * @param {{classify: (file: string) => Array<{declaration: string}>}} resolver
+ * The existing agent files among `rels` in `targetDir` that a write or block
+ * removal would leave as they are, with what protects each, for upgrade's
+ * report (`spec:AST-040` FR7).
  * @param {string} targetDir
- * @param {string} rel
- * @returns {string[]}
+ * @param {readonly string[]} rels
+ * @returns {Array<{file: string, reason: string}>}
  */
-function classifyNew(resolver, targetDir, rel) {
-  try {
-    return resolver.classify(path.join(targetDir, rel)).map(item => item.declaration);
-  } catch (error) {
-    return [error instanceof Error ? error.message : String(error)];
-  }
+export function protectedAgentDocs(targetDir, rels) {
+  const protections = agentDocProtections();
+  return rels.flatMap(rel => {
+    const declarations = protections(targetDir, rel);
+    return declarations.length > 0
+      ? [{file: rel, reason: `protected by ${declarations.join('; ')}`}]
+      : [];
+  });
 }
 
 /**
@@ -1276,11 +1336,9 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
       return false;
     }
   };
-  // The GEMINI.md import is left as it is, and a GEMINI.md without a block is
-  // not given one: this per-file layout predates it.
-  const targets = existing.filter(
-    p => !wrappers.has(p) && !isImport(p) && (p !== GEMINI_MD || marked(p)),
-  );
+  // Every agent file that imports no other agent file holds a copy, GEMINI.md
+  // included (INV31); a managed import of AGENTS.md is left as it is.
+  const targets = existing.filter(p => !wrappers.has(p) && !isImport(p));
   const writes = targets.filter(p => !onlyReplace || marked(p));
   const strips = [...wrappers.keys()].filter(marked);
   // A path that escapes the project refuses the run, as in 0.7.0; then the
@@ -1298,7 +1356,14 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
   }
   for (const p of wrappers.keys()) {
     if (skipped.has(p)) continue;
-    if (p === CLAUDE_DIR_MD && !rootClaudeHolds(targetDir, compressedIndex)) continue;
+    // The copy in .claude/CLAUDE.md goes only once root CLAUDE.md holds it,
+    // never while root CLAUDE.md is left as it is.
+    if (
+      p === CLAUDE_DIR_MD &&
+      (skipped.has(CLAUDE_MD) || !rootClaudeHolds(targetDir, compressedIndex))
+    ) {
+      continue;
+    }
     if (stripManagedBlock(path.join(targetDir, p), compressedIndex)) written.push(p);
   }
   return written;
@@ -1393,6 +1458,8 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
     foundLegacy.includes(p) || (p === AGENTS_MD && foundLegacy.length === 0);
 
   const allowed = agentDocGuard(targetDir, onSkipped);
+  /** @type {Set<string>} */
+  const skipped = new Set();
   for (const [p, action] of [...plan]) {
     // A strip writes only a file that carries a block.
     if (action === 'strip' && !hasManagedMarker(path.join(targetDir, p))) {
@@ -1407,8 +1474,11 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
       onSkipped?.(p, err.message);
       continue;
     }
-    // GEMINI.md and .claude/CLAUDE.md take upgrade's protections too.
-    if (!allowed(p)) plan.delete(p);
+    // The Claude files and GEMINI.md take upgrade's protections too.
+    if (!allowed(p)) {
+      plan.delete(p);
+      skipped.add(p);
+    }
   }
 
   /** @type {string[]} */
@@ -1418,8 +1488,14 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
     if (action == null) continue;
     const filePath = path.join(targetDir, p);
     if (action === 'strip') {
-      // The copy in .claude/CLAUDE.md goes only once root CLAUDE.md holds it.
-      if (p === CLAUDE_DIR_MD && !rootClaudeHolds(targetDir, compressedIndex)) continue;
+      // The copy in .claude/CLAUDE.md goes only once root CLAUDE.md holds it,
+      // never while root CLAUDE.md is left as it is.
+      if (
+        p === CLAUDE_DIR_MD &&
+        (skipped.has(CLAUDE_MD) || !rootClaudeHolds(targetDir, compressedIndex))
+      ) {
+        continue;
+      }
       if (stripManagedBlock(filePath, compressedIndex)) written.push(p);
       continue;
     }
@@ -1606,13 +1682,15 @@ export function installAgentDocs(
       claudeRoot && hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD))
         ? [CLAUDE_DIR_MD]
         : [];
-    // A path that escapes the project refuses the run, as in 0.7.0; then
-    // GEMINI.md and .claude/CLAUDE.md take upgrade's protections.
+    // A path that escapes the project refuses the run, as in 0.7.0; then an
+    // existing Claude file or GEMINI.md takes upgrade's protections. A file
+    // the preset creates is created, as its option says.
     assertTargetsWithin(targetDir, [...injectHere, ...create, ...stripAll]);
     const allowed = agentDocGuard(targetDir, onSkipped);
-    const strip = stripAll.filter(allowed);
-    const createHere = create.filter(allowed);
     const injectAllowed = injectHere.filter(allowed);
+    const rootSkipped = claudeRoot && !injectAllowed.includes(CLAUDE_MD);
+    const strip = rootSkipped ? [] : stripAll.filter(allowed);
+    const createHere = create.filter(allowed);
     for (const p of injectAllowed) {
       injectXdsBlock(path.join(targetDir, p), compressedIndex);
       written.push(p);
