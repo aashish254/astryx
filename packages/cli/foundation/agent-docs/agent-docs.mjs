@@ -34,6 +34,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {findCoreDir, CLI_ROOT} from '../fs/paths.mjs';
 import {assertWithin, PathSafetyError} from '../fs/path-safety.mjs';
+import {createFileProtectionResolver} from '../fs/file-protection.mjs';
 import {getCliInvocation} from '../env/package-manager.mjs';
 import {discoverComponents} from '../discovery/component-discovery.mjs';
 import {Project} from '../config/project.mjs';
@@ -1018,14 +1019,16 @@ export function injectClaudeMd(targetDir, version) {
 }
 
 /**
- * Remove Astryx section from a file.
- * If the file becomes empty (only boilerplate header remains), deletes it.
+ * Remove the Astryx-managed block, between its markers, from a file, leaving
+ * every other line as it is. With `deleteIfEmpty`, the file is deleted when
+ * nothing is left but whitespace or the exact heading init writes into a file
+ * it creates; with `deleteIfBlank`, only when nothing but whitespace is left.
  *
  * @param {string} filePath
- * @param {{deleteIfEmpty?: boolean}} [options]
+ * @param {{deleteIfEmpty?: boolean, deleteIfBlank?: boolean}} [options]
  * @returns {boolean} Whether the Astryx section was found and removed
  */
-export function removeXdsBlock(filePath, {deleteIfEmpty = false} = {}) {
+export function removeXdsBlock(filePath, {deleteIfEmpty = false, deleteIfBlank = false} = {}) {
   if (!fs.existsSync(filePath)) return false;
 
   let content = fs.readFileSync(filePath, 'utf-8');
@@ -1037,16 +1040,96 @@ export function removeXdsBlock(filePath, {deleteIfEmpty = false} = {}) {
   const after = content.slice(block.end).trimStart();
   content = before + (after ? '\n\n' + after : '') + '\n';
 
-  if (deleteIfEmpty) {
-    const stripped = content.replace(/^#.*\n+.*guidance.*\n*/m, '').trim();
-    if (!stripped) {
-      fs.unlinkSync(filePath);
-      return true;
-    }
+  const rest = content.trim();
+  if (
+    (deleteIfBlank && rest === '') ||
+    (deleteIfEmpty && (rest === '' || CREATED_HEADING.test(rest)))
+  ) {
+    fs.unlinkSync(filePath);
+    return true;
   }
 
   fs.writeFileSync(filePath, content);
   return true;
+}
+
+/**
+ * The whole of a file init created, once its block is gone: the heading init
+ * writes, `# <name>` and its one line, and nothing else.
+ */
+const CREATED_HEADING =
+  /^# [^\n]+\n\nProject-specific guidance for AI coding agents\.$/u;
+
+/**
+ * The agent files whose writes and removals go through the protections
+ * upgrade applies to consumer files (`spec:AST-040` FR2): a file the layout
+ * adds or edits beside the ones a project commits as a matter of course.
+ */
+const GUARDED_AGENT_DOCS = new Set([GEMINI_MD, CLAUDE_DIR_MD]);
+
+/**
+ * A check, for one run, of whether a guarded agent file may be written or
+ * have its block removed, by the same file-protection resolver upgrade's
+ * codemods use: a file inside a dependency or version-control metadata,
+ * outside the project, reached through a symbolic link, marked generated or
+ * vendored, or excluded by the project's ignore rules is skipped and reported
+ * through `onSkipped`. A protection source that cannot be read protects every
+ * guarded file (fails closed). Files outside {@link GUARDED_AGENT_DOCS} pass.
+ * @param {string} targetDir
+ * @param {((rel: string, reason: string) => void) | undefined} onSkipped
+ * @returns {(rel: string) => boolean}
+ */
+function agentDocGuard(targetDir, onSkipped) {
+  /** @type {{classify: (file: string) => Array<{declaration: string}>} | Error | undefined} */
+  let resolver;
+  return rel => {
+    if (!GUARDED_AGENT_DOCS.has(rel)) return true;
+    try {
+      resolver ??= createFileProtectionResolver(targetDir);
+    } catch (error) {
+      resolver = error instanceof Error ? error : new Error(String(error));
+    }
+    const declarations =
+      resolver instanceof Error ? [resolver.message] : classifyNew(resolver, targetDir, rel);
+    if (declarations.length === 0) return true;
+    onSkipped?.(rel, `protected by ${declarations.join('; ')}`);
+    return false;
+  };
+}
+
+/**
+ * The declarations that protect `rel` in `targetDir`, a file that may not
+ * exist yet: the resolver reads the ignore rules and attributes that apply to
+ * its path without anything being created. A source that cannot be read
+ * protects the file.
+ * @param {{classify: (file: string) => Array<{declaration: string}>}} resolver
+ * @param {string} targetDir
+ * @param {string} rel
+ * @returns {string[]}
+ */
+function classifyNew(resolver, targetDir, rel) {
+  try {
+    return resolver.classify(path.join(targetDir, rel)).map(item => item.declaration);
+  } catch (error) {
+    return [error instanceof Error ? error.message : String(error)];
+  }
+}
+
+/**
+ * Whether root CLAUDE.md holds `block` as its managed block, so a copy in
+ * .claude/CLAUDE.md may go.
+ * @param {string} targetDir
+ * @param {string} block
+ * @returns {boolean}
+ */
+function rootClaudeHolds(targetDir, block) {
+  try {
+    const content = fs.readFileSync(path.join(targetDir, CLAUDE_MD), 'utf-8');
+    const found = findManagedBlock(content);
+    return found != null && content.slice(found.start, found.end) === block.trim();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1179,7 +1262,8 @@ export function removeProjectAgentDocs(cwd) {
  * @param {boolean} onlyReplace
  * @returns {string[]} files written
  */
-function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyReplace) {
+function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyReplace, onSkipped) {
+  const allowed = agentDocGuard(targetDir, onSkipped);
   /** @param {string} p */
   const marked = p => hasManagedMarker(path.join(targetDir, p));
   /** @param {string} p */
@@ -1195,20 +1279,24 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
   const targets = existing.filter(
     p => !wrappers.has(p) && !isImport(p) && (p !== GEMINI_MD || marked(p)),
   );
+  const writes = targets.filter(p => !onlyReplace || marked(p));
+  const strips = [...wrappers.keys()].filter(marked);
+  // A path that escapes the project refuses the run, as in 0.7.0; then the
+  // files the protections skip are left as they are.
+  assertTargetsWithin(targetDir, [...writes, ...strips]);
+  const skipped = new Set([...writes, ...strips].filter(p => !allowed(p)));
   // A refresh skips unmarked files and a wrapper is only written when it
   // carries a block, so only the files this run writes are checked.
-  assertTargetsWithin(targetDir, [
-    ...targets.filter(p => !onlyReplace || marked(p)),
-    ...[...wrappers.keys()].filter(marked),
-  ]);
-
   /** @type {string[]} */
   const written = [];
   for (const p of targets) {
+    if (skipped.has(p)) continue;
     const didWrite = injectXdsBlock(path.join(targetDir, p), compressedIndex, {onlyReplace});
     if (didWrite) written.push(p);
   }
   for (const p of wrappers.keys()) {
+    if (skipped.has(p)) continue;
+    if (p === CLAUDE_DIR_MD && !rootClaudeHolds(targetDir, compressedIndex)) continue;
     if (stripManagedBlock(path.join(targetDir, p), compressedIndex)) written.push(p);
   }
   return written;
@@ -1302,6 +1390,7 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
   const legacy = p =>
     foundLegacy.includes(p) || (p === AGENTS_MD && foundLegacy.length === 0);
 
+  const allowed = agentDocGuard(targetDir, onSkipped);
   for (const [p, action] of [...plan]) {
     // A strip writes only a file that carries a block.
     if (action === 'strip' && !hasManagedMarker(path.join(targetDir, p))) {
@@ -1314,7 +1403,10 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
       if (!(err instanceof PathSafetyError) || legacy(p)) throw err;
       plan.delete(p);
       onSkipped?.(p, err.message);
+      continue;
     }
+    // GEMINI.md and .claude/CLAUDE.md take upgrade's protections too.
+    if (!allowed(p)) plan.delete(p);
   }
 
   /** @type {string[]} */
@@ -1324,6 +1416,8 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
     if (action == null) continue;
     const filePath = path.join(targetDir, p);
     if (action === 'strip') {
+      // The copy in .claude/CLAUDE.md goes only once root CLAUDE.md holds it.
+      if (p === CLAUDE_DIR_MD && !rootClaudeHolds(targetDir, compressedIndex)) continue;
       if (stripManagedBlock(filePath, compressedIndex)) written.push(p);
       continue;
     }
@@ -1383,14 +1477,19 @@ function findSharedAgentDocs(targetDir, existing) {
 }
 
 /**
- * Remove the managed block from a file that should not carry one. A malformed
- * block is refused (throws) rather than guessed at.
+ * Remove the managed block from a file that should not carry one, leaving the
+ * rest of the file as it is. A malformed block is refused (throws) rather than
+ * guessed at. `.claude/CLAUDE.md` is deleted when nothing but whitespace is
+ * left.
  * @param {string} filePath
  * @param {string} compressedIndex
  * @returns {boolean} whether the file changed
  */
 function stripManagedBlock(filePath, compressedIndex) {
-  if (removeXdsBlock(filePath)) return true;
+  const deleteIfBlank =
+    path.basename(filePath) === path.basename(CLAUDE_DIR_MD) &&
+    path.basename(path.dirname(filePath)) === path.dirname(CLAUDE_DIR_MD);
+  if (removeXdsBlock(filePath, {deleteIfBlank})) return true;
   if (hasManagedMarker(filePath)) {
     // Preserve the existing fail-closed behavior for malformed blocks.
     injectXdsBlock(filePath, compressedIndex, {onlyReplace: true});
@@ -1501,16 +1600,22 @@ export function installAgentDocs(
     // is removed.
     const claudeRoot = inject.includes(CLAUDE_MD);
     const injectHere = claudeRoot ? inject.filter(p => p !== CLAUDE_DIR_MD) : inject;
-    const strip =
+    const stripAll =
       claudeRoot && hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD))
         ? [CLAUDE_DIR_MD]
         : [];
-    assertTargetsWithin(targetDir, [...injectHere, ...create, ...strip]);
-    for (const p of injectHere) {
+    // A path that escapes the project refuses the run, as in 0.7.0; then
+    // GEMINI.md and .claude/CLAUDE.md take upgrade's protections.
+    assertTargetsWithin(targetDir, [...injectHere, ...create, ...stripAll]);
+    const allowed = agentDocGuard(targetDir, onSkipped);
+    const strip = stripAll.filter(allowed);
+    const createHere = create.filter(allowed);
+    const injectAllowed = injectHere.filter(allowed);
+    for (const p of injectAllowed) {
       injectXdsBlock(path.join(targetDir, p), compressedIndex);
       written.push(p);
     }
-    for (const p of create) {
+    for (const p of createHere) {
       const filePath = path.join(targetDir, p);
       const dir = path.dirname(filePath);
       if (dir !== targetDir) {
@@ -1523,6 +1628,7 @@ export function installAgentDocs(
       written.push(p);
     }
     for (const p of strip) {
+      if (!rootClaudeHolds(targetDir, compressedIndex)) continue;
       if (stripManagedBlock(path.join(targetDir, p), compressedIndex)) written.push(p);
     }
     return written;
@@ -1540,7 +1646,7 @@ export function installAgentDocs(
       agentsAliases,
     );
     if (claudeCopy != null) wrappers.delete(claudeCopy);
-    return writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, true);
+    return writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, true, onSkipped);
   }
   // A wrapper that imports something other than AGENTS.md, or two agent docs
   // that are one file, mean the project chose its own layout: keep the
@@ -1549,7 +1655,7 @@ export function installAgentDocs(
   const {agentsAliases, otherShared} = findSharedAgentDocs(targetDir, existing);
   if (otherShared || [...wrappers.values()].some(targets => !targets.has(AGENTS_MD))) {
     const ownWrappers = findAgentDocWrappers(readAgentDocImports(targetDir, existing));
-    return writeEachAgentDoc(targetDir, existing, ownWrappers, compressedIndex, false);
+    return writeEachAgentDoc(targetDir, existing, ownWrappers, compressedIndex, false, onSkipped);
   }
   return writeDefaultAgentDocs(
     targetDir,

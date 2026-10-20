@@ -25,8 +25,13 @@ export const doc = {
     'package.json declares an @astryxdesign package, else the nearest with any ' +
     'package.json, else this folder. The search stops at a repository root and never ' +
     'counts the home folder. In the home folder, or in a settings folder in it ' +
-    'such as ~/.gemini outside a project, no agent docs are written; a project inside a ' +
-    'settings folder, such as an agent worktree, works. --features and --all print only ' +
+    'such as ~/.gemini outside a project, no agent docs are written. Every folder of the ' +
+    'home folder whose name starts with a dot is a settings folder, and such a folder ' +
+    'itself never counts as a project, even with a package.json; a project inside one, ' +
+    'such as an agent worktree with its own package.json, works. GEMINI.md and ' +
+    '.claude/CLAUDE.md are left as they are, and reported, when the project ignores them, ' +
+    'they are marked generated or vendored, or they are reached through a link. ' +
+    '--features and --all print only ' +
     "the chosen features' " +
     'guidance (no getting-started steps); the theme feature also writes an annotated theme template.',
   fn: 'init',

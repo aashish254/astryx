@@ -24,7 +24,11 @@ export const doc = {
     "to the project's Claude Code file (CLAUDE.md, else .claude/CLAUDE.md; when CLAUDE.md " +
     'exists, a block in .claude/CLAUDE.md is removed), and as a ' +
     'one-line import of AGENTS.md in GEMINI.md unless GEMINI.md already imports it. ' +
-    'In the home folder, or in a settings folder in it outside a project, it writes none. It then ' +
+    'In the home folder, or in a settings folder in it outside a project, it writes none: every ' +
+    'folder of the home folder whose name starts with a dot is a settings folder, and such a folder itself never ' +
+    'counts as a project, even with a package.json; a folder below it with a package.json does. ' +
+    'GEMINI.md and .claude/CLAUDE.md are left as they are when the project ignores them, they are ' +
+    'marked generated or vendored, or they are reached through a link (spec:AST-040). It then ' +
     "prints getting-started guidance; `features` / `all` print only the chosen features' " +
     'guidance instead (the theme feature also writes the annotated theme template). ' +
     'With `removeAgents` it removes the managed agent-docs block, at the project root and ' +
