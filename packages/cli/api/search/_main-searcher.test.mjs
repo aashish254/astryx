@@ -45,6 +45,14 @@ describe('main searcher', () => {
     );
   });
 
+  it('answers a whole-name query exactly as the lexical ranker does', async () => {
+    for (const q of ['Button', 'Dialog', 'useTheme', 'tokens']) {
+      expect(top(await search(q, {cwd: REPO}))).toEqual(
+        top(await searchCore(q, {cwd: REPO})),
+      );
+    }
+  });
+
   it('answers the same every time', async () => {
     for (const q of QUERIES.slice(0, 3)) {
       expect(top(await search(q, {cwd: REPO}))).toEqual(

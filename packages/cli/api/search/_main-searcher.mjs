@@ -13,9 +13,11 @@
  */
 
 import {routeKit} from '../../foundation/route/route.mjs';
-import {entryTable, rank, respond, signals, namedFirst} from './_features.mjs';
+import {rank, respond, signals} from './_features.mjs';
+import {entryTable} from './_entries.mjs';
+import {namedFirst, lexicalTies} from './_order.mjs';
 import {routeProbs} from './_query-words.mjs';
-import {rankLexical} from './_lexical.mjs';
+import {namesWhole, rankLexical} from './_lexical.mjs';
 
 /** @typedef {{w: number[], mu: number[], sd: number[]}} SearcherWeights */
 
@@ -37,6 +39,12 @@ export const asWeights = weights =>
  */
 export function rankWith(request, catalog, weights) {
   const {query, options} = request;
+  // A query that is an entry's whole name gets the lexical answer as is: that
+  // entry first, with no near siblings added beside it.
+  const term = String(query).trim().toLowerCase();
+  if (catalog.all.some(c => namesWhole(c, term))) {
+    return rankLexical(query, options, catalog);
+  }
   const table = entryTable(catalog.all, catalog.data.cards);
   const lexical = rankLexical(
     query,
@@ -45,13 +53,13 @@ export function rankWith(request, catalog, weights) {
   );
   const route = routeProbs(catalog.data.router, query);
   const rows = signals(table, query, lexical.data.results, route);
-  return respond(
+  let order = namedFirst(
     table,
-    namedFirst(table, rank(table, rows, weights), lexical.data.results),
-    rows,
-    lexical,
-    options.limit ?? 20,
+    rank(table, rows, weights),
+    lexical.data.results,
   );
+  order = lexicalTies(table, order, rows);
+  return respond(table, order, rows, lexical, options.limit ?? 20);
 }
 
 /** @type {import('./tree.mjs').SearchKit} */

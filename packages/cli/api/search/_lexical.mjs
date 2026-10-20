@@ -99,6 +99,26 @@ import {toResult, searchedComponentsOf} from './_result.mjs';
  */
 
 /**
+ * True when the query is the candidate's whole name or another name of it,
+ * typed as is or, for anything but a doc, with its spaces removed. Such a
+ * query names that entry outright.
+ * @param {Candidate} candidate
+ * @param {string} term the query, trimmed and lowercased
+ * @returns {boolean}
+ */
+export function namesWhole(candidate, term) {
+  return [candidate.name, ...(candidate.aliases ?? [])].some(name => {
+    const lower = String(name).toLowerCase();
+    return (
+      lower === term ||
+      (candidate.domain !== 'doc' &&
+        !/[\s_-]/.test(lower) &&
+        lower === term.replace(/\s+/g, ''))
+    );
+  });
+}
+
+/**
  * Today's lexical ranking of a gathered catalog: the search response
  * `searchCore` returns.
  *
@@ -120,17 +140,7 @@ export function rankLexical(query, options, catalog) {
   // entry's name, typed whole or as its words, that entry answers it, and
   // neither reading may add near siblings beside it.
   const spelled = spellIdentifiers(String(query).trim());
-  const exact = all.some(candidate =>
-    [candidate.name, ...(candidate.aliases ?? [])].some(name => {
-      const lower = String(name).toLowerCase();
-      return (
-        lower === term ||
-        (candidate.domain !== 'doc' &&
-          !/[\s_-]/.test(lower) &&
-          lower === term.replace(/\s+/g, ''))
-      );
-    }),
-  );
+  const exact = all.some(candidate => namesWhole(candidate, term));
   // One identifier is read as its words only when, read whole, it matches
   // nothing: a prop or hook name a doc already mentions keeps the
   // entries that mention it.
