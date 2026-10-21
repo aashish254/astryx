@@ -1221,12 +1221,14 @@ function assertTargetsWithin(targetDir, relPaths) {
  * managed block resolves outside `targetDir`.
  * @param {string} targetDir
  */
-function assertRemovableWithin(targetDir) {
+function assertRemovableWithin(targetDir, skip = new Set()) {
   const allPaths = discoverAgentDocs(targetDir);
   try {
     assertTargetsWithin(
       targetDir,
-      allPaths.filter(p => hasRemovableBlock(path.join(targetDir, p))),
+      allPaths.filter(
+        p => !skip.has(p) && hasRemovableBlock(path.join(targetDir, p)),
+      ),
     );
   } catch (err) {
     // The code reaches the error envelope as is, so it must be registered.
@@ -1241,13 +1243,14 @@ function assertRemovableWithin(targetDir) {
  * @param {object} [options]
  * @param {string} [options.shownFrom] - Folder the logged paths are shown
  *   relative to; defaults to `targetDir`.
+ * @param {Set<string>} [options.skip] - Files left as they are.
  * @returns {string[]} the project-relative files a block was removed from.
  * @throws {PathSafetyError} `ERR_PATH_TRAVERSAL` when a file it would change
  *   resolves outside `targetDir`; nothing is changed.
  */
-export function removeAgentDocs(targetDir, {shownFrom = targetDir} = {}) {
-  assertRemovableWithin(targetDir);
-  const allPaths = discoverAgentDocs(targetDir);
+export function removeAgentDocs(targetDir, {shownFrom = targetDir, skip = new Set()} = {}) {
+  assertRemovableWithin(targetDir, skip);
+  const allPaths = discoverAgentDocs(targetDir).filter(p => !skip.has(p));
 
   /** @type {string[]} */
   const removedFrom = [];
@@ -1276,18 +1279,32 @@ export function removeAgentDocs(targetDir, {shownFrom = targetDir} = {}) {
  * Remove the managed block where init writes it, the project root (see
  * {@link resolveAgentDocsRoot}), and in `cwd`, so a block an earlier version
  * wrote in that folder goes too. Each folder is checked before anything is
- * written, and a file is confined to the folder it sits in.
+ * changed. Run below the project root, a project-root agent file holding a
+ * block that resolves outside the project is left as it is and reported to
+ * `onSkipped`, as install does there; 0.7.x touched only `cwd`. A file in
+ * `cwd`, or at the root when run there, that resolves outside refuses the run.
+ *
  * @param {string} cwd
- * @returns {string[]} files a block was removed from, relative to `cwd`.
- * @throws {PathSafetyError} `ERR_PATH_TRAVERSAL` when a file it would change
- *   resolves outside its folder; nothing is changed.
+ * @param {{onSkipped?: (rel: string, reason: string) => void}} [options]
+ * @returns {string[]} the files a block was removed from, relative to `cwd`
+ * @throws {PathSafetyError} `ERR_PATH_TRAVERSAL`; nothing is changed
  */
-export function removeProjectAgentDocs(cwd) {
+export function removeProjectAgentDocs(cwd, {onSkipped} = {}) {
   const root = agentDocsTargetDir(cwd);
-  const dirs = realDir(root) === realDir(cwd) ? [cwd] : [root, cwd];
-  for (const dir of dirs) assertRemovableWithin(dir);
+  const below = realDir(root) !== realDir(cwd);
+  /** @type {Set<string>} */
+  const rootSkip = below
+    ? skipEscaping(
+        root,
+        discoverAgentDocs(root).filter(p => hasRemovableBlock(path.join(root, p))),
+        (rel, reason) =>
+          onSkipped?.(path.relative(cwd, path.join(root, rel)).split(path.sep).join('/'), reason),
+      )
+    : new Set();
+  const dirs = below ? [root, cwd] : [cwd];
+  for (const dir of dirs) assertRemovableWithin(dir, dir === root ? rootSkip : undefined);
   return dirs.flatMap(dir =>
-    removeAgentDocs(dir, {shownFrom: cwd}).map(rel =>
+    removeAgentDocs(dir, {shownFrom: cwd, skip: dir === root ? rootSkip : undefined}).map(rel =>
       path.relative(cwd, path.join(dir, rel)).split(path.sep).join('/'),
     ),
   );

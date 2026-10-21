@@ -56,6 +56,7 @@ export const doc = {
         'Remove the managed block from AGENTS.md, CLAUDE.md, .claude/CLAUDE.md, GEMINI.md, .cursorrules, .hermes.md and HERMES.md, ' +
         'at the project root (where init writes them) and in this folder ' +
         "(deleting AGENTS.md or .claude/CLAUDE.md when only init's heading is left, and GEMINI.md when nothing is left) and do nothing else. " +
+        'Below the project root, a project-root agent file whose block resolves outside the project is left as it is, with a note. ' +
         '--features, --all, --agent and --agent-docs-path are refused; a file written with --agent-docs-path keeps its block',
     },
     {

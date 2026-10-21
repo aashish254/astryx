@@ -24,7 +24,19 @@ import {logger} from '../../logger.mjs';
  * @returns {Promise<import('../init.type.mjs').InitRemoveResponse>}
  */
 export async function remove({cwd = process.cwd()} = {}) {
-  const removedFrom = removeProjectAgentDocs(cwd);
+  /** @type {string[]} */
+  const skipped = [];
+  const removedFrom = removeProjectAgentDocs(cwd, {
+    onSkipped: (rel, reason) => skipped.push(`${rel} (${reason})`),
+  });
+  if (skipped.length > 0) {
+    // Below the project root, as install does there (0.7.x touched only the
+    // working folder): a root agent file outside the project is left alone.
+    logger.warn(
+      `Note: Left as ${skipped.length === 1 ? 'it is' : 'they are'}: ${skipped.join('; ')}. ` +
+        'To remove the Astryx block there, delete it by hand.',
+    );
+  }
   const removed = removedFrom.length > 0;
   logger.log(
     removed
