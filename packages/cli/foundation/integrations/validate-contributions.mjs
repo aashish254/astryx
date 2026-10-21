@@ -51,6 +51,7 @@ import {discoverIntegrationCodemods} from '../../assets/codemods/integration-dis
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
 import * as componentDiscovery from '../discovery/component-discovery.mjs';
 import {loadComponentDoc} from '../discovery/component-loader.mjs';
+import {moduleLacksExport} from '../discovery/module-exports.mjs';
 import {discoverIntegrationDocs} from '../discovery/docs-discovery.mjs';
 import {discoverIntegrationThemes} from '../discovery/theme-discovery.mjs';
 
@@ -416,8 +417,7 @@ async function checkCodemods(integration, issues) {
 async function checkTemplates(integration, issues) {
   if (!integration.templates || rootProblem(integration.templates)) return;
   try {
-    const {templates, errors} =
-      await discoverIntegrationTemplatesForOne(integration);
+    const {errors} = await discoverIntegrationTemplatesForOne(integration);
     for (const e of errors) {
       issues.push({
         code: e.code ?? 'invalid_template',
@@ -425,59 +425,12 @@ async function checkTemplates(integration, issues) {
         message: e.message,
       });
     }
-    for (const template of templates) checkTemplateId(template, issues);
   } catch (err) {
     issues.push(
       issueError('invalid_template', /** @type {any} */ (err).message),
     );
   }
   checkTemplateSourcesWithoutDoc(integration, issues);
-}
-
-/** One segment of a template id: what a CLI argument and an import path hold. */
-const TEMPLATE_ID_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
-
-/**
- * Warn about a template whose id, its path under the templates root, holds
- * anything but letters, digits, "-" and "_" in each folder and file name: a
- * space or punctuation makes it awkward to pass to `astryx template` and to
- * import. The fix is the lowercase kebab-case `integration add template`
- * writes; the title belongs in `displayName`.
- * @param {{dirName: string, docPath?: string, filePath?: string}} template
- * @param {Issue[]} issues
- */
-function checkTemplateId(template, issues) {
-  const id = template.dirName;
-  const segments = id.split('/');
-  const bad = segments.filter(segment => !TEMPLATE_ID_SEGMENT_RE.test(segment));
-  if (bad.length === 0) return;
-  const kebab = (/** @type {string} */ text) =>
-    text
-      .replace(/([a-z0-9])([A-Z])/gu, '$1-$2')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gu, '-')
-      .replace(/^-+|-+$/gu, '');
-  const fixedId = segments
-    .map(segment =>
-      TEMPLATE_ID_SEGMENT_RE.test(segment) ? segment : kebab(segment),
-    )
-    .join('/');
-  const what = /\s/u.test(id)
-    ? 'spaces'
-    : 'characters other than letters, digits, "-" and "_"';
-  const doc = template.docPath ? path.basename(template.docPath) : null;
-  const source = template.filePath ? path.basename(template.filePath) : null;
-  const newStem = path.posix.basename(fixedId);
-  const files =
-    doc && source
-      ? `rename ${doc} and ${source} to ${doc.replace(path.posix.basename(id), newStem)} and ${newStem}.tsx`
-      : `rename its files to ${newStem}`;
-  issues.push(
-    issueWarning(
-      'invalid_template_id',
-      `Template "${id}" has ${what} in its id, which comes from its file path. An id is what \`astryx template <id>\` takes and what an import names, so it may hold only letters, digits, "-" and "_". Fix: ${files}, lowercase kebab-case as \`astryx integration add template\` writes, and keep the title in displayName.`,
-    ),
-  );
 }
 
 /**
@@ -703,10 +656,10 @@ function componentDocFiles(root) {
 
 /**
  * Warn about a component doc whose `name` is not the name Astryx lists it
- * under. Discovery lists a doc under its file name unless its `name` is a
- * different export of its source, so a `name` that is neither still reaches
- * readers: `astryx component` prints it in the import line, which then names
- * something the package does not export under that name. A family member is
+ * under and that its source provably does not export. Discovery lists a doc
+ * under its file name unless its `name` is a different export of its source,
+ * so such a `name` still reaches readers: `astryx component` prints it in the
+ * import line, which then names something the source does not export. A family member is
  * read through its family's doc and is not checked here.
  * @param {Array<{name: string, docPath: string, sourcePath: string|null}>} components
  * @param {Issue[]} issues
@@ -725,6 +678,15 @@ async function checkComponentDocNames(components, issues, root, skip) {
     }
     const name = doc?.name;
     if (typeof name !== 'string' || name === record.name) continue;
+    // Only what the code contradicts: the source must provably not export
+    // the name the doc gives. A re-export from another package, or one this
+    // read cannot follow, leaves the import unjudged.
+    if (
+      record.sourcePath == null ||
+      !moduleLacksExport(record.sourcePath, name)
+    ) {
+      continue;
+    }
     const file = path.basename(record.docPath);
     issues.push(
       issueWarning(
@@ -751,22 +713,9 @@ async function checkComponentDocNames(components, issues, root, skip) {
 async function checkDocs(integration, issues) {
   if (!integration.docs || rootProblem(integration.docs)) return;
   try {
-    const {records, errors} = await discoverIntegrationDocs(integration);
+    const {errors} = await discoverIntegrationDocs(integration);
     for (const e of errors) {
       issues.push(issueError('invalid_doc', e.message));
-    }
-    for (const record of records) {
-      const file = path.basename(record.path);
-      const stem = docStemOf(file);
-      if (stem === file || stem.toLowerCase() === record.name.toLowerCase()) {
-        continue;
-      }
-      issues.push(
-        issueWarning(
-          'doc_name_mismatch',
-          `Doc topic "${record.name}" is in ${file}, so \`astryx docs ${record.name}\` reads it and \`astryx docs ${stem}\` finds nothing. Fix: rename ${file} to ${record.name}${file.slice(stem.length)}, or set name: '${stem}' in it.`,
-        ),
-      );
     }
   } catch (err) {
     issues.push(issueError('invalid_doc', /** @type {any} */ (err).message));
@@ -867,8 +816,10 @@ export function literalThemeName(file, exportName) {
 }
 
 /**
- * An error for each file under a readable root that the user running astryx
- * cannot read: Astryx cannot check it, and npm pack stops on it.
+ * A warning for each file under a readable root that the user running
+ * astryx cannot read: Astryx cannot check it, and npm pack stops on it. A
+ * warning, so validate keeps its exit code; `integration verify` fails on the
+ * pack itself.
  * @param {LoadedIntegration} integration
  * @param {Issue[]} issues
  */
@@ -906,7 +857,7 @@ function checkUnreadableFiles(integration, issues) {
           path.relative(integration.__packageDir ?? dir, full),
         );
         issues.push(
-          issueError(
+          issueWarning(
             'unreadable_file',
             `Could not read "${shown}" (${code}), so Astryx cannot check it and npm pack fails on it. Fix: make it readable (chmod a+r ${shown}), or delete it if it does not belong in the package.`,
           ),

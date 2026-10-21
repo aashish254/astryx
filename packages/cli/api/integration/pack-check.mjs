@@ -1281,7 +1281,13 @@ export async function integrationPackCheck(options = {}) {
   // ── Phase 1: structure validation ──
   const localResult = await validateLocalIntegration(cwd);
   /** @type {Issue[]} */
-  const issues = [...localResult.issues];
+  const issues = localResult.issues.map(issue =>
+    // A package.json npm cannot pack is a warning to validate, which does
+    // not pack; here it is what fails the pack.
+    issue.code === 'invalid_package_json'
+      ? {...issue, severity: 'error'}
+      : issue,
+  );
 
   if (!localResult.found || !localResult.integration) {
     return emptyReceipt(pkgName, [

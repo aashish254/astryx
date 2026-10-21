@@ -310,6 +310,68 @@ export function moduleExportSource(file, exportName, seen = new Set()) {
 }
 
 /**
+ * Whether a module provably does not export `exportName` at runtime, read
+ * without executing it. True only when every export the module writes can be
+ * followed: an `export ... from` another package, a specifier that resolves
+ * to no local file, CommonJS exports, or a file that does not parse leaves
+ * it unproven, and the answer is false.
+ * @param {string} file
+ * @param {string} exportName
+ * @param {Set<string>} [seen]
+ * @returns {boolean}
+ */
+export function moduleLacksExport(file, exportName, seen = new Set()) {
+  const identity = `${file}\0${exportName}`;
+  // A cycle adds nothing a module's own exports have not already said.
+  if (seen.has(identity)) return true;
+  seen.add(identity);
+  let text;
+  let ast;
+  try {
+    if (!fs.statSync(file).isFile()) return false;
+    text = moduleText(file);
+    ast = parseModule(file);
+  } catch {
+    return false;
+  }
+  if (/\bmodule\.exports\b|\bexports\.[$\w]/u.test(text)) return false;
+  for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
+    if (node.exportKind === 'type') continue;
+    if (declarationExports(node.declaration, exportName)) return false;
+    for (const specifier of node.specifiers ?? []) {
+      if (specifier.exportKind === 'type') continue;
+      const exported = specifier.exported?.name ?? specifier.exported?.value;
+      if (exported !== exportName) continue;
+      if (!node.source) return false;
+      if (specifier.type !== 'ExportSpecifier') return false;
+      const target = resolveLocalModule(node.source.value, file);
+      const imported =
+        specifier.local?.name ?? specifier.local?.value ?? exportName;
+      if (!target || !moduleLacksExport(target, imported, seen)) return false;
+    }
+  }
+  if (exportName === 'default') {
+    const defaults = nodesOfType(ast.program, 'ExportDefaultDeclaration');
+    if (defaults.some((/** @type {any} */ node) => runtimeDefault(node.declaration))) {
+      return false;
+    }
+  }
+  for (const node of nodesOfType(ast.program, 'ExportAllDeclaration')) {
+    if (node.exportKind === 'type') continue;
+    const exported = node.exported?.name ?? node.exported?.value;
+    if (exported != null) {
+      if (exported === exportName) return false;
+      continue;
+    }
+    // `export *` never re-exports a default.
+    if (exportName === 'default') continue;
+    const target = resolveLocalModule(node.source?.value, file);
+    if (!target || !moduleLacksExport(target, exportName, seen)) return false;
+  }
+  return true;
+}
+
+/**
  * Marks an object {@link staticExportObject} returns (or one inside it) whose
  * source also has properties or spreads it could not read as literals. Not
  * enumerable, so the object compares and serializes as its literal properties.

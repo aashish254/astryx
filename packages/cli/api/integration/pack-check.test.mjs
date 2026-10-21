@@ -1994,6 +1994,24 @@ describe('integrationPackCheck', () => {
     expect(codes).not.toContain('packed_discovery_failed');
   });
 
+  it('fails on a package.json npm cannot pack, which validate only warns about', async () => {
+    writePackage({files: ['astryx.integration.mjs', 'themes']});
+    const packageFile = path.join(tmpDir, 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf-8'));
+    delete pkg.name;
+    fs.writeFileSync(packageFile, `${JSON.stringify(pkg, null, 2)}\n`);
+
+    const result = await integrationPackCheck({cwd: tmpDir});
+
+    expect(result.data.packable).toBe(false);
+    expect(result.data.issues).toEqual([
+      expect.objectContaining({
+        code: 'invalid_package_json',
+        severity: 'error',
+      }),
+    ]);
+  });
+
   it('cleans up its scratch consumer when npm pack fails', async () => {
     writePackage({
       files: ['astryx.integration.mjs', 'themes'],

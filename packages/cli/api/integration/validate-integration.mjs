@@ -341,9 +341,10 @@ async function validateAtPackageDir(
         inside === '' || (!inside.startsWith('..') && !path.isAbsolute(inside))
           ? `./${inside.split(path.sep).join('/')}`.replace(/\/$/u, '')
           : null;
+      // The code an absolute root has always carried, reworded.
       result.issues.push(
         error(
-          'invalid_root',
+          'root_outside_package',
           `The ${key} root "${value}" is an absolute path, so Astryx reads nothing from it: a root is relative to the package, so it resolves the same wherever the package is installed.` +
             (relative
               ? ` Fix: set \`${key}: '${relative === './' ? '.' : relative}'\` in ${path.basename(manifestFile)}.`
@@ -465,7 +466,7 @@ export async function validateLocalIntegration(cwd = process.cwd()) {
 }
 
 /**
- * An error for each field npm needs that package.json lacks.
+ * A warning for each field npm needs that package.json lacks.
  * @param {{name?: unknown, version?: unknown, private?: unknown}} pkg
  * @param {string} pkgJsonPath
  * @returns {Issue[]}
@@ -474,9 +475,11 @@ function packageJsonFieldIssues(pkg, pkgJsonPath) {
   /** @type {Issue[]} */
   const issues = [];
   const shown = path.basename(pkgJsonPath);
+  // Warnings, so validate keeps the exit code it had for these packages;
+  // `integration verify`, which packs, reports them as errors.
   if (typeof pkg.name !== 'string' || pkg.name === '') {
     issues.push(
-      error(
+      warning(
         'invalid_package_json',
         `${shown} has no "name", so npm cannot pack or publish the package and Astryx has no package to file its contributions under; nothing else was checked. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
       ),
@@ -488,7 +491,7 @@ function packageJsonFieldIssues(pkg, pkgJsonPath) {
     (typeof pkg.version !== 'string' || pkg.version === '')
   ) {
     issues.push(
-      error(
+      warning(
         'invalid_package_json',
         `${shown} has no "version", so npm cannot pack or publish the package. Fix: add "version": "0.1.0" to ${shown}.`,
       ),

@@ -36,7 +36,6 @@
     "invalid_package_spec",
     "invalid_root",
     "invalid_template",
-    "invalid_template_id",
     "invalid_template_replacement",
     "invalid_theme",
     "missing_component_replacement_target",

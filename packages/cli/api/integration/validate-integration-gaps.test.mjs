@@ -130,6 +130,50 @@ describe('a name that differs from its file name', () => {
     expect(await issuesOf(fixed)).toEqual([]);
   });
 
+  it.each([
+    [
+      'a re-export from another package',
+      "export {AcmeWidgets} from '@acme/ui';\n",
+    ],
+    [
+      'a .js specifier this read cannot follow',
+      "export {AcmeWidgets} from './impl/widgets.js';\n",
+    ],
+    [
+      'a source that exports both names',
+      'export function AcmeWidget() { return null; }\nexport const AcmeWidgets = AcmeWidget;\n',
+    ],
+    ['an export * from another package', "export * from '@acme/ui';\n"],
+  ])(
+    'reports no name mismatch when the code does not contradict the doc: %s',
+    async (_label, source) => {
+      const dir = writePackage({
+        [MANIFEST]: manifest({components: './components'}),
+        'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidgets'),
+        'components/AcmeWidget.tsx': source,
+      });
+
+      expect(
+        (await issuesOf(dir)).filter(
+          issue => issue.code === 'doc_name_mismatch',
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it('follows a local re-export that does not export the documented name', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({components: './components'}),
+      'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidgets'),
+      'components/AcmeWidget.tsx': "export * from './impl';\n",
+      'components/impl.tsx': componentSource('AcmeWidget'),
+    });
+
+    expect(only(await issuesOf(dir), 'doc_name_mismatch')).toContain(
+      "sets name: 'AcmeWidgets'",
+    );
+  });
+
   it('accepts a kebab-case file whose doc names the export it holds', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({components: './components'}),
@@ -140,21 +184,13 @@ describe('a name that differs from its file name', () => {
     expect(await issuesOf(dir)).toEqual([]);
   });
 
-  it('warns about a doc topic whose name is not its file name', async () => {
+  it('leaves a doc topic named differently from its file alone: the code does not contradict it', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({docs: './docs'}),
       'docs/deploying.doc.mjs': topic('deploy'),
     });
 
-    const message = only(await issuesOf(dir), 'doc_name_mismatch');
-    expect(message).toBe(
-      'Doc topic "deploy" is in deploying.doc.mjs, so `astryx docs deploy` reads it and `astryx docs deploying` finds nothing. Fix: rename deploying.doc.mjs to deploy.doc.mjs, or set name: \'deploying\' in it.',
-    );
-
-    const fixed = follow(dir, {
-      move: [['docs/deploying.doc.mjs', 'docs/deploy.doc.mjs']],
-    });
-    expect(await issuesOf(fixed)).toEqual([]);
+    expect(await issuesOf(dir)).toEqual([]);
   });
 
   it('leaves a template name alone: it is the display title', async () => {
@@ -169,41 +205,13 @@ describe('a name that differs from its file name', () => {
 });
 
 describe('template ids', () => {
-  it('warns about an id with spaces, and the kebab-case rename clears it', async () => {
+  it('leaves an id with spaces alone: it is naming policy, not a contradiction', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({templates: './templates'}),
       'templates/AI Chat Conversation.doc.mjs': templateDoc(
         'AI Chat Conversation',
       ),
       'templates/AI Chat Conversation.tsx': templateSource,
-    });
-
-    const message = only(await issuesOf(dir), 'invalid_template_id');
-    expect(message).toBe(
-      'Template "AI Chat Conversation" has spaces in its id, which comes from its file path. An id is what `astryx template <id>` takes and what an import names, so it may hold only letters, digits, "-" and "_". Fix: rename AI Chat Conversation.doc.mjs and AI Chat Conversation.tsx to ai-chat-conversation.doc.mjs and ai-chat-conversation.tsx, lowercase kebab-case as `astryx integration add template` writes, and keep the title in displayName.',
-    );
-
-    const fixed = follow(dir, {
-      move: [
-        [
-          'templates/AI Chat Conversation.doc.mjs',
-          'templates/ai-chat-conversation.doc.mjs',
-        ],
-        [
-          'templates/AI Chat Conversation.tsx',
-          'templates/ai-chat-conversation.tsx',
-        ],
-      ],
-    });
-    expect(await issuesOf(fixed)).toEqual([]);
-  });
-
-  it('accepts the PascalCase folder ids showcase blocks use', async () => {
-    const dir = writePackage({
-      [MANIFEST]: manifest({templates: './templates'}),
-      'templates/components/Card/CardShowcase.doc.mjs':
-        templateDoc('Card — Showcase'),
-      'templates/components/Card/CardShowcase.tsx': templateSource,
     });
 
     expect(await issuesOf(dir)).toEqual([]);
@@ -351,13 +359,13 @@ describe('template and theme pairing', () => {
       'themes/ocean/ocean.doc.mjs': themeDoc,
       'themes/ocean/oceanTheme.ts': themeSource,
       'themes/ocean/ocean.js':
-        "import './ocean.css';\nexport const oceanTheme = {};\n",
+        "/**\n * @generated by `astryx theme build` — do not edit manually.\n */\nimport './ocean.css';\nexport const oceanTheme = {};\n",
       'themes/ocean/ocean.css': '.astryx-theme-ocean {}\n',
     });
 
     const message = only(await issuesOf(dir), 'invalid_theme');
     expect(message).toContain(
-      'shares its stem with "ocean.js", but the theme\'s source is "oceanTheme.ts": a descriptor must share its stem with the source that calls defineTheme. Fix: rename ocean.doc.mjs to oceanTheme.doc.mjs.',
+      'shares its stem with the built module "ocean.js", but the theme\'s source is "oceanTheme.ts": a descriptor must share its stem with the source that calls defineTheme. Fix: rename ocean.doc.mjs to oceanTheme.doc.mjs.',
     );
     expect(message).not.toContain('does not export');
     const fixed = follow(dir, {
@@ -365,6 +373,23 @@ describe('template and theme pairing', () => {
     });
     expect(
       (await issuesOf(fixed)).filter(issue => issue.code === 'invalid_theme'),
+    ).toEqual([]);
+  });
+});
+
+describe('a theme folder with a helper', () => {
+  it('reads a descriptor beside its own defineTheme source, with a <name>Theme helper beside them', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({themes: './themes'}),
+      'themes/brand/brand.doc.mjs': `${THEME_TYPE}export default {type: 'theme', name: 'brand', displayName: 'Brand', description: 'A theme.', maintained: true};\n`,
+      'themes/brand/brand.ts':
+        "import {defineTheme} from '@astryxdesign/core/theme';\nimport {baseTheme} from './baseTheme';\nexport const brand = defineTheme({name: 'brand', extends: baseTheme});\n",
+      'themes/brand/baseTheme.ts':
+        "import {defineTheme} from '@astryxdesign/core/theme';\nexport const baseTheme = defineTheme({name: 'base'});\n",
+    });
+
+    expect(
+      (await issuesOf(dir)).filter(issue => issue.code === 'invalid_theme'),
     ).toEqual([]);
   });
 });
@@ -403,7 +428,7 @@ describe('roots', () => {
     const issues = await issuesOf(dir);
     expect(issues).toEqual([
       {
-        code: 'invalid_root',
+        code: 'root_outside_package',
         severity: 'error',
         message: `The docs root "${path.join(dir, 'docs')}" is an absolute path, so Astryx reads nothing from it: a root is relative to the package, so it resolves the same wherever the package is installed. Fix: set \`docs: './docs'\` in astryx.integration.mjs.`,
       },
@@ -445,7 +470,7 @@ describe('roots', () => {
 });
 
 describe('package.json', () => {
-  it('reports a missing name as an error, and every check stops without crashing', async () => {
+  it('warns about a missing name, and every check stops without crashing', async () => {
     const dir = writePackage(
       {
         [MANIFEST]: manifest({docs: './docs'}),
@@ -459,28 +484,32 @@ describe('package.json', () => {
       expect(check.response.data.issues).toEqual([
         {
           code: 'invalid_package_json',
-          severity: 'error',
+          severity: 'warning',
           message:
             'package.json has no "name", so npm cannot pack or publish the package and Astryx has no package to file its contributions under; nothing else was checked. Fix: add "name": "@your-scope/your-package" to package.json.',
         },
       ]);
     }
-    expect(result.data.errors).toBe(1);
+    expect(result.data.errors).toBe(0);
+    expect(result.data.failed).toBe(false);
+    expect((await integrationCheck({cwd: dir, strict: true})).data.failed).toBe(
+      true,
+    );
   });
 
-  it('reports a missing version as an error and still checks the rest', async () => {
+  it('warns about a missing version and still checks the rest', async () => {
     const dir = writePackage(
       {
-        [MANIFEST]: manifest({docs: './docs'}),
-        'docs/deploying.doc.mjs': topic('deploy'),
+        [MANIFEST]: manifest({components: './components'}),
+        'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidget'),
       },
       {name: '@acme/kit'},
     );
 
     const issues = await issuesOf(dir);
-    expect(issues.map(issue => issue.code)).toEqual([
-      'invalid_package_json',
-      'doc_name_mismatch',
+    expect(issues.map(issue => [issue.code, issue.severity])).toEqual([
+      ['invalid_package_json', 'warning'],
+      ['invalid_component', 'error'],
     ]);
     expect(issues[0].message).toBe(
       'package.json has no "version", so npm cannot pack or publish the package. Fix: add "version": "0.1.0" to package.json.',
@@ -550,7 +579,11 @@ describe('unreadable files and theme names', () => {
       const file = path.join(dir, 'components', 'AcmeWidget.tsx');
       fs.chmodSync(file, 0);
       try {
-        const message = only(await issuesOf(dir), 'unreadable_file');
+        const issues = await issuesOf(dir);
+        const message = only(issues, 'unreadable_file');
+        expect(issues.find(i => i.code === 'unreadable_file')?.severity).toBe(
+          'warning',
+        );
         expect(message).toBe(
           'Could not read "components/AcmeWidget.tsx" (EACCES), so Astryx cannot check it and npm pack fails on it. Fix: make it readable (chmod a+r components/AcmeWidget.tsx), or delete it if it does not belong in the package.',
         );
