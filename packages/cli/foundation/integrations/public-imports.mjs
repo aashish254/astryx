@@ -354,7 +354,62 @@ function exportsFix(exportsField, state, subpath, target) {
  * @property {string | null} coreDir
  * @property {any} corePkg
  * @property {PublicImportUnchecked[]} unchecked what could not be judged
+ * @property {string[]} files the package.json `files` entries, normalized
+ * @property {string[]} roots the integration's contribution roots, absolute
  */
+
+const BUILT_EXTENSION_RE = /\.[cm]?jsx?$/u;
+
+/**
+ * Whether an undeclared deep path, in a package with no `exports`, points
+ * into build output that is not built yet: its top folder is missing, or is
+ * a `files` folder that holds no contribution root. Such an import cannot be
+ * judged from source.
+ * @param {Context} ctx
+ * @param {string} subpath
+ * @param {SubpathDeclaration} declaration
+ */
+function unbuiltOutput(ctx, subpath, declaration) {
+  if (declaration.state !== 'no_exports' || subpath === '.') return false;
+  const top = subpath.slice(2).split('/')[0];
+  if (!top) return false;
+  const topDir = path.resolve(ctx.packageDir, top);
+  if (!fs.existsSync(topDir)) return true;
+  return (
+    ctx.files.includes(top) &&
+    !ctx.roots.some(
+      root => root === topDir || root.startsWith(topDir + path.sep),
+    )
+  );
+}
+
+/**
+ * The reason an import into unbuilt output is listed as not checked.
+ * @param {string} subpath
+ */
+function unbuiltReason(subpath) {
+  return `package.json has no "exports", and "${subpath}" is build output that is not built yet, so it was not checked`;
+}
+
+/**
+ * The target a fix maps `subpath` to: the component's source for a source
+ * path, never a TypeScript source for a built `.js` path.
+ * @param {string} subpath
+ * @param {string | null} sourceTarget
+ */
+function fixTarget(subpath, sourceTarget) {
+  if (
+    sourceTarget &&
+    !(
+      BUILT_EXTENSION_RE.test(subpath) && !BUILT_EXTENSION_RE.test(sourceTarget)
+    )
+  ) {
+    return sourceTarget;
+  }
+  return BUILT_EXTENSION_RE.test(subpath)
+    ? `<the built file "${subpath}" names>`
+    : `./${subpath.slice(2)}.tsx`;
+}
 
 /** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportUnchecked} PublicImportUnchecked */
 /** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportsReport} PublicImportsReport */
@@ -460,7 +515,13 @@ async function componentIssues(ctx, integration) {
         ctx.packageDir,
         split.subpath,
       );
-      if (declaration.state !== 'declared') {
+      if (unbuiltOutput(ctx, split.subpath, declaration)) {
+        ctx.unchecked.push({
+          file: shownDoc,
+          specifier,
+          reason: unbuiltReason(split.subpath),
+        });
+      } else if (declaration.state !== 'declared') {
         const already =
           declared && declared !== split.subpath
             ? `set import: '${ctx.name}${declared.slice(1)}' (already exported), or `
@@ -468,7 +529,7 @@ async function componentIssues(ctx, integration) {
         issues.push(
           issueWarning(
             'component_import_not_exported',
-            `Component doc "${shownDoc}" ${gives}, but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${split.subpath === '.' && perComponent ? `${perComponent}.` : exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
+            `Component doc "${shownDoc}" ${gives}, but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${split.subpath === '.' && perComponent ? `${perComponent}.` : exportsFix(ctx.exportsField, declaration.state, split.subpath, fixTarget(split.subpath, sourceTarget))}`,
           ),
         );
       }
@@ -504,7 +565,7 @@ async function componentIssues(ctx, integration) {
       const target = atSubpath
         ? `./${rel(ctx.packageDir, atSubpath)}`
         : onlyDocumented && sourceTarget
-          ? sourceTarget
+          ? fixTarget(subpath, sourceTarget)
           : `<the file that exports ${values.join(', ') || 'them'}>`;
       return exportsFix(ctx.exportsField, undeclared.state, subpath, target);
     };
@@ -520,7 +581,13 @@ async function componentIssues(ctx, integration) {
         const parts = splitSpecifier(statement.source);
         if (!parts || parts.pkg !== ctx.name) continue;
         const undeclared = undeclaredOwnImport(ctx, statement, parts.subpath);
-        if (undeclared) {
+        if (undeclared && unbuiltOutput(ctx, parts.subpath, undeclared)) {
+          ctx.unchecked.push({
+            file: shownDoc,
+            specifier: statement.source,
+            reason: `example ${label}: ${unbuiltReason(parts.subpath)}`,
+          });
+        } else if (undeclared) {
           issues.push(
             issueWarning(
               'example_import_not_exported',
@@ -595,7 +662,13 @@ async function templateIssues(ctx, integration) {
       if (!parts) continue;
       if (parts.pkg === ctx.name) {
         const undeclared = undeclaredOwnImport(ctx, statement, parts.subpath);
-        if (undeclared) {
+        if (undeclared && unbuiltOutput(ctx, parts.subpath, undeclared)) {
+          ctx.unchecked.push({
+            file: shown,
+            specifier: spec,
+            reason: unbuiltReason(parts.subpath),
+          });
+        } else if (undeclared) {
           issues.push(
             issueWarning(
               'template_private_import',
@@ -664,6 +737,20 @@ export async function publicImportIssues(packageDir, integration) {
     coreDir,
     corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
     unchecked: report.unchecked,
+    files: Array.isArray(pkg.files)
+      ? pkg.files
+          .filter(entry => typeof entry === 'string')
+          .map(entry => entry.replace(/^\.\//u, '').replace(/\/+$/u, ''))
+      : [],
+    roots: [
+      integration.components,
+      integration.templates,
+      integration.docs,
+      integration.themes,
+      integration.codemods,
+    ]
+      .filter(root => typeof root === 'string')
+      .map(root => path.resolve(root)),
   };
   const issues = [
     ...(await componentIssues(ctx, integration)),
