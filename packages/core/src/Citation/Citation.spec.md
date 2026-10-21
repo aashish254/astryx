@@ -138,6 +138,21 @@ Consumer migration instructions belong in consumer docs and release notes.
 
 Citation exposes the documented `citation` root target and the `citation-icon` wrapper target. The label text has no public target.
 
+### Theming anatomy
+
+<!-- anatomy-theming:v1 -->
+
+```json
+{
+  "Container": {"target": "citation"},
+  "Icon": {"target": "citation-icon"},
+  "Label text": {"inherits": "citation"},
+  "Number": {"inherits": "citation"}
+}
+```
+
+`citation-icon` belongs to the decorative wrapper because the wrapper is what paints the icon ring; the glyph inside it is a caller-supplied node, an `Icon` with its own target, or a source image.
+
 ## Family and system relationships
 
 - `family:navigation-destinations` owns the accept/block result for `source.url`, including native-anchor sinks and preservation of accepted browser behavior.
@@ -149,15 +164,16 @@ Citation exposes the documented `citation` root target and the `citation-icon` w
 
 ## Verification map
 
-| Contract         | Verification                                                                      | Representative states                                                                                     | Mutation or failure expectation                                                                                                                                                    | Audit section               |
-| ---------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| FR1–FR2, AR1–AR2 | `Citation.test.tsx` destination suites and `safeUrl.test.ts` matrix               | accepted, missing, blocked schemes, normalized blocked text                                               | A blocked URL creates navigation, an accepted URL loses its destination or native affordances, or an inert reference loses its supported naming role.                              | `audit:Citation/navigation` |
-| FR3–FR4, AR3     | `Citation.test.tsx` variant and icon suites                                       | label, number, no icon, node icon, `src`, legacy string icon                                              | The wrong visible variant renders, icon precedence changes, or decorative source paint reaches the accessibility tree.                                                             | `audit:Citation/behavior`   |
-| FR5              | `Citation.test.tsx` root-contract suite and strict type/lint validation           | anchor and span roots with ref, DOM props, class, inline style, and `xstyle`                              | Either root drops supported passthrough or ref behavior, or caller-supplied role/name overrides component ownership.                                                               | `audit:Citation/api`        |
-| FR6              | `Citation.test.tsx` theme-target suite, `themingTargets.test.ts`, and public docs | linked and inert roots; both variants; label with image, legacy string, and node icon; label without icon | The root target disappears or moves off the painter, the icon target is missing when an icon renders or present when none does, or an undocumented internal target becomes public. | `audit:Citation/theming`    |
-| FR7              | Existing i18n build and Citation accessible-name assertions                       | linked label and number                                                                                   | Component-authored accessible text bypasses translation or loses source/number context.                                                                                            | `audit:Citation/i18n`       |
-| RTL N/A          | `verified-not-applicable.json` source-hashed record                               | label and number stories; linked/inert source paths; icon/no-icon                                         | A direction-sensitive glyph, physical inline placement, ordering, scrolling, overlay, or horizontal keyboard behavior appears without RTL evidence.                                | `audit:Citation/rtl`        |
-| All              | `Citation.stories.tsx`, component tests, typecheck, lint, and exact-head CI       | all documented variants and representative source states                                                  | A required state becomes unreachable or gains a build, accessibility, visual, or test regression.                                                                                  | `audit:Citation/testing`    |
+| Contract            | Verification                                                                      | Representative states                                                                                     | Mutation or failure expectation                                                                                                                                                    | Audit section               |
+| ------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| FR1–FR2, AR1–AR2    | `Citation.test.tsx` destination suites and `safeUrl.test.ts` matrix               | accepted, missing, blocked schemes, normalized blocked text                                               | A blocked URL creates navigation, an accepted URL loses its destination or native affordances, or an inert reference loses its supported naming role.                              | `audit:Citation/navigation` |
+| FR3–FR4, AR3        | `Citation.test.tsx` variant and icon suites                                       | label, number, no icon, node icon, `src`, legacy string icon                                              | The wrong visible variant renders, icon precedence changes, or decorative source paint reaches the accessibility tree.                                                             | `audit:Citation/behavior`   |
+| FR5                 | `Citation.test.tsx` root-contract suite and strict type/lint validation           | anchor and span roots with ref, DOM props, class, inline style, and `xstyle`                              | Either root drops supported passthrough or ref behavior, or caller-supplied role/name overrides component ownership.                                                               | `audit:Citation/api`        |
+| FR6                 | `Citation.test.tsx` theme-target suite, `themingTargets.test.ts`, and public docs | linked and inert roots; both variants; label with image, legacy string, and node icon; label without icon | The root target disappears or moves off the painter, the icon target is missing when an icon renders or present when none does, or an undocumented internal target becomes public. | `audit:Citation/theming`    |
+| FR7                 | Existing i18n build and Citation accessible-name assertions                       | linked label and number                                                                                   | Component-authored accessible text bypasses translation or loses source/number context.                                                                                            | `audit:Citation/i18n`       |
+| Theming anatomy map | `scripts/check-knowledge.mjs`                                                     | four anatomy entries and two current targets                                                              | Missing, extra, prefixed, stale, or unclaimed current mappings fail validation.                                                                                                    | `audit:Citation/theming`    |
+| RTL N/A             | `verified-not-applicable.json` source-hashed record                               | label and number stories; linked/inert source paths; icon/no-icon                                         | A direction-sensitive glyph, physical inline placement, ordering, scrolling, overlay, or horizontal keyboard behavior appears without RTL evidence.                                | `audit:Citation/rtl`        |
+| All                 | `Citation.stories.tsx`, component tests, typecheck, lint, and exact-head CI       | all documented variants and representative source states                                                  | A required state becomes unreachable or gains a build, accessibility, visual, or test regression.                                                                                  | `audit:Citation/testing`    |
 
 ## Decision log
 
