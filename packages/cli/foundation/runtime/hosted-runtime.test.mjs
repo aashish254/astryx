@@ -4,9 +4,11 @@
  * @file A hosted run end to end, through `@astryxdesign/cli/host` in a host
  * process (architecture:cli-surface INV30, spec AST-081 FR1, FR2, FR9): a
  * release other than this copy comes from the first package set that
- * qualifies, a hosted run installs nothing, a declined project CLI never runs,
- * the host's discover sources are called and named as the host's, and the
- * result names each package the run resolved and where it came from.
+ * qualifies (another release's host entry runs in this process with the same
+ * inputs, discover sources included, and the call settles with its result), a
+ * hosted run installs nothing, a declined project CLI never runs, the host's
+ * discover sources are called and named as the host's, and the result names
+ * each package the run resolved and where it came from.
  */
 
 import {describe, it, expect, afterEach} from 'vitest';
@@ -32,6 +34,20 @@ const SELF_VERSION = JSON.parse(
 ).version;
 
 afterEach(cleanupFixtures);
+
+/** JavaScript for a host's `discoverSources`: one source with one package. */
+const ACME_SOURCE = `[async () => ({
+  schemaVersion: 1,
+  source: {name: 'Acme catalog', generatedAt: '2026-10-20T00:00:00.000Z', complete: true},
+  packages: [{
+    package: 'acme-widgets',
+    integration: 'acme-widgets',
+    aliases: [],
+    latest: '1.0.0',
+    versions: [{version: '1.0.0', publishedAt: null, prerelease: false, status: 'ok'}],
+    contributions: [{kind: 'component', name: 'AcmeWidget'}],
+  }],
+})]`;
 
 /**
  * Start a host process that calls `runHostedCli` once and writes what it
@@ -90,7 +106,9 @@ process.exitCode = result.status;
 
 /**
  * A package set holding a stand-in CLI and a Core of `version`; with
- * `hostEntry`, the CLI ships a stand-in host entry that reports its options.
+ * `hostEntry`, the CLI ships a stand-in host entry that reports its options,
+ * with the name of the catalog each discover source returns, and settles with
+ * a record of its own.
  * @param {string} version
  * @param {{hostEntry?: boolean}} [options]
  */
@@ -102,9 +120,17 @@ function packageSet(version, options = {}) {
     fs.mkdirSync(path.join(cli, 'host'), {recursive: true});
     fs.writeFileSync(
       path.join(cli, 'host', 'index.mjs'),
-      `export async function runHostedCli(options) {
-  console.log(JSON.stringify({hostEntry: ${JSON.stringify(version)}, options}));
-  return {status: 0, packages: []};
+      `export async function runHostedCli({discoverSources = [], ...options}) {
+  const catalogs = await Promise.all(discoverSources.map(source => source({})));
+  console.log(JSON.stringify({
+    hostEntry: ${JSON.stringify(version)},
+    options,
+    discoverSources: catalogs.map(catalog => catalog.source.name),
+  }));
+  return {
+    status: 0,
+    packages: [{name: '@astryxdesign/cli', version: ${JSON.stringify(version)}, source: 'package-set'}],
+  };
 }
 `,
     );
@@ -141,16 +167,19 @@ describe('a project whose own CLI cannot start, in a hosted run', () => {
     expect(installedARelease(run.cache)).toBe(false);
   });
 
-  it('runs a matching package set through its own host entry, with the same inputs', () => {
+  it("runs a matching package set's own host entry with the same inputs, and settles with its result", () => {
     const root = brokenProject();
     const set = packageSet('0.7.0', {hostEntry: true});
-    const run = host({
-      argv: ['component', 'Button'],
-      cwd: root,
-      roots: [set],
-      cliCommand: 'acme astryx',
-      integrations: ['acme-widgets'],
-    });
+    const run = host(
+      {
+        argv: ['component', 'Button'],
+        cwd: root,
+        roots: [set],
+        cliCommand: 'acme astryx',
+        integrations: ['acme-widgets'],
+      },
+      {sources: ACME_SOURCE},
+    );
     expect(run.status).toBe(0);
     expect(run.report()).toEqual({
       hostEntry: '0.7.0',
@@ -161,6 +190,13 @@ describe('a project whose own CLI cannot start, in a hosted run', () => {
         integrations: ['acme-widgets'],
         cliCommand: 'acme astryx',
       },
+      discoverSources: ['Acme catalog'],
+    });
+    expect(run.result()).toEqual({
+      status: 0,
+      packages: [
+        {name: '@astryxdesign/cli', version: '0.7.0', source: 'package-set'},
+      ],
     });
   });
 
@@ -195,12 +231,15 @@ describe('a project CLI the host declined, in a hosted run', () => {
   it("is answered by a package set of that CLI's release, through its host entry, with the reason", () => {
     const root = projectWithCli();
     const set = packageSet('0.7.0', {hostEntry: true});
-    const run = host({
-      argv: ['docs'],
-      cwd: root,
-      roots: [packageSet('0.7.0'), set],
-      declinedProjectCli: 'untrusted',
-    });
+    const run = host(
+      {
+        argv: ['docs'],
+        cwd: root,
+        roots: [packageSet('0.7.0'), set],
+        declinedProjectCli: 'untrusted',
+      },
+      {sources: ACME_SOURCE},
+    );
     expect(run.status).toBe(0);
     expect(run.stderr).not.toContain('stand-in');
     expect(run.report()).toEqual({
@@ -212,7 +251,11 @@ describe('a project CLI the host declined, in a hosted run', () => {
         integrations: [],
         declinedProjectCli: 'untrusted',
       },
+      discoverSources: ['Acme catalog'],
     });
+    expect(run.result().packages).toEqual([
+      {name: '@astryxdesign/cli', version: '0.7.0', source: 'package-set'},
+    ]);
   });
 
   it('never runs it through a package set without a host entry: this copy answers, announced', () => {
@@ -233,19 +276,10 @@ describe('a project CLI the host declined, in a hosted run', () => {
 describe("the host's discover sources", () => {
   it("are called after every other source, and reported as the host's", () => {
     const empty = tempDir('empty');
-    const sources = `[async () => ({
-  schemaVersion: 1,
-  source: {name: 'Acme catalog', generatedAt: '2026-10-20T00:00:00.000Z', complete: true},
-  packages: [{
-    package: 'acme-widgets',
-    integration: 'acme-widgets',
-    aliases: [],
-    latest: '1.0.0',
-    versions: [{version: '1.0.0', publishedAt: null, prerelease: false, status: 'ok'}],
-    contributions: [{kind: 'component', name: 'AcmeWidget'}],
-  }],
-})]`;
-    const run = host({argv: ['discover', '--json'], cwd: empty}, {sources});
+    const run = host(
+      {argv: ['discover', '--json'], cwd: empty},
+      {sources: ACME_SOURCE},
+    );
     expect(run.status).toBe(0);
     const out = JSON.parse(run.stdout);
     // The host's source comes after every other source and before the

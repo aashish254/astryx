@@ -27,6 +27,9 @@ import {relativeWithin, samePath} from '../fs/path-compare.mjs';
  * @property {readonly Function[]} discoverSources its own discover sources
  * @property {string | null} startingRoot the root that holds the copy that
  *   started the run
+ * @property {((hostEntry: string) => Promise<(options: object) => Promise<{status: number, packages: Array<{name: string, version: string | null, source: 'project' | 'package-set'}>}>>) | null} loadHostEntry
+ *   loads another release's host entry, from one of the package sets, to hand
+ *   this run over to in this process
  */
 
 /** @type {HostedRun | null} */
@@ -49,7 +52,7 @@ function real(p) {
 
 /**
  * Start the hosted run of this process.
- * @param {{roots?: readonly string[], integrations?: readonly string[], discoverSources?: readonly Function[], startingRoot?: string | null}} inputs
+ * @param {{roots?: readonly string[], integrations?: readonly string[], discoverSources?: readonly Function[], startingRoot?: string | null, loadHostEntry?: HostedRun['loadHostEntry']}} inputs
  * @returns {HostedRun}
  */
 export function activateHostedRun({
@@ -57,6 +60,7 @@ export function activateHostedRun({
   integrations = [],
   discoverSources = [],
   startingRoot = null,
+  loadHostEntry = null,
 }) {
   if (active)
     throw new Error('A hosted run is already active in this process.');
@@ -65,6 +69,7 @@ export function activateHostedRun({
     integrations: Object.freeze([...integrations]),
     discoverSources: Object.freeze([...discoverSources]),
     startingRoot,
+    loadHostEntry,
   });
   return active;
 }

@@ -8,19 +8,22 @@
  *
  * Its package sets, the integrations it approves, and its own discover sources
  * are matched, loaded, and recorded as architecture:cli-surface INV30 says; a
- * hosted run installs nothing.
+ * hosted run installs nothing. When another package set's release answers
+ * through its own host entry, that entry runs in this process with the same
+ * inputs, and the call settles with its result.
  *
  * @input `runHostedCli` options (see host/index.d.ts for the contract).
  * @output The run's exit status and the packages it resolved, each with its
- *   source. The run owns the process's working folder,
- *   arguments, standard streams, and exit, exactly as a run of the `astryx`
- *   bin does.
+ *   source. The run owns the process's working folder, arguments, standard
+ *   streams, and exit, exactly as a run of the `astryx` bin does: every path
+ *   on which the bin exits the process exits it here too (host/index.d.ts
+ *   lists them).
  * @position host — the package's `./host` export; calls clients/cli/run.mjs.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 
 const CLI_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -201,6 +204,25 @@ async function nodeVersionGate(argv) {
 }
 
 /**
+ * Load another release's host entry, from one of the host's package sets, to
+ * hand this run over to in this process (architecture:cli-surface INV30). The
+ * run stays one call of the host's: the one-call mark passes to the entry that
+ * answers, and the call settles with that entry's result.
+ * @param {string} hostEntry the package set's `host/index.mjs`
+ * @returns {Promise<(options: import('./index.js').HostedCliOptions) => Promise<import('./index.js').HostedCliResult>>}
+ */
+async function loadHostEntry(hostEntry) {
+  const entry = await import(pathToFileURL(hostEntry).href);
+  if (typeof entry.runHostedCli !== 'function') {
+    throw new Error(`${hostEntry} exports no runHostedCli`);
+  }
+  return options => {
+    processMarks.__astryxHostRunStarted = false;
+    return entry.runHostedCli(options);
+  };
+}
+
+/**
  * Run the CLI once in this process, as the `astryx` bin would run with the
  * same arguments in the same folder, for a tool that carries this CLI.
  *
@@ -231,6 +253,7 @@ export async function runHostedCli(options) {
     // The root that holds this CLI, or, for a CLI that is not installed in a
     // node_modules folder, the folder beside it that holds its Core.
     startingRoot: installPlaceOf(real).owner ?? path.dirname(real),
+    loadHostEntry,
   });
   recordResolved(
     '@astryxdesign/cli',
@@ -246,12 +269,15 @@ export async function runHostedCli(options) {
       argv: [...input.argv],
       declinedProjectCli: input.declinedProjectCli,
     });
+  let answered;
   if (input.cliCommand === undefined) {
-    await run();
+    answered = await run();
   } else {
     const {runWithCliDoor} = await import('../foundation/env/cli-command.mjs');
-    await runWithCliDoor(input.cliCommand, run);
+    answered = await runWithCliDoor(input.cliCommand, run);
   }
+  // Another package set's host entry answered the run (INV30).
+  if (answered) return answered;
   const code = process.exitCode;
   return {
     status: typeof code === 'number' ? code : Number(code ?? 0) || 0,

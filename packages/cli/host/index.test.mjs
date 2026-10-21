@@ -229,12 +229,12 @@ describe('the command name', () => {
 
 describe('a project CLI the host declined', () => {
   /** A project whose own CLI is a stand-in that reports when it runs. */
-  function projectWithCli(version) {
+  function projectWithCli(version, core = version) {
     const root = project(tempDir(), {
-      '@astryxdesign/core': version,
+      '@astryxdesign/core': core,
       '@astryxdesign/cli': version,
     });
-    installCore(root, version);
+    installCore(root, core);
     installStandInCli(root, version);
     return root;
   }
@@ -272,18 +272,31 @@ describe('a project CLI the host declined', () => {
     },
   );
 
-  it("the declined CLI's own release answers itself, with no hand-off", () => {
-    const root = projectWithCli(SELF_VERSION);
+  it("the declined CLI's own release answers in its place, named as that CLI's release", () => {
+    // The project's CLI is this release while its Core is another, so the
+    // answer is the project CLI's release, not the release matched to Core.
+    const root = projectWithCli(SELF_VERSION, '0.6.8');
     const json = host({
       argv: ['docs', '--json'],
       cwd: root,
       declinedProjectCli: 'untrusted',
     });
     expect(json.status).toBe(0);
-    expect(json.stderr).not.toContain('stand-in');
+    expect(json.stderr).toBe('');
     expect(JSON.parse(json.stdout).meta.answeredBy).toMatchObject({
       cli: SELF_VERSION,
-      copy: 'matched',
+      core: '0.6.8',
+      copy: 'project',
     });
+    const text = host({
+      argv: ['--version'],
+      cwd: root,
+      declinedProjectCli: 'untrusted',
+    });
+    expect(text.status).toBe(0);
+    expect(text.stdout.trim()).toBe(SELF_VERSION);
+    expect(text.stderr.trim()).toBe(
+      `astryx: answered by CLI ${SELF_VERSION}, the release of this project's CLI, in its place (project CLI skipped: untrusted)`,
+    );
   });
 });

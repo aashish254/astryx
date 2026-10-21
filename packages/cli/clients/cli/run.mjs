@@ -23,11 +23,14 @@
  * them.
  *
  * @param {{cliRoot: string, argv: string[], declinedProjectCli?: string}} input
- * @returns {Promise<void>} resolves when the command has finished
+ * @returns {Promise<import('../../host/index.js').HostedCliResult | undefined>}
+ *   resolves when the command has finished; with another release's result
+ *   when, in a hosted run, that release's host entry answered
  */
 export async function runCli({cliRoot, argv, declinedProjectCli}) {
   const {startRun} = await import('../../foundation/release/handoff.mjs');
-  await startRun({cliRoot, argv, declinedProjectCli});
+  const answered = await startRun({cliRoot, argv, declinedProjectCli});
+  if (answered) return answered;
 
   const {
     program,

@@ -58,8 +58,8 @@ export interface HostedCliOptions {
   /**
    * The tool's own discover sources. `astryx discover` calls them after every
    * integration's source and before the official list, and reports each as
-   * the host's. A run handed to another release's CLI does not get them.
-   * Default: none.
+   * the host's. Another package set's host entry that answers the run gets
+   * them too; a run handed to a CLI's bin does not. Default: none.
    */
   discoverSources?: readonly DiscoverSource[];
 }
@@ -74,7 +74,10 @@ export interface HostedPackage {
   source: 'project' | 'package-set';
 }
 
-/** The outcome of a hosted run that returned. */
+/**
+ * The outcome of a hosted run that returned: this copy's, or, when another
+ * package set's release answered through its own host entry, that entry's.
+ */
 export interface HostedCliResult {
   /** The run's exit status, as the `astryx` bin would exit. */
   status: number;
@@ -87,8 +90,21 @@ export interface HostedCliResult {
  * arguments in the same folder.
  *
  * The run owns the process's working folder, arguments, standard streams,
- * and exit: a run handed to another release, and some failures, end the
- * process with the run's exit status instead of returning.
+ * and exit. The call settles when the command returns. Like the bin, the run
+ * instead ends the process, with the exit status the bin would exit with, and
+ * the call never settles, when it:
+ * - prints help or the version (`--help`, `-h`, `help`, `--version`, `-V`,
+ *   `--version --json`), with status 0;
+ * - rejects the command line, such as an unknown command or option;
+ * - reports an error it stops on, including every error in `--json` mode;
+ * - meets an unexpected error, with status 1;
+ * - hands the run to another CLI's bin: the project's own CLI when
+ *   `declinedProjectCli` is absent, or a package set whose CLI ships no host
+ *   entry.
+ *
+ * When another package set's release answers through its own host entry,
+ * that entry runs in this process with the same inputs, and the call settles
+ * with its result.
  *
  * Rejects with a `TypeError`, before anything runs, for an unknown option or
  * an invalid value; and with an `Error`, before anything runs, when a run has

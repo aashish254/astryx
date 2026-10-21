@@ -490,7 +490,8 @@ export function defaultCacheDir() {
 
 /**
  * @param {string} cacheDir
- * @param {string} from
+ * @param {string} from the source's key: its `from` label, with the host for
+ *   a host's source
  * @param {{package?: string, version?: string}} request
  */
 function savedCopyPath(cacheDir, from, request) {
@@ -587,7 +588,7 @@ async function callOwnSources(project, request = {}, options = {}) {
   const fromDoor = doorSources();
   if (project == null && fromDoor.length === 0) return result;
 
-  /** @type {Array<{from: string, source?: DiscoverSource, error?: string}>} */
+  /** @type {Array<{from: string, key?: string, source?: DiscoverSource, error?: string}>} */
   const origins = [];
   if (typeof project?.config?.discover === 'function') {
     origins.push({from: 'astryx.config', source: project.config.discover});
@@ -602,12 +603,14 @@ async function callOwnSources(project, request = {}, options = {}) {
       origins.push({from: integration.name, source: integration.__discover});
     }
   }
+  // Every tool that carries the CLI reports its sources as the host's, so
+  // their saved copies are kept per host, by the root that holds its CLI
+  // (spec:AST-051 FR8).
+  const host = hostedRun()?.startingRoot ?? '';
   fromDoor.forEach((source, index) => {
-    origins.push({
-      from:
-        fromDoor.length === 1 ? DOOR_SOURCE : `${DOOR_SOURCE} (${index + 1})`,
-      source,
-    });
+    const from =
+      fromDoor.length === 1 ? DOOR_SOURCE : `${DOOR_SOURCE} (${index + 1})`;
+    origins.push({from, key: `${from}\n${host}`, source});
   });
 
   /** @type {Set<unknown>} */
@@ -620,7 +623,7 @@ async function callOwnSources(project, request = {}, options = {}) {
         ...(request.version ? {version: request.version} : {}),
       }
     : {};
-  for (const {from, source, error} of origins) {
+  for (const {from, key = from, source, error} of origins) {
     if (source == null) {
       result.sources.push({name: from, from, status: 'failed', error});
       continue;
@@ -629,7 +632,7 @@ async function callOwnSources(project, request = {}, options = {}) {
     called.add(source);
 
     const label = `the discover source from ${from}`;
-    const file = savedCopyPath(cacheDir, from, ask);
+    const file = savedCopyPath(cacheDir, key, ask);
     /** @type {import('../../authoring/discover/type').DiscoverCatalog} */
     let catalog;
     try {
