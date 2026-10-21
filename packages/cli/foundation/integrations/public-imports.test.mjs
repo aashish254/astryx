@@ -1143,3 +1143,78 @@ describe('which Core and which package', () => {
     expect(skipped.map(each => each.code)).toEqual(['public_imports_skipped']);
   });
 });
+
+describe('what the export-list reader does not model is not checked', () => {
+  const template = (/** @type {string} */ names, /** @type {string} */ from) =>
+    `import {${names}} from '${from}';\nexport default function C() {\n  return <div />;\n}\n`;
+
+  it('lists a name as not checked when a declared types target is not built yet', async () => {
+    pkg(p => {
+      p.exports['./widget'] = {
+        types: './dist/widget.d.ts',
+        import: './src/widget.ts',
+      };
+    });
+    write('src/widget.ts', 'export const AcmeThing = 1;\n');
+    write(
+      'templates/account-card.tsx',
+      template('AcmeThing, AcmeThingProps', '@acme/widgets/widget'),
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(await codes()).toEqual([]);
+    expect(result.data.publicImports?.unchecked).toEqual([
+      expect.objectContaining({
+        specifier: '@acme/widgets/widget',
+        reason: expect.stringContaining('does not exist yet'),
+      }),
+    ]);
+  });
+
+  it('resolves a .js specifier in TypeScript source to the .ts file beside it', async () => {
+    pkg(p => {
+      p.exports['./widget'] = './src/widget.ts';
+    });
+    write('src/widget.ts', "export * from './inner.js';\n");
+    write('src/inner.ts', 'export const Inner = 1;\nexport const Newer = 2;\n');
+    // A stale build of inner beside its source, without the newer export.
+    write('src/inner.js', 'export const Inner = 1;\n');
+    write(
+      'templates/account-card.tsx',
+      template('Newer', '@acme/widgets/widget'),
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('reads the declaration file beside a module an export * reaches', async () => {
+    pkg(p => {
+      p.exports['./widget'] = './dist/index.js';
+    });
+    write('dist/index.js', "export * from './inner.js';\n");
+    write('dist/inner.js', 'export const Inner = 1;\n');
+    write(
+      'dist/inner.d.ts',
+      'export declare const Inner: number;\nexport interface InnerProps {\n  size: string;\n}\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      template('Inner, InnerProps', '@acme/widgets/widget'),
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('does not judge a name a JavaScript module without declarations lacks, since it may be a type', async () => {
+    pkg(p => {
+      p.exports['./widget'] = './dist/widget.js';
+    });
+    write('dist/widget.js', 'export const AcmeThing = 1;\n');
+    write(
+      'templates/account-card.tsx',
+      template('AcmeThing, AcmeThingProps', '@acme/widgets/widget'),
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(await codes()).toEqual([]);
+    expect(result.data.publicImports?.unchecked.map(u => u.specifier)).toEqual([
+      '@acme/widgets/widget',
+    ]);
+  });
+});
