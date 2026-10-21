@@ -1297,6 +1297,7 @@ describe('links in component docs and topic descriptions', () => {
       kind: 'component',
       section: null,
       field: 'usage.description',
+      file: 'components/AcmeButton.doc.mjs',
       pointer: 'astryx docs theme',
       link: '{@link @astryxdesign/cli:generic:theme}',
     });

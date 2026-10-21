@@ -349,15 +349,24 @@ export async function integrationDocConflicts(pkg, options = {}) {
   const fluff = [];
   /** @type {import('./authoring-checks.type.mjs').StrayPointer[]} */
   const strayPointers = [];
+  // Like the other findings' `doc`, a fluff or stray-pointer `file` is
+  // relative to the package root.
+  const packageDir = /** @type {any} */ (resolved.integration)?.__packageDir;
+  const fromPackage = (/** @type {string} */ file) =>
+    typeof packageDir === 'string'
+      ? path.relative(packageDir, file).split(path.sep).join('/')
+      : file;
   if (!resolved.integration?.docs || name == null) {
     // A package that ships components and no topics still has component docs
     // a written pointer can sit in.
     if (name != null && resolved.integration?.components) {
       strayPointers.push(
-        ...(await integrationStrayPointers(
-          {records: [], guides: []},
-          resolved.integration,
-        )),
+        ...(
+          await integrationStrayPointers(
+            {records: [], guides: []},
+            resolved.integration,
+          )
+        ).map(each => ({...each, file: fromPackage(each.file)})),
       );
       for (const {message} of strayPointers) {
         issues.push({code: 'stray_doc_pointer', severity: 'warning', message});
@@ -475,13 +484,6 @@ export async function integrationDocConflicts(pkg, options = {}) {
     }
     // Docs should be dense: padding phrases and mostly-glue topics, listed
     // and warned about the same way (DEC-8).
-    // Like the other findings' `doc`, a fluff or stray-pointer `file` is
-    // relative to the package root.
-    const packageDir = /** @type {any} */ (resolved.integration).__packageDir;
-    const fromPackage = (/** @type {string} */ file) =>
-      typeof packageDir === 'string'
-        ? path.relative(packageDir, file).split(path.sep).join('/')
-        : file;
     fluff.push(
       ...(await integrationFluff(discovered)).map(each => ({
         ...each,
