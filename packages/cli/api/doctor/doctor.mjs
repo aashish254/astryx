@@ -1449,8 +1449,6 @@ function lockNote(lock) {
 const SKIP_REASONS = {
   'already-shown': 'it had already printed that day',
   'no-newer': 'no newer release was known',
-  'lock-timeout': "another run held the state file's lock past the wait",
-  'state-unwritable': 'the state file could not be written',
 };
 
 /**

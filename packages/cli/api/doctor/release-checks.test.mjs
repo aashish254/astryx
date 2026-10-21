@@ -51,14 +51,14 @@ describe('checkNewestRelease', () => {
       latest: '0.7.1',
       lastNoticeSkip: {
         key: 'global',
-        reason: 'lock-timeout',
+        reason: 'already-shown',
         at: Date.UTC(2026, 9, 20, 18),
       },
       stateLock: {pid: 42, host: 'mac', since: Date.UTC(2026, 9, 20, 17)},
     });
     expect(check.message).toBe(
       'No newer release is known: the newest is 0.7.1. ' +
-        "Last update notice skipped 2026-10-20T18:00:00.000Z (global): another run held the state file's lock past the wait. " +
+        'Last update notice skipped 2026-10-20T18:00:00.000Z (global): it had already printed that day. ' +
         "The state file's lock is held by process 42 on mac since 2026-10-20T17:00:00.000Z.",
     );
   });
