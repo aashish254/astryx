@@ -1337,9 +1337,9 @@ function writeEachAgentDoc(targetDir, existing, givenWrappers, compressedIndex, 
   // file 0.7.1 wrote that escapes the project refuses the run, as in 0.7.1.
   const skipped = skipEscaping(
     targetDir,
-    [...writes, ...strips].filter(
-      p => !refuseEscapes || p === GEMINI_MD || (keptCopy && p === CLAUDE_DIR_MD),
-    ),
+    // A kept copy here already holds a block, which 0.7.x wrote, so its
+    // escape refuses the run like any file 0.7.x wrote.
+    [...writes, ...strips].filter(p => !refuseEscapes || p === GEMINI_MD),
     onSkipped,
   );
   assertTargetsWithin(
@@ -1456,13 +1456,17 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
   const plan = planDefaultAgentDocs(targetDir, existing, wrappers, aliases);
   // While root CLAUDE.md is one the project ignores, .claude/CLAUDE.md gets
   // the copy too, first run included: a fresh clone has only that file.
-  // 0.7.1 left this copy alone (it imported AGENTS.md, or root CLAUDE.md held
-  // the block), so one that resolves outside the project is skipped and
-  // reported, not refused.
+  // The one shape 0.7.x left alone, a block-less import of an existing
+  // AGENTS.md, is skipped and reported when it resolves outside the project;
+  // any other .claude/CLAUDE.md 0.7.x wrote there, so its escape still
+  // refuses the run.
   let keptCopy = false;
   if (plan.get(CLAUDE_DIR_MD) === 'strip' && claudeDirKeepsCopy(targetDir)) {
     plan.set(CLAUDE_DIR_MD, 'block');
-    keptCopy = true;
+    keptCopy =
+      existing.includes(AGENTS_MD) &&
+      wrappers.get(CLAUDE_DIR_MD)?.has(AGENTS_MD) === true &&
+      !hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD));
   }
   const foundLegacy = existing.filter(p => LEGACY_DOC_PATHS.includes(p));
   /** @param {string} p */

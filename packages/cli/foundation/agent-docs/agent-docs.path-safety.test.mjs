@@ -962,9 +962,11 @@ describe('round 8: refreshing a committed .claude copy that imports AGENTS.md; a
     expect(fs.readFileSync(copy, 'utf-8')).toBe(`@../CLAUDE.md\n\n${BLOCK}\n`);
   });
 
-  it('skips the kept .claude/CLAUDE.md copy with a note when .claude links outside, in the default layout', () => {
+  it('skips a linked-outside block-less import of an existing AGENTS.md (the shape 0.7.x left alone), with a note, exit 0', async () => {
     const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
     fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'AGENTS.md'), '# Agents\n');
     fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
     fs.writeFileSync(path.join(outside, 'CLAUDE.md'), '@../AGENTS.md\n');
     fs.symlinkSync(outside, path.join(project, '.claude'), 'dir');
@@ -982,7 +984,46 @@ describe('round 8: refreshing a committed .claude copy that imports AGENTS.md; a
     expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
       '@../AGENTS.md\n',
     );
-  });
+
+    const text = await runCli(['init', '--features', 'agents'], project);
+    expect(text.status).toBe(0);
+    expect(text.stderr).toMatch(/^Note: Left as it is: \.claude\/CLAUDE\.md/mu);
+    expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+      '@../AGENTS.md\n',
+    );
+  }, 30_000);
+
+  for (const [label, contents, withAgents] of [
+    ['plain text', '# Shared\n', true],
+    ['a block', '<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n', true],
+    ['an import made before AGENTS.md exists', '@../AGENTS.md\n', false],
+  ]) {
+    it(`still refuses a linked-outside .claude/CLAUDE.md that 0.7.x wrote (${label}): exit 1, nothing written`, async () => {
+      const {project, outside} = layout();
+      fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+      fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+      if (withAgents)
+        fs.writeFileSync(path.join(project, 'AGENTS.md'), '# Agents\n');
+      fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+      fs.writeFileSync(path.join(outside, 'CLAUDE.md'), contents);
+      fs.symlinkSync(outside, path.join(project, '.claude'), 'dir');
+      const before = fs.readdirSync(project).sort();
+
+      const r = await runCli(
+        ['init', '--features', 'agents', '--json'],
+        project,
+      );
+      expect(r.status).toBe(1);
+      expect(JSON.parse(r.stdout).data.docsError.kind).toBe('path-safety');
+      expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+        contents,
+      );
+      expect(fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf-8')).toBe(
+        '# Mine\n',
+      );
+      expect(fs.readdirSync(project).sort()).toEqual(before);
+    }, 30_000);
+  }
 
   it('--agent claude skips a .claude linked outside beside an ignored root, with a note, and writes CLAUDE.md', async () => {
     const {project, outside} = layout();
