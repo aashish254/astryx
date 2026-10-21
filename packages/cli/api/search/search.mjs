@@ -20,6 +20,7 @@ import {rankLexical} from './_lexical.mjs';
 import {checkSearchArgs} from './_result.mjs';
 import {runTree} from '../../foundation/route/route.mjs';
 import {SEARCH_TREE} from './tree.mjs';
+import {linkSearchResponse} from '../component/_adapter.mjs';
 
 // The domains a search covers (the command handler lists them), and what
 // build reads from search: its word vocabulary, the components a search
@@ -50,10 +51,15 @@ export async function search(query, options = {}) {
   return withListingCache(
     async () =>
       /** @type {import('./search.type.mjs').SearchResponse} */ (
-        await runTree(
-          SEARCH_TREE,
-          {query, options},
-          {...(await gatherCandidates(options)), data: loadSearchData()},
+        await linkSearchResponse(
+          /** @type {import('./search.type.mjs').SearchResponse} */ (
+            await runTree(
+              SEARCH_TREE,
+              {query, options},
+              {...(await gatherCandidates(options)), data: loadSearchData()},
+            )
+          ),
+          options.cwd ?? process.cwd(),
         )
       ),
   );
@@ -70,6 +76,9 @@ export async function search(query, options = {}) {
 export async function searchCore(query, options = {}) {
   checkSearchArgs(query, options);
   return withListingCache(async () =>
-    rankLexical(query, options, await gatherCandidates(options)),
+    linkSearchResponse(
+      rankLexical(query, options, await gatherCandidates(options)),
+      options.cwd ?? process.cwd(),
+    ),
   );
 }
