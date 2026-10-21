@@ -4,7 +4,7 @@
     "validate": ["docTypes", "issues", "peerRanges"],
     "components": ["conflicts", "issues", "propDrift"],
     "templates": ["conflicts", "issues"],
-    "docs": ["copiedPassages", "findings", "issues"]
+    "docs": ["copiedPassages", "findings", "fluff", "issues"]
   },
   "reports": {
     "docTypes": "doc_types_skipped",
@@ -21,6 +21,7 @@
     "copied_passage",
     "core_not_found",
     "core_not_peer",
+    "doc_fluff",
     "doc_types_skipped",
     "duplicate_doc",
     "duplicate_provider",
