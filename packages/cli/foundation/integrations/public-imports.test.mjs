@@ -9,9 +9,7 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
-import {spawnSync} from 'node:child_process';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {
   validateIntegration,
@@ -23,7 +21,6 @@ import {
   integrationAddComponent,
   integrationAddTemplate,
 } from '../../api/integration/add-contribution.mjs';
-import {CLI_ROOT} from '../fs/paths.mjs';
 import {integrationCheck} from '../../api/integration/check/check.mjs';
 
 const CODES = new Set([
@@ -37,7 +34,6 @@ const CODES = new Set([
   'template_private_import',
   'template_import_missing_name',
   'template_no_default_export',
-  'unknown_block_component',
 ]);
 
 let dir;
@@ -71,13 +67,13 @@ const DOC = (
 };
 `;
 
-const BLOCK = (extra = '') =>
+const BLOCK = () =>
   `export default {
   type: 'block',
   name: 'account-card',
   displayName: 'Account Card',
   description: 'Account Card template.',
-  aspectRatio: 1,${extra}
+  aspectRatio: 1,
 };
 `;
 
@@ -533,34 +529,6 @@ describe('template default export', () => {
   });
 });
 
-describe('public imports: block component names', () => {
-  it('flags exampleFor and componentsUsed naming no component', async () => {
-    write(
-      'templates/account-card.doc.mjs',
-      BLOCK("\n  exampleFor: 'AcmeGizmo',\n  componentsUsed: ['AcmeGizmo'],"),
-    );
-    const issues = await found();
-    expect(issues.map(i => i.code)).toEqual([
-      'unknown_block_component',
-      'unknown_block_component',
-    ]);
-  });
-
-  it('accepts package, Core and imported names', async () => {
-    write(
-      'templates/account-card.doc.mjs',
-      BLOCK(
-        "\n  exampleFor: 'AcmeWidget',\n  componentsUsed: ['AcmeWidget', 'Button', 'Helper'],",
-      ),
-    );
-    write(
-      'templates/account-card.tsx',
-      "import {AcmeWidget} from '@acme/widgets/components/AcmeWidget';\nimport {Helper} from 'some-lib';\nexport default function A() {\n  return <Helper><AcmeWidget label=\"x\" /></Helper>;\n}\n",
-    );
-    expect(await codes()).toEqual([]);
-  });
-});
-
 describe('subpathDeclaration', () => {
   it('reads each way exports can declare a subpath', () => {
     expect(subpathDeclaration(undefined, './a').state).toBe('no_exports');
@@ -582,65 +550,6 @@ describe('subpathDeclaration', () => {
       ).state,
     ).toBe('blocked');
   });
-});
-
-describe('block component names without Core installed', () => {
-  it('judges no Core name when Core is not installed', () => {
-    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-no-core-'));
-    try {
-      const put = (/** @type {string} */ rel, /** @type {string} */ text) => {
-        fs.mkdirSync(path.dirname(path.join(out, rel)), {recursive: true});
-        fs.writeFileSync(path.join(out, rel), text);
-      };
-      put(
-        'package.json',
-        JSON.stringify({
-          name: '@acme/widgets',
-          version: '1.0.0',
-          type: 'module',
-          exports: {'./templates/account-card': './templates/account-card.tsx'},
-        }),
-      );
-      put(
-        'astryx.integration.mjs',
-        "export default {templates: './templates'};\n",
-      );
-      put(
-        'templates/account-card.doc.mjs',
-        BLOCK("\n  exampleFor: 'Button',\n  componentsUsed: ['AcmeGizmo'],"),
-      );
-      put(
-        'templates/account-card.tsx',
-        'export default function A() {\n  return null;\n}\n',
-      );
-      const run = spawnSync(
-        process.execPath,
-        [
-          path.join(CLI_ROOT, 'clients/cli/bin/astryx.mjs'),
-          '--json',
-          'doctor',
-          'integration',
-          'validate',
-        ],
-        {cwd: out, encoding: 'utf-8', timeout: 60_000},
-      );
-      const {data} = JSON.parse(run.stdout);
-      const issues = data.issues;
-      expect(
-        data.publicImports.unchecked.map(
-          (/** @type {{specifier: string}} */ u) => u.specifier,
-        ),
-      ).toEqual(['Button', 'AcmeGizmo']);
-      expect(
-        issues.filter(
-          (/** @type {{code: string}} */ i) =>
-            i.code === 'unknown_block_component',
-        ),
-      ).toEqual([]);
-    } finally {
-      fs.rmSync(out, {recursive: true, force: true});
-    }
-  }, 60_000);
 });
 
 describe('derived component imports', () => {

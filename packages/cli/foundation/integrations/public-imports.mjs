@@ -11,8 +11,7 @@
  *   a component example that imports an undeclared subpath or a name the
  *   package does not export; a template source that imports a relative path
  *   outside the templates root, an undeclared subpath of its own package or
- *   of Core, or a name its package does not export; a block whose
- *   `exampleFor`/`componentsUsed` names no known component.
+ *   of Core, or a name its package does not export.
  * @position foundation/integrations, beside the other on-disk contribution
  *   validators; run by `astryx doctor integration validate` (and so by
  *   `integration check`) through api/integration/validate-integration.mjs.
@@ -29,7 +28,6 @@ import {parse} from '@babel/parser';
 import {findCoreDir} from '../fs/paths.mjs';
 import {
   discoverIntegrationComponents,
-  discoverOwnedComponents,
   resolveIntegrationImportPath,
 } from '../discovery/component-discovery.mjs';
 import {loadComponentDoc} from '../discovery/component-loader.mjs';
@@ -834,8 +832,7 @@ async function componentIssues(ctx, integration) {
 }
 
 /**
- * Template public imports and what each template source imports, plus the
- * components a block names.
+ * Template public imports and what each template source imports.
  * @param {Context} ctx
  * @param {any} integration
  * @returns {Promise<Issue[]>}
@@ -851,46 +848,6 @@ async function templateIssues(ctx, integration) {
   } catch {
     return issues;
   }
-  /** @type {Set<string> | null} */
-  let ownComponents = null;
-  /** The package's own component names (empty when its root is unreadable). */
-  const ownNames = () => {
-    if (ownComponents) return ownComponents;
-    try {
-      ownComponents = new Set(
-        discoverIntegrationComponents(integration).map(r => r.name),
-      );
-    } catch {
-      ownComponents = new Set();
-    }
-    return ownComponents;
-  };
-  /** @type {Set<string> | null} */
-  let knownComponents = null;
-  const known = () => {
-    if (knownComponents) return knownComponents;
-    try {
-      knownComponents = new Set(
-        discoverIntegrationComponents(integration).map(r => r.name),
-      );
-    } catch {
-      return null;
-    }
-    // Without Core installed its names cannot be judged, so nothing is (as
-    // the components check reports core_not_found rather than guess).
-    if (!ctx.coreDir) {
-      knownComponents = null;
-      return null;
-    }
-    try {
-      for (const r of discoverOwnedComponents(ctx.coreDir, []))
-        knownComponents.add(r.name);
-    } catch {
-      knownComponents = null;
-    }
-    return knownComponents;
-  };
-
   for (const template of templates) {
     const id = template.dirName;
     const file = template.filePath;
@@ -933,8 +890,7 @@ async function templateIssues(ctx, integration) {
         ),
       );
     }
-    const statements = readImports(text);
-    for (const statement of statements) {
+    for (const statement of readImports(text)) {
       const spec = statement.source;
       if (spec.startsWith('.')) {
         const target = path.resolve(path.dirname(file), spec);
@@ -1004,45 +960,6 @@ async function templateIssues(ctx, integration) {
             ),
           );
         }
-      }
-    }
-
-    if (
-      template.type === 'block' ||
-      template.exampleFor ||
-      template.componentsUsed?.length
-    ) {
-      const names = known();
-      const fields = [
-        ...(typeof template.exampleFor === 'string'
-          ? [{field: 'exampleFor', name: template.exampleFor}]
-          : []),
-        ...(template.componentsUsed ?? [])
-          .filter(name => typeof name === 'string')
-          .map(name => ({field: 'componentsUsed', name})),
-      ];
-      // A block may name a component it imports that has no doc of its own.
-      const imported = new Set(
-        statements.flatMap(statement => statement.names.map(n => n.imported)),
-      );
-      for (const {field, name} of fields) {
-        if (imported.has(name)) continue;
-        if (!names) {
-          if (ownNames().has(name)) continue;
-          ctx.unchecked.push({
-            file: rel(ctx.packageDir, template.docPath),
-            specifier: name,
-            reason: `${field} names a component, and @astryxdesign/core is not installed (or a components root could not be read), so the name was not checked`,
-          });
-          continue;
-        }
-        if (names.has(name)) continue;
-        issues.push(
-          issueWarning(
-            'unknown_block_component',
-            `Template "${id}" names "${name}" in ${field}, but neither this package nor Core has a component by that name and the template does not import it, so no component lists the block under that name. Fix: use the component's exact name, or remove "${name}" from ${field}.`,
-          ),
-        );
       }
     }
   }

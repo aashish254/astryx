@@ -75,7 +75,6 @@
     "template_no_default_export",
     "template_private_import",
     "type_mismatch",
-    "unknown_block_component",
     "unknown_field",
     "unknown_manifest_key",
     "unknown_translated_prop",

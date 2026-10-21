@@ -55,11 +55,10 @@
 export {};
 
 /**
- * An import, or a component name a block gives, the public-import check
- * could not judge.
+ * An import the public-import check could not judge.
  * @typedef {object} PublicImportUnchecked
  * @property {string} file package-relative file that names it
- * @property {string} specifier the import specifier, or the component name
+ * @property {string} specifier the import specifier
  * @property {string} reason why it was not checked
  */
 
