@@ -33,7 +33,7 @@ describe('PR report and deployment workflow contracts', () => {
     expect(value).toContain('name: visual-pr-report');
     expect(value).toContain('run-id: ${{ steps.identity.outputs.run_id }}');
     expect(value).toContain('--head-sha "$HEAD_SHA"');
-    expect(value).toContain('--base-sha "$BASE_SHA"');
+    expect(value).not.toContain('--base-sha');
     expect(value).toContain('--run-attempt "$RUN_ATTEMPT"');
     expect(value).toContain('publish-pr-report.mjs');
     expect(value).toContain('types: [completed]');
