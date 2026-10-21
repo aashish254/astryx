@@ -89,7 +89,8 @@ source configuration independently.
 - `onDark` / `onLight` surface overrides;
 - ordered environmental `adaptations` with a fixed named width map; and
 - an optional experimental `experimental.native` section of native-only visual
-  intent: durable members plus platform entries scoped to OS version ranges
+  intent: durable members plus platform entries, each optionally scoped to an OS
+  version range and able to override that platform's component targets
   (`spec:AST-082`).
 
 `defineTheme` resolves that input into a flat `DefinedTheme`. An extended theme
