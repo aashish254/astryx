@@ -162,7 +162,7 @@ own dialog, the retained dialog, or the flow wrapper.
 
 | Anatomy or state | Design requirement                                                                                                                    | Representation authority                                         | Hierarchy role | Component contract |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------- | ------------------ |
-| Shared dialog    | Transparent host for the flow's interaction and accessibility boundary; DEC-1 decides one such host per child sheet                   | Current source and public docs; DEC-1 for the per-sheet clause   | Structural     | FR2, FR5, AR1      |
+| Sheet dialogs    | Transparent per-sheet hosts; the active sheet's is the flow's interaction and accessibility boundary (DEC-1)                          | Current source and public docs; DEC-1 for the per-sheet clause   | Structural     | FR2, FR5, AR1      |
 | Sheet panels     | Delegate visible panel, content, handle, and gesture presentation to BottomSheet                                                      | `component:BottomSheet` draft as observational context           | Prominent      | FR1, FR3           |
 | Scrim            | Optional native backdrop that dims and blocks the page in modal presentation; DEC-1 decides that one sheet dialog paints it at a time | Current source and public docs; DEC-1 for the one-painter clause | Supporting     | FR5, FR8           |
 
@@ -172,9 +172,9 @@ own dialog, the retained dialog, or the flow wrapper.
 
 ```json
 {
-  "Shared dialog": {
+  "Sheet dialogs": {
     "none": {
-      "reason": "intentional: The transparent dialog is hosting, positioning, event, and focus machinery rather than a stable painted part."
+      "reason": "intentional: The transparent dialogs are hosting, positioning, event, and focus machinery rather than a stable painted part."
     }
   },
   "Sheet panels": {
@@ -182,7 +182,7 @@ own dialog, the retained dialog, or the flow wrapper.
   },
   "Scrim": {
     "none": {
-      "reason": "reachability-gap: The switcher-coordinated native backdrop paints the scrim but has no current public theming target."
+      "reason": "reachability-gap: The native backdrop of the sheet dialog that owns the scrim paints it but has no current public theming target."
     }
   }
 }
