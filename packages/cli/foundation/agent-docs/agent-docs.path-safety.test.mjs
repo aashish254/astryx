@@ -1163,6 +1163,30 @@ describe('a .claude folder linked outside the project: exit parity with 0.7.1 at
   }
 });
 
+describe('a root CLAUDE.md linked outside the project that only imports AGENTS.md (0.7.1 left it alone)', () => {
+  it('is skipped with a note and init exits 0 at the project root; the rest is written', async () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+    fs.writeFileSync(path.join(project, 'AGENTS.md'), '# Agents\n');
+    fs.writeFileSync(path.join(outside, 'CLAUDE.md'), '@AGENTS.md\n');
+    fs.symlinkSync(
+      path.join(outside, 'CLAUDE.md'),
+      path.join(project, 'CLAUDE.md'),
+    );
+
+    const r = await runCli(['init', '--features', 'agents', '--json'], project);
+    expect(r.status).toBe(0);
+    const {data} = JSON.parse(r.stdout);
+    expect(data.docsWritten).toEqual(['AGENTS.md', 'GEMINI.md']);
+    expect(data.docsError.message).toMatch(
+      /^Left as it is: CLAUDE\.md \(.*outside the project root/u,
+    );
+    expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+      '@AGENTS.md\n',
+    );
+  }, 30_000);
+});
+
 describe('init exit codes and output', () => {
   it('an ignored GEMINI.md with notes: written through, exit 0, nothing on stderr', async () => {
     const {project} = layout();
