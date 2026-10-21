@@ -215,6 +215,7 @@ export async function loadManifest(
 ) {
   const mod = await importUserModule(file, {fresh});
   const raw = mod?.default;
+  if (raw === undefined) throw new Error(noDefaultExportMessage(file, label, mod));
   const baseManifest = parseIntegrationBase(raw, label);
   const gapReport = parseGapReportHandlerExport(mod?.gapReport, label);
   const discover = parseDiscoverSourceExport(mod?.discover, label);
@@ -256,6 +257,30 @@ export async function loadManifest(
     discoverError: discover.error,
     agentDocsError,
   };
+}
+
+/**
+ * Why a manifest has no default export, said plainly instead of as a schema
+ * failure on `undefined`: the file is empty, or it exports other names.
+ * @param {string} file
+ * @param {string} label
+ * @param {Record<string, unknown> | undefined} mod
+ */
+function noDefaultExportMessage(file, label, mod) {
+  const fix = `Fix: export the manifest object as the default export: \`export default {components: './components'}\`, naming the roots the package has.`;
+  let text = '';
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    // Unreadable now: say only what is missing.
+  }
+  const names = Object.keys(mod ?? {}).filter(name => name !== 'default');
+  if (text.trim() === '') return `${label} is empty. ${fix}`;
+  const found =
+    names.length > 0
+      ? ` (it exports ${names.map(name => `\`${name}\``).join(', ')})`
+      : '';
+  return `${label} has no default export${found}. ${fix}`;
 }
 
 /**
