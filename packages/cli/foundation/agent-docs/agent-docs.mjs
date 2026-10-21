@@ -1080,58 +1080,68 @@ function rootClaudeIgnored(targetDir) {
 }
 
 /**
- * Whether a fresh clone lacks `rel` in `targetDir`: the project's ignore rules
- * exclude it and the repository does not track it. git and hg ignore only
- * untracked files, so a tracked file is committed whatever the ignore files
- * say. `unreadable` is the answer when an ignore file, or whether the
- * repository tracks the file, cannot be read.
+ * Whether a fresh clone lacks `rel` in `targetDir`: it is untracked and
+ * ignored. Inside a repository the repository answers, with every ignore
+ * source it reads (its ignore files, its local exclude file and configured
+ * excludes), and a tracked file is committed whatever they say, as git and
+ * Mercurial ignore only untracked files. Outside one, the project's ignore
+ * files answer. `unreadable` is the answer when the repository, or an ignore
+ * file, cannot answer.
  * @param {string} targetDir
  * @param {string} rel
  * @param {boolean} unreadable
  * @returns {boolean}
  */
 function uncommittedHere(targetDir, rel, unreadable) {
-  if (!ignoredHere(targetDir, rel, unreadable)) return false;
-  const tracked = trackedHere(targetDir, rel);
-  return tracked == null ? unreadable : !tracked;
+  const root = repositoryRootOf(targetDir);
+  if (!root) return ignoredHere(targetDir, rel, unreadable);
+  return untrackedIgnored(root, targetDir, rel) ?? unreadable;
 }
 
-/** How each repository kind says whether it tracks a path: exit 0 tracks it, exit 1 does not. */
-const TRACKED_QUERIES = [
-  {marker: '.git', command: 'git', args: ['ls-files', '--error-unmatch', '--']},
-  {marker: '.sl', command: 'sl', args: ['files', '--']},
-  {marker: '.hg', command: 'hg', args: ['files', '--']},
+/**
+ * How each repository kind lists `rel` when it is untracked and ignored:
+ * `git check-ignore` exits 0 for such a file and 1 otherwise (it never
+ * reports a tracked file); `status -i -n` prints it, or nothing.
+ */
+const IGNORED_QUERIES = [
+  {marker: '.git', command: 'git', args: ['check-ignore', '-q', '--'], by: 'exit'},
+  {marker: '.sl', command: 'sl', args: ['status', '-i', '-n', '--'], by: 'output'},
+  {marker: '.hg', command: 'hg', args: ['status', '-i', '-n', '--'], by: 'output'},
 ];
 
 /**
- * Whether the repository holding `targetDir` tracks `rel`. False outside a
- * repository; null when its tool cannot be run or answers anything else.
+ * Whether the repository at `root` holds `rel` in `targetDir` as untracked
+ * and ignored; null when its tool cannot be run or gives another answer.
+ * @param {string} root
  * @param {string} targetDir
  * @param {string} rel
  * @returns {boolean | null}
  */
-function trackedHere(targetDir, rel) {
-  const root = repositoryRootOf(targetDir);
-  if (!root) return false;
-  const query = TRACKED_QUERIES.find(q => fs.existsSync(path.join(root, q.marker)));
+function untrackedIgnored(root, targetDir, rel) {
+  const query = IGNORED_QUERIES.find(q => fs.existsSync(path.join(root, q.marker)));
   if (!query) return null;
   const result = spawnSync(query.command, [...query.args, rel], {
     cwd: targetDir,
-    stdio: 'ignore',
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'ignore'],
     timeout: 10_000,
     windowsHide: true,
     shell: false,
   });
   if (result.error) return null;
-  if (result.status === 0) return true;
-  if (result.status === 1) return false;
-  return null;
+  if (query.by === 'exit') {
+    if (result.status === 0) return true;
+    if (result.status === 1) return false;
+    return null;
+  }
+  if (result.status !== 0) return null;
+  return result.stdout.trim() !== '';
 }
 
 /**
- * Whether the project's ignore rules exclude `rel` in `targetDir`, read with
- * the working-tree ignore reader upgrade uses; `unreadable` when an ignore
- * file cannot be read.
+ * Whether the ignore files in `targetDir` exclude `rel`, read with the
+ * working-tree ignore reader upgrade uses; for a folder outside any
+ * repository. `unreadable` when an ignore file cannot be read.
  * @param {string} targetDir
  * @param {string} rel
  * @param {boolean} unreadable
@@ -1139,10 +1149,7 @@ function trackedHere(targetDir, rel) {
  */
 function ignoredHere(targetDir, rel, unreadable) {
   try {
-    // A project inside a repository also takes the ignore files above it,
-    // from the repository root down, such as a monorepo's root .gitignore.
-    const ignoreFrom = repositoryRootOf(targetDir) ?? undefined;
-    return createFileProtectionResolver(targetDir, {ignoreFrom})
+    return createFileProtectionResolver(targetDir)
       .classify(path.join(targetDir, rel))
       .some(item => item.reason === 'ignored');
   } catch {

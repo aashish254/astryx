@@ -730,35 +730,39 @@ describe('third astracat round: first-run copy beside an ignored root, escapes b
 });
 
 describe('a monorepo package whose CLAUDE.md the repository root ignores', () => {
-  it('keeps and refreshes the committed .claude/CLAUDE.md copy', () => {
-    const repo = path.join(tmpDir, 'repo');
-    const project = path.join(repo, 'apps', 'web');
-    fs.mkdirSync(path.join(repo, '.git'), {recursive: true});
-    fs.mkdirSync(path.join(project, '.claude'), {recursive: true});
-    fs.writeFileSync(path.join(repo, '.gitignore'), 'apps/web/CLAUDE.md\n');
-    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"web"}\n');
-    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
-    const copy = path.join(project, '.claude', 'CLAUDE.md');
-    fs.writeFileSync(
-      copy,
-      '# Team\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
-    );
+  it.skipIf(spawnSync('git', ['--version']).status !== 0)(
+    'keeps and refreshes the committed .claude/CLAUDE.md copy',
+    () => {
+      const repo = path.join(tmpDir, 'repo');
+      const project = path.join(repo, 'apps', 'web');
+      fs.mkdirSync(repo, {recursive: true});
+      spawnSync('git', ['init', '-q'], {cwd: repo});
+      fs.mkdirSync(path.join(project, '.claude'), {recursive: true});
+      fs.writeFileSync(path.join(repo, '.gitignore'), 'apps/web/CLAUDE.md\n');
+      fs.writeFileSync(path.join(project, 'package.json'), '{"name":"web"}\n');
+      fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+      const copy = path.join(project, '.claude', 'CLAUDE.md');
+      fs.writeFileSync(
+        copy,
+        '# Team\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
+      );
 
-    const written = installAgentDocs(project, {renderedBlock: BLOCK});
+      const written = installAgentDocs(project, {renderedBlock: BLOCK});
 
-    expect(written).toEqual([
-      'AGENTS.md',
-      'CLAUDE.md',
-      '.claude/CLAUDE.md',
-      'GEMINI.md',
-    ]);
-    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+      expect(written).toEqual([
+        'AGENTS.md',
+        'CLAUDE.md',
+        '.claude/CLAUDE.md',
+        'GEMINI.md',
+      ]);
+      expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
 
-    // Without the repository-root rule, the copy moves to root CLAUDE.md.
-    fs.writeFileSync(path.join(repo, '.gitignore'), '');
-    installAgentDocs(project, {renderedBlock: BLOCK});
-    expect(fs.readFileSync(copy, 'utf-8')).toBe('# Team\n');
-  });
+      // Without the repository-root rule, the copy moves to root CLAUDE.md.
+      fs.writeFileSync(path.join(repo, '.gitignore'), '');
+      installAgentDocs(project, {renderedBlock: BLOCK});
+      expect(fs.readFileSync(copy, 'utf-8')).toBe('# Team\n');
+    },
+  );
 });
 
 describe('a Mercurial monorepo whose root .hgignore excludes the package CLAUDE.md', () => {
@@ -1249,7 +1253,49 @@ describe('a tracked .claude/CLAUDE.md is committed, whatever the ignore files sa
     },
   );
 
-  it('keeps the copy when the repository cannot say whether it tracks the file (fails closed)', () => {
+  for (const [label, setUp] of [
+    [
+      "the repository's local exclude file",
+      (/** @type {string} */ project) =>
+        fs.appendFileSync(
+          path.join(project, '.git', 'info', 'exclude'),
+          '/CLAUDE.md\n',
+        ),
+    ],
+    [
+      'a configured excludes file',
+      (/** @type {string} */ project) => {
+        const excludes = path.join(project, '..', 'global-excludes');
+        fs.writeFileSync(excludes, 'CLAUDE.md\n');
+        git(project, 'config', 'core.excludesFile', excludes);
+      },
+    ],
+  ]) {
+    it.skipIf(spawnSync('git', ['--version']).status !== 0)(
+      `keeps the copy in a tracked .claude/CLAUDE.md while ${label} ignores an untracked root CLAUDE.md`,
+      () => {
+        const {project} = layout();
+        git(project, 'init', '-q');
+        setUp(project);
+        fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+        fs.mkdirSync(path.join(project, '.claude'));
+        const copy = path.join(project, '.claude', 'CLAUDE.md');
+        fs.writeFileSync(copy, '# Team\n');
+        git(project, 'add', '-f', '.claude/CLAUDE.md');
+        git(project, 'commit', '-q', '-m', 'team claude file');
+
+        expect(installAgentDocs(project, {renderedBlock: BLOCK})).toEqual([
+          'AGENTS.md',
+          'CLAUDE.md',
+          '.claude/CLAUDE.md',
+          'GEMINI.md',
+        ]);
+        expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+      },
+    );
+  }
+
+  it('keeps the copy when the repository cannot say what it ignores or tracks (fails closed)', () => {
     const {project} = layout();
     // A .git that git cannot read.
     fs.writeFileSync(path.join(project, '.git'), 'gitdir: /nowhere/.git\n');

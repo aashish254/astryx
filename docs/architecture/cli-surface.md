@@ -312,10 +312,12 @@ validate` MUST warn on a PascalCase `.tsx` at the top of the components root
     `.claude/CLAUDE.md`. It holds the copy even when it imports `AGENTS.md`,
     because Claude Code does not follow an import of a file above the folder it
     starts in. While root `CLAUDE.md` holds a copy, `.claude/CLAUDE.md` holds
-    none, except while ignore rules (read from the repository root down to the
-    project root) exclude root `CLAUDE.md`: then a `.claude/CLAUDE.md` the
-    project commits holds a copy too, in the default layout and with the
-    `claude` and `all` presets, so a fresh clone still gives Claude Code one.
+    none, except while root `CLAUDE.md` is untracked and ignored by the
+    repository's ignore rules, including its local exclude file and configured
+    excludes: then a `.claude/CLAUDE.md` the project commits (tracked, or not
+    ignored) holds a copy too, as it does when the repository cannot say, in
+    the default layout and with the `claude` and `all` presets, so a fresh
+    clone still gives Claude Code one.
     Init creates no Claude Code file, and a Claude Code file that is
     `AGENTS.md` under another name holds no second copy.
   - `GEMINI.md` holds a one-line managed import of `AGENTS.md`. Init creates

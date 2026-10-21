@@ -249,7 +249,7 @@ const RUNNERS = {
     sites: ['loadModuleWithParser(..., parseConfig)'],
   },
   'foundation/agent-docs/agent-docs.mjs': {
-    runs: 'git, sl or hg, to read whether the repository tracks an ignored agent file',
+    runs: 'git, sl or hg, to read whether the repository ignores an untracked agent file',
     sites: ['child_process.spawnSync'],
   },
   'foundation/fs/file-protection.mjs': {

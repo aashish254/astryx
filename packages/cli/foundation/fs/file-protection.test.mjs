@@ -149,55 +149,6 @@ describe('working-tree ignore rules', () => {
   });
 });
 
-describe('ignore files above the root (ignoreFrom)', () => {
-  it('reads each .gitignore from ignoreFrom down to the root, nearer ones overriding', () => {
-    write('.gitignore', 'pkg/CLAUDE.md\npkg/keep.md\n');
-    write('pkg/.gitignore', '!keep.md\n');
-    write('pkg/CLAUDE.md', '');
-    write('pkg/keep.md', '');
-    write('pkg/other.md', '');
-    const pkg = path.join(root, 'pkg');
-
-    const plain = createFileProtectionResolver(pkg);
-    expect(plain.classify(path.join(pkg, 'CLAUDE.md'))).toEqual([]);
-
-    const wide = createFileProtectionResolver(pkg, {ignoreFrom: root});
-    expect(
-      wide.classify(path.join(pkg, 'CLAUDE.md')).map(item => item.reason),
-    ).toEqual(['ignored']);
-    expect(wide.classify(path.join(pkg, 'keep.md'))).toEqual([]);
-    expect(wide.classify(path.join(pkg, 'other.md'))).toEqual([]);
-  });
-
-  it('reads the .hgignore at ignoreFrom, with its syntax sections', () => {
-    write(
-      '.hgignore',
-      'syntax: glob\npkg/CLAUDE.md\nsyntax: regexp\n^pkg/notes\\.md$\n',
-    );
-    write('pkg/CLAUDE.md', '');
-    write('pkg/notes.md', '');
-    write('pkg/other.md', '');
-    const pkg = path.join(root, 'pkg');
-
-    const wide = createFileProtectionResolver(pkg, {ignoreFrom: root});
-    expect(
-      wide.classify(path.join(pkg, 'CLAUDE.md')).map(item => item.reason),
-    ).toEqual(['ignored']);
-    expect(
-      wide.classify(path.join(pkg, 'notes.md')).map(item => item.reason),
-    ).toEqual(['ignored']);
-    expect(wide.classify(path.join(pkg, 'other.md'))).toEqual([]);
-  });
-
-  it('ignores an ignoreFrom that is not above the root', () => {
-    write('pkg/.gitignore', '');
-    const pkg = path.join(root, 'pkg');
-    expect(() =>
-      createFileProtectionResolver(root, {ignoreFrom: pkg}),
-    ).not.toThrow();
-  });
-});
-
 describe('leading generated comments', () => {
   it.each([
     ['// @generated\nexport const x = 1;\n', '@generated'],
