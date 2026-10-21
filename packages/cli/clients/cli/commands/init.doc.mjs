@@ -19,7 +19,7 @@ export const doc = {
     'agents, and CI). By default it writes the agent-docs block, including guidance ' +
     'from configured integrations, to AGENTS.md and to the Claude Code file the project ' +
     'has (CLAUDE.md, else .claude/CLAUDE.md; when CLAUDE.md exists, a block in ' +
-    '.claude/CLAUDE.md is removed), and a one-line import of AGENTS.md to GEMINI.md ' +
+    '.claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md), and a one-line import of AGENTS.md to GEMINI.md ' +
     'unless GEMINI.md already imports it. It then prints getting-started steps. Agent ' +
     'docs go to the project root: the nearest folder at or above this one whose ' +
     'package.json declares an @astryxdesign package, else the nearest with any ' +

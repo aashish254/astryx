@@ -609,8 +609,10 @@ export function inspectAgentDocs(targetDir, installedVersion, expectedBlock) {
  */
 export function resolveAgentPaths(targetDir, agent) {
   if (agent === 'all') {
-    // Inject into all existing files, create defaults for each tool. GEMINI.md
-    // is left out: the default keeps a one-line import of AGENTS.md there.
+    // Every existing agent doc gets the block, except GEMINI.md, which keeps
+    // the one-line import of AGENTS.md the default writes. When CLAUDE.md is
+    // among them, installAgentDocs then removes the block from
+    // .claude/CLAUDE.md, unless the project ignores CLAUDE.md (INV31).
     const existing = discoverAgentDocs(targetDir).filter(p => p !== GEMINI_MD);
     if (existing.length > 0) {
       return {inject: existing, create: []};
@@ -1469,6 +1471,12 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
       escaped.add(p);
       onSkipped?.(p, err.message);
     }
+  }
+  // An import of an AGENTS.md left as it is would point at no block, so the
+  // GEMINI.md import is not written either.
+  if (escaped.has(AGENTS_MD) && plan.get(GEMINI_MD) === 'import') {
+    plan.delete(GEMINI_MD);
+    onSkipped?.(GEMINI_MD, 'its import of AGENTS.md would point at a file left as it is');
   }
 
   /** @type {string[]} */

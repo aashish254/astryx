@@ -169,6 +169,26 @@ describe('ignore files above the root (ignoreFrom)', () => {
     expect(wide.classify(path.join(pkg, 'other.md'))).toEqual([]);
   });
 
+  it('reads the .hgignore at ignoreFrom, with its syntax sections', () => {
+    write(
+      '.hgignore',
+      'syntax: glob\npkg/CLAUDE.md\nsyntax: regexp\n^pkg/notes\\.md$\n',
+    );
+    write('pkg/CLAUDE.md', '');
+    write('pkg/notes.md', '');
+    write('pkg/other.md', '');
+    const pkg = path.join(root, 'pkg');
+
+    const wide = createFileProtectionResolver(pkg, {ignoreFrom: root});
+    expect(
+      wide.classify(path.join(pkg, 'CLAUDE.md')).map(item => item.reason),
+    ).toEqual(['ignored']);
+    expect(
+      wide.classify(path.join(pkg, 'notes.md')).map(item => item.reason),
+    ).toEqual(['ignored']);
+    expect(wide.classify(path.join(pkg, 'other.md'))).toEqual([]);
+  });
+
   it('ignores an ignoreFrom that is not above the root', () => {
     write('pkg/.gitignore', '');
     const pkg = path.join(root, 'pkg');

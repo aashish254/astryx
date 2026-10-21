@@ -759,6 +759,84 @@ describe('a monorepo package whose CLAUDE.md the repository root ignores', () =>
   });
 });
 
+describe('a Mercurial monorepo whose root .hgignore excludes the package CLAUDE.md', () => {
+  for (const [label, rules] of [
+    ['glob syntax', 'syntax: glob\napps/web/CLAUDE.md\n'],
+    ['regexp syntax', '^apps/web/CLAUDE\\.md$\n'],
+  ]) {
+    it(`keeps the committed .claude/CLAUDE.md copy (${label})`, () => {
+      const repo = path.join(tmpDir, 'hgrepo');
+      const project = path.join(repo, 'apps', 'web');
+      fs.mkdirSync(path.join(repo, '.hg'), {recursive: true});
+      fs.mkdirSync(path.join(project, '.claude'), {recursive: true});
+      fs.writeFileSync(path.join(repo, '.hgignore'), rules);
+      fs.writeFileSync(path.join(project, 'package.json'), '{"name":"web"}\n');
+      fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+      const copy = path.join(project, '.claude', 'CLAUDE.md');
+      fs.writeFileSync(copy, '# Team\n');
+
+      const written = installAgentDocs(project, {renderedBlock: BLOCK});
+
+      expect(written).toEqual([
+        'AGENTS.md',
+        'CLAUDE.md',
+        '.claude/CLAUDE.md',
+        'GEMINI.md',
+      ]);
+      expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+    });
+  }
+
+  it('keeps the copy when the repository .hgignore cannot be parsed (fails closed)', () => {
+    const repo = path.join(tmpDir, 'hgbad');
+    const project = path.join(repo, 'apps', 'web');
+    fs.mkdirSync(path.join(repo, '.hg'), {recursive: true});
+    fs.mkdirSync(path.join(project, '.claude'), {recursive: true});
+    fs.writeFileSync(path.join(repo, '.hgignore'), 'syntax: bogus\n');
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"web"}\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(
+      copy,
+      '# Team\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
+    );
+
+    installAgentDocs(project, {renderedBlock: BLOCK});
+
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+  });
+});
+
+describe('below the project root, an AGENTS.md left as it is', () => {
+  it('skips the GEMINI.md import of it too (no import for doctor to fail on) and names both in one note', async () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+    const shared = path.join(outside, 'AGENTS.md');
+    fs.writeFileSync(shared, '# Shared\n');
+    fs.symlinkSync(shared, path.join(project, 'AGENTS.md'));
+    const sub = path.join(project, 'src');
+    fs.mkdirSync(sub);
+
+    const json = await runCli(['init', '--features', 'agents', '--json'], sub);
+    expect(json.status).toBe(0);
+    const {data} = JSON.parse(json.stdout);
+    expect(data.docsWritten).toEqual([]);
+    expect(data.docsError.message).toMatch(
+      /^Left as they are: AGENTS\.md \(.*outside the project root.*\); GEMINI\.md \(its import of AGENTS\.md/u,
+    );
+    expect(fs.existsSync(path.join(project, 'GEMINI.md'))).toBe(false);
+
+    const text = await runCli(['init', '--features', 'agents'], sub);
+    expect(text.status).toBe(0);
+    expect(text.stderr.split('\n').filter(Boolean)).toEqual([
+      expect.stringMatching(
+        /^Note: Left as they are: AGENTS\.md .*; GEMINI\.md /u,
+      ),
+    ]);
+    expect(fs.readFileSync(shared, 'utf-8')).toBe('# Shared\n');
+  }, 60_000);
+});
+
 describe('init exit codes and output', () => {
   it('an ignored GEMINI.md with notes: written through, exit 0, nothing on stderr', async () => {
     const {project} = layout();

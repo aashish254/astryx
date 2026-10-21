@@ -361,8 +361,10 @@ function generatedCommand(contents) {
  *
  * `ignoreFrom`, a folder above `root` such as the repository root, adds the
  * `.gitignore` file of each folder from it down to, not including, `root`, as
- * Git reads them for files below `root`. Only those files are read, never the
- * rest of the tree above `root`; one that cannot be read fails the resolver.
+ * Git reads them for files below `root`, and the `.hgignore` at `ignoreFrom`
+ * (with the files it includes), as Mercurial reads it. Only those files are
+ * read, never the rest of the tree above `root`; one that cannot be read or
+ * parsed fails the resolver.
  * @param {string} root
  * @param {{overrides?: Map<string, string|null>, ignoreFrom?: string}} [options]
  */
@@ -416,11 +418,21 @@ export function createFileProtectionResolver(
     }
   }
 
-  /** @param {string} file @param {string} baseDir */
-  function parseHgIgnore(file, baseDir) {
+  /**
+   * @param {string} file
+   * @param {string} baseDir
+   * @param {{dir: string, real: string}} [base] the folder rule files must
+   *   sit in: the operation root, or `ignoreFrom` for a repository-root
+   *   `.hgignore` above it
+   */
+  function parseHgIgnore(
+    file,
+    baseDir,
+    base = {dir: resolvedRoot, real: realRoot},
+  ) {
     const absolute = path.resolve(file);
     if (parsedHgFiles.has(absolute)) return;
-    const within = relativeWithin(absolute, resolvedRoot);
+    const within = relativeWithin(absolute, base.dir);
     if (within == null) {
       throw new ProtectionSourceError(
         slash(path.relative(resolvedRoot, absolute)),
@@ -440,7 +452,7 @@ export function createFileProtectionResolver(
           error instanceof Error ? error.message : String(error),
         );
       }
-      if (realSource !== path.resolve(realRoot, within)) {
+      if (realSource !== path.resolve(base.real, within)) {
         throw new ProtectionSourceError(
           within,
           'included source is reached through a symbolic link',
@@ -488,7 +500,7 @@ export function createFileProtectionResolver(
             `empty include on line ${index + 1}`,
           );
         const included = path.resolve(path.dirname(absolute), includePath);
-        parseHgIgnore(included, sub ? path.dirname(included) : baseDir);
+        parseHgIgnore(included, sub ? path.dirname(included) : baseDir, base);
         continue;
       }
       let kind = syntax;
@@ -591,6 +603,21 @@ export function createFileProtectionResolver(
       const dirs = [top];
       for (const part of below.split('/').slice(0, -1)) {
         dirs.push(path.join(dirs[dirs.length - 1], part));
+      }
+      // Mercurial reads only the repository-root .hgignore (and the files it
+      // includes), with its own syntax.
+      const hgRoot = path.join(top, '.hgignore');
+      if (fs.existsSync(hgRoot)) {
+        let realTop;
+        try {
+          realTop = fs.realpathSync(top);
+        } catch (error) {
+          throw new ProtectionSourceError(
+            slash(path.relative(resolvedRoot, top)),
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        parseHgIgnore(hgRoot, top, {dir: top, real: realTop});
       }
       for (const dir of dirs) {
         const file = path.join(dir, '.gitignore');

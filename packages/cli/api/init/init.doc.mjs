@@ -22,7 +22,7 @@ export const doc = {
     'package.json that declares an @astryxdesign package, else the nearest package.json, ' +
     'searching no higher than the repository root): to AGENTS.md, ' +
     "to the project's Claude Code file (CLAUDE.md, else .claude/CLAUDE.md; when CLAUDE.md " +
-    'exists, a block in .claude/CLAUDE.md is removed), and as a ' +
+    'exists, a block in .claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md), and as a ' +
     'one-line import of AGENTS.md in GEMINI.md unless GEMINI.md already imports it. ' +
     'In the home folder, or in a settings folder in it outside a project, it writes none: every ' +
     'folder of the home folder whose name starts with a dot is a settings folder, and such a folder itself never ' +
