@@ -722,10 +722,28 @@ describe.skipIf(!POSIX)(
         globalState(pc, {firstRunAt: Date.now() - 2 * 24 * 60 * 60_000});
         const env = {npm_config_registry: registry.url};
         run(g.bin, ['--version'], {cwd: tempDir('empty'), pc, env});
-        for (let i = 0; i < 300 && !readState(pc).latest; i++) {
+        // That run started two background steps: the check and the
+        // computer-level agent text. Each takes the state file's lock to
+        // record its result, so a later run's notice could find the lock
+        // held. Wait for both completion records, not for a time: the
+        // check's latest release with its lock released, and the agent
+        // text written for this release.
+        const stateDir = path.join(pc.home, '.config', 'astryx');
+        const settled = () => {
+          const state = readState(pc);
+          return (
+            state.latest === '9.0.5' &&
+            state.agentText?.writtenBy === '9.0.0' &&
+            !fs.existsSync(path.join(stateDir, '.lock-check')) &&
+            !fs.existsSync(path.join(stateDir, '.lock-state'))
+          );
+        };
+        const deadline = Date.now() + 150_000;
+        while (!settled() && Date.now() < deadline) {
           await new Promise(done => setTimeout(done, 100));
         }
         expect(readState(pc).latest).toBe('9.0.5');
+        expect(readState(pc).agentText?.writtenBy).toBe('9.0.0');
         // The check installed nothing.
         expect(
           fs.existsSync(path.join(pc.astryxCache, 'releases', '9.0.5')),
@@ -748,7 +766,7 @@ describe.skipIf(!POSIX)(
       } finally {
         await registry.close();
       }
-    }, 60_000);
+    }, 240_000);
 
     it('G23 the newest release needs a newer Node: the global copy answers, and the notice and doctor name the Node first', () => {
       const pc = computer();
