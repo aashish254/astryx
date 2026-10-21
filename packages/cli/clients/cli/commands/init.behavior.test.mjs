@@ -347,7 +347,13 @@ describe('astryx init --remove-agents', () => {
     await runCli(['init'], {cwd: sub});
     const json = await runCli(['init', '--remove-agents', '--json'], {cwd: sub});
     expect(json.status).toBe(0);
-    expect(JSON.parse(json.stdout)).toEqual({apiVersion: 1, type: 'init.remove', data: {removed: true}});
+    // meta.answeredBy names the release that answered (spec AST-081).
+    expect(JSON.parse(json.stdout)).toEqual({
+      apiVersion: 1,
+      type: 'init.remove',
+      data: {removed: true},
+      meta: {answeredBy: expect.any(Object)},
+    });
   });
 
   it('removes the Astryx section it previously installed', async () => {

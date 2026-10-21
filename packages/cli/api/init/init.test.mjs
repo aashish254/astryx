@@ -32,6 +32,18 @@ afterEach(() => {
 
 /** @param {string} rel */
 const read = rel => fs.readFileSync(path.join(tmpDir, rel), 'utf8');
+
+/**
+ * Make tmpDir a project that declares Astryx: a folder that declares nothing
+ * is outside a project, where init prints no getting-started steps (spec
+ * AST-081 FR3).
+ */
+function asProject() {
+  fs.writeFileSync(
+    path.join(tmpDir, 'package.json'),
+    JSON.stringify({name: 'app', dependencies: {'@astryxdesign/core': '*'}}),
+  );
+}
 /** @param {string} rel */
 const exists = rel => fs.existsSync(path.join(tmpDir, rel));
 
@@ -60,6 +72,7 @@ function writeIntegration() {
 
 describe('init() — receipts + side effects', () => {
   it('default mode installs AGENTS.md and returns an init.run receipt', async () => {
+    asProject();
     const res = await init({}, {cwd: tmpDir});
     expect(res.type).toBe('init.run');
     if (res.type !== 'init.run') return;
@@ -219,6 +232,7 @@ describe('init() — logger', () => {
   });
 
   it('emits the install line + full next-steps through the shared logger', async () => {
+    asProject();
     /** @type {string[]} */
     const lines = [];
     const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => lines.push(a.join(' ')));

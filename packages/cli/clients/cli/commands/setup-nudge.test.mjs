@@ -218,7 +218,12 @@ describe('enforcement layer 3 — per-command setup nudge', () => {
     write('AGENTS.md', MARKER);
     fs.mkdirSync(path.join(tmp, 'repo', '.git'), {recursive: true});
     write('repo/package.json', '{"name":"repo"}');
-    write('repo/functions/package.json', '{"name":"functions"}');
+    // It declares Astryx: a folder that declares nothing is outside a
+    // project, where no reminder prints (spec AST-081 FR3).
+    write(
+      'repo/functions/package.json',
+      JSON.stringify({name: 'functions', dependencies: {'@astryxdesign/core': '0.7.0'}}),
+    );
     const r = await runCli(['docs', 'tokens'], path.join(tmp, 'repo', 'functions'));
     expect(r.stderr).toMatch(NUDGE);
   });
