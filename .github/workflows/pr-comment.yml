@@ -97,7 +97,6 @@ jobs:
             core.setOutput('head_repo_id', identity.headRepositoryId);
             core.setOutput('head_ref', identity.headRef);
             core.setOutput('base_repo', identity.baseRepository);
-            core.setOutput('tested_base_sha', identity.testedBaseSha ?? '');
             core.setOutput('base_sha', identity.baseSha);
             core.setOutput('run_id', String(identity.sourceRunId));
             core.setOutput('run_attempt', String(identity.sourceRunAttempt));
@@ -315,11 +314,12 @@ jobs:
           retries: 3
           script: |
             const {pathToFileURL} = require('node:url');
-            const {confirmSourceRunIdentity} = await import(
+            const {confirmOrStandDown} = await import(
               pathToFileURL(`${process.env.GITHUB_WORKSPACE}/.github/scripts/lib/pr-preview.mjs`).href
             );
-            const identity = await confirmSourceRunIdentity({
+            const identity = await confirmOrStandDown({
               github,
+              core,
               ...context.repo,
               expected: {
                 prNumber: Number(process.env.PR_NUMBER),
@@ -333,6 +333,10 @@ jobs:
                 sourceConclusion: process.env.SOURCE_CONCLUSION,
               },
             });
+            if (identity === null) {
+              core.setOutput('valid', 'false');
+              return;
+            }
             core.setOutput('valid', 'true');
             core.setOutput('pr_number', String(identity.prNumber));
             core.setOutput('head_sha', identity.headSha);
@@ -340,7 +344,6 @@ jobs:
             core.setOutput('head_repo_id', identity.headRepositoryId);
             core.setOutput('head_ref', identity.headRef);
             core.setOutput('base_repo', identity.baseRepository);
-            core.setOutput('tested_base_sha', identity.testedBaseSha ?? '');
             core.setOutput('base_sha', identity.baseSha);
             core.setOutput('run_id', String(identity.sourceRunId));
             core.setOutput('run_attempt', String(identity.sourceRunAttempt));
@@ -407,7 +410,6 @@ jobs:
         if: steps.identity.outputs.valid == 'true' && steps.visual-download.outcome == 'success'
         env:
           HEAD_SHA: ${{ steps.identity.outputs.head_sha }}
-          BASE_SHA: ${{ steps.identity.outputs.tested_base_sha }}
           RUN_ID: ${{ steps.identity.outputs.run_id }}
           RUN_ATTEMPT: ${{ steps.identity.outputs.run_attempt }}
         run: |
@@ -415,7 +417,6 @@ jobs:
             --input visual-pr-report \
             --output trusted-visual \
             --head-sha "$HEAD_SHA" \
-            --base-sha "$BASE_SHA" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT"
 
