@@ -23,6 +23,7 @@ import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import {spawnSync} from 'node:child_process';
 import {
   installAgentDocs,
   removeAgentDocs,
@@ -1186,6 +1187,81 @@ describe('a root CLAUDE.md linked outside the project that only imports AGENTS.m
       '@AGENTS.md\n',
     );
   }, 30_000);
+});
+
+describe('a tracked .claude/CLAUDE.md is committed, whatever the ignore files say (INV31)', () => {
+  /** @param {string} cwd @param {...string} args */
+  const git = (cwd, ...args) => {
+    const r = spawnSync(
+      'git',
+      ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args],
+      {
+        cwd,
+        encoding: 'utf-8',
+      },
+    );
+    if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+  };
+
+  it.skipIf(spawnSync('git', ['--version']).status !== 0)(
+    'keeps the copy in a tracked .claude/CLAUDE.md when an unanchored CLAUDE.md rule ignores both',
+    () => {
+      const {project} = layout();
+      git(project, 'init', '-q');
+      fs.writeFileSync(path.join(project, '.gitignore'), 'CLAUDE.md\n');
+      fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+      fs.mkdirSync(path.join(project, '.claude'));
+      const copy = path.join(project, '.claude', 'CLAUDE.md');
+      fs.writeFileSync(copy, '# Team\n');
+      // Tracked despite the rule, as `git add -f` leaves it.
+      git(project, 'add', '-f', '.gitignore', '.claude/CLAUDE.md');
+      git(project, 'commit', '-q', '-m', 'team claude file');
+
+      expect(installAgentDocs(project, {renderedBlock: BLOCK})).toEqual([
+        'AGENTS.md',
+        'CLAUDE.md',
+        '.claude/CLAUDE.md',
+        'GEMINI.md',
+      ]);
+      expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+      // --agent claude keeps it too.
+      installAgentDocs(project, {agent: 'claude', renderedBlock: BLOCK});
+      expect(fs.readFileSync(copy, 'utf-8')).toContain(BLOCK);
+    },
+  );
+
+  it.skipIf(spawnSync('git', ['--version']).status !== 0)(
+    'strips the block from an untracked .claude/CLAUDE.md the same rule ignores',
+    () => {
+      const {project} = layout();
+      git(project, 'init', '-q');
+      fs.writeFileSync(path.join(project, '.gitignore'), 'CLAUDE.md\n');
+      fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+      fs.mkdirSync(path.join(project, '.claude'));
+      const copy = path.join(project, '.claude', 'CLAUDE.md');
+      fs.writeFileSync(
+        copy,
+        '# Team\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
+      );
+
+      installAgentDocs(project, {renderedBlock: BLOCK});
+      expect(fs.readFileSync(copy, 'utf-8').trimEnd()).toBe('# Team');
+    },
+  );
+
+  it('keeps the copy when the repository cannot say whether it tracks the file (fails closed)', () => {
+    const {project} = layout();
+    // A .git that git cannot read.
+    fs.writeFileSync(path.join(project, '.git'), 'gitdir: /nowhere/.git\n');
+    fs.writeFileSync(path.join(project, '.gitignore'), 'CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, '# Team\n');
+
+    installAgentDocs(project, {renderedBlock: BLOCK});
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+  });
 });
 
 describe("init's exit-code help names every soft exit-0 case these tests pin", () => {

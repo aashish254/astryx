@@ -287,6 +287,42 @@ describe('upgrade() — receipts', () => {
     }
   });
 
+  it('with no block, in a project at the top of a home settings folder, says why instead of pointing at init', async () => {
+    const saved = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+    };
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+    const warned = [];
+    const warn = vi
+      .spyOn(console, 'error')
+      .mockImplementation((...a) => warned.push(a.join(' ')));
+    logger.setSilent(false);
+    try {
+      const project = path.join(tmpDir, '.dotfiles');
+      fs.mkdirSync(project, {recursive: true});
+      writePkg(project, {'@astryxdesign/core': '0.0.15'});
+      writeInstalledCore(project, '0.0.15');
+
+      const res = await upgrade({from: '0.0.15'}, {cwd: project});
+
+      expect(res.data.agentDocs.action).toBe('error');
+      const text = warned.join('\n');
+      expect(text).toContain(
+        `Agent docs not installed: ${fs.realpathSync(project)} is the home folder or a settings folder in it, which every project's agents read. To have agent docs, move the project into a folder of its own, or add the Astryx block to its agent file by hand.`,
+      );
+      expect(text).not.toContain('init --features agents');
+    } finally {
+      logger.setSilent(true);
+      warn.mockRestore();
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it('a dry run in a project at the top of a home settings folder reports the refusal, not a refresh to apply', async () => {
     const saved = {
       HOME: process.env.HOME,

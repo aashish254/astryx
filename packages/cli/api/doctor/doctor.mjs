@@ -28,7 +28,11 @@ import {
   AGENT_DOC_PATHS,
   holdsAstryxBlock,
 } from '../../foundation/agent-docs/agent-doc-state.mjs';
-import {resolveAgentDocsRoot} from '../../foundation/agent-docs/agent-docs.mjs';
+import {
+  agentDocsTargetDir,
+  assertAgentDocsTarget,
+  resolveAgentDocsRoot,
+} from '../../foundation/agent-docs/agent-docs.mjs';
 import {CLI_ROOT, findCoreDir, findInstalledPackage} from '../../foundation/fs/paths.mjs';
 import {explainPackageManager, getCliInvocation} from '../../foundation/env/package-manager.mjs';
 import {
@@ -591,6 +595,21 @@ export function checkConfiguredIntegrations(ctx) {
 }
 
 /**
+ * Why init writes no agent docs for `cwd`, or null when it does: the folder
+ * it would write to is the home folder or the top of a settings folder in it.
+ * @param {string} cwd
+ * @returns {string | null}
+ */
+function agentDocsRefusal(cwd) {
+  try {
+    assertAgentDocsTarget(agentDocsTargetDir(cwd));
+    return null;
+  } catch (err) {
+    return err instanceof Error && err.name === 'AgentDocsHomeError' ? err.message : null;
+  }
+}
+
+/**
  * Check 7 — agent docs exist and contain the Astryx section markers.
  * @param {DoctorContext} ctx
  * @returns {DoctorCheck}
@@ -613,6 +632,15 @@ export function checkAgentDocs(ctx) {
   );
   /** @param {string} abs */
   const shown = abs => path.relative(ctx.cwd, abs) || path.basename(abs);
+  // In the home folder, or at the top of a settings folder in it, init
+  // writes no agent docs (INV31), so the fix is moving the project or a hand
+  // edit, never init.
+  const refusal = agentDocsRefusal(ctx.cwd);
+  /** @param {string} initFix */
+  const fixFor = initFix =>
+    refusal
+      ? `${refusal} Move the project into a folder of its own, or edit the Astryx block in its agent file by hand.`
+      : initFix;
 
   if (present.length === 0) {
     return {
@@ -620,7 +648,9 @@ export function checkAgentDocs(ctx) {
       label: 'AI agent docs',
       status: 'info',
       message: `No agent docs found: looked for ${AGENT_DOC_PATHS.join(', ')} in ${dirs.map(dir => path.relative(ctx.cwd, dir) || '.').join(' and ')}.`,
-      fix: `Generate agent docs with \`${getCliInvocation(ctx.cwd)} init --features agents\`.`,
+      fix: fixFor(
+        `Generate agent docs with \`${getCliInvocation(ctx.cwd)} init --features agents\`.`,
+      ),
     };
   }
 
@@ -661,7 +691,9 @@ export function checkAgentDocs(ctx) {
             `${shown(abs)} imports ${shown(target)}, which holds no Astryx block, so agents that read them get no Astryx docs.`,
         )
         .join(' '),
-      fix: `Write the block again with \`${getCliInvocation(ctx.cwd)} init --features agents\`.`,
+      fix: fixFor(
+        `Write the block again with \`${getCliInvocation(ctx.cwd)} init --features agents\`.`,
+      ),
     };
   }
 
@@ -671,7 +703,9 @@ export function checkAgentDocs(ctx) {
       label: 'AI agent docs',
       status: 'warn',
       message: `Agent docs present (${present.map(shown).join(', ')}) but no Astryx section markers found.`,
-      fix: `Add the Astryx section to your agent docs with \`${getCliInvocation(ctx.cwd)} init --features agents\`.`,
+      fix: fixFor(
+        `Add the Astryx section to your agent docs with \`${getCliInvocation(ctx.cwd)} init --features agents\`.`,
+      ),
     };
   }
 

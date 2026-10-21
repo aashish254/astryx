@@ -248,6 +248,10 @@ const RUNNERS = {
     runs: 'astryx.config, through the config parser',
     sites: ['loadModuleWithParser(..., parseConfig)'],
   },
+  'foundation/agent-docs/agent-docs.mjs': {
+    runs: 'git, sl or hg, to read whether the repository tracks an ignored agent file',
+    sites: ['child_process.spawnSync'],
+  },
   'foundation/discovery/component-discovery.mjs': {
     runs: '@babel/parser, on first use, to read the members a family doc lists in its components without running the doc',
     sites: ['require(@babel/parser)'],

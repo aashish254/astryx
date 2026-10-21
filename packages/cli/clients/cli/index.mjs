@@ -28,6 +28,7 @@ import {addDocHelp, markReportsResult} from './lib/define-command.mjs';
 import {doc as manifestDoc} from './commands/manifest.doc.mjs';
 import {
   agentDocsTargetDir,
+  assertAgentDocsTarget,
   isAstryxInitialized,
   isAstryxPromptInReach,
 } from '../../foundation/agent-docs/agent-docs.mjs';
@@ -584,6 +585,13 @@ export async function createProgram() {
       // above the repository root), so this changes nothing there; outside a
       // repository the walk checks only cwd, and this finds the root.
       if (isAstryxInitialized(agentDocsTargetDir(cwd))) return;
+      // In the home folder, or at the top of a settings folder in it, init
+      // writes no agent docs, so naming it would repeat on every command.
+      try {
+        assertAgentDocsTarget(agentDocsTargetDir(cwd));
+      } catch {
+        return;
+      }
       // Same wording as the core/cli postinstall nudges. #4151's getCliInvocation()
       // renders the correct form for THIS project — scoped `npx @astryxdesign/cli`
       // one-off, or `<pm> astryx` when installed — never the bare `npx astryx` footgun.

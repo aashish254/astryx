@@ -293,13 +293,14 @@ export async function runPostCodemodHooks(hooks, context) {
  * top of a settings folder, and what to do instead. init refuses the same
  * folder, so the line never points at it.
  * @param {AgentDocsHomeError} err
+ * @param {'stale' | 'missing'} [state] whether a block is there to refresh
  * @returns {string}
  */
-function homeRefusalLine(err) {
-  return (
-    `Agent docs not refreshed: ${err.dir} is the home folder or a settings folder in it, which every project's agents read. ` +
-    'To keep agent docs, move the project into a folder of its own; otherwise update or remove the Astryx block there by hand.'
-  );
+function homeRefusalLine(err, state = 'stale') {
+  const where = `${err.dir} is the home folder or a settings folder in it, which every project's agents read.`;
+  return state === 'missing'
+    ? `Agent docs not installed: ${where} To have agent docs, move the project into a folder of its own, or add the Astryx block to its agent file by hand.`
+    : `Agent docs not refreshed: ${where} To keep agent docs, move the project into a folder of its own; otherwise update or remove the Astryx block there by hand.`;
 }
 
 /**
@@ -328,6 +329,16 @@ export async function prepareAgentDocsRefresh({
   };
 
   if (initial.status === 'missing') {
+    // init writes nothing in a project at the home folder or the top of a
+    // settings folder, so it is not the remedy there (INV31).
+    try {
+      assertAgentDocsTarget(cwd);
+    } catch (err) {
+      if (!(err instanceof AgentDocsHomeError)) throw err;
+      summary.action = 'error';
+      logger.warn(homeRefusalLine(err, 'missing'));
+      return {cwd, renderedBlock: null, summary};
+    }
     summary.action = 'nudge-init';
     logger.warn(
       `No Astryx agent-docs block found - AI agents have no component index. Run \`${formatCliCommand('astryx init --features agents')}\` to install it.`,

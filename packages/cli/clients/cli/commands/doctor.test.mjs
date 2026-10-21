@@ -187,6 +187,31 @@ describe('doctor — individual checks', () => {
     expect(res.fix).toContain('`npx astryx init --features agents`');
   });
 
+  it('agent-docs: at the top of a home settings folder, the fix moves the project or edits by hand, never init', () => {
+    const saved = {HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE};
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+    try {
+      const project = path.join(tmpDir, '.dotfiles');
+      fs.mkdirSync(project);
+      fs.writeFileSync(path.join(project, 'package.json'), '{"name":"dots"}');
+      for (const content of [null, '# Agents\nno markers here\n']) {
+        if (content != null) fs.writeFileSync(path.join(project, 'AGENTS.md'), content);
+        const res = checkAgentDocs({cwd: project});
+        expect(res.fix).toContain('Agent docs are not written into the home folder');
+        expect(res.fix).toContain(
+          'Move the project into a folder of its own, or edit the Astryx block in its agent file by hand.',
+        );
+        expect(res.fix).not.toContain('init --features agents');
+      }
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it('agent-docs: WARN when docs exist without XDS markers', () => {
     fs.writeFileSync(path.join(tmpDir, 'AGENTS.md'), '# AGENTS\nno markers here');
     const res = checkAgentDocs({cwd: tmpDir});

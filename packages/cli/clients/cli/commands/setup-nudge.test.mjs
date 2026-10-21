@@ -120,6 +120,25 @@ describe('enforcement layer 3 — per-command setup nudge', () => {
     expect(r.stderr).toMatch(NUDGE);
   });
 
+  it.each([
+    ['in the home folder', ''],
+    ['at the top of a settings folder in it', '.dotfiles'],
+  ])('stays quiet %s, where init writes no agent docs', async (_label, rel) => {
+    const saved = {HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE};
+    process.env.HOME = tmp;
+    process.env.USERPROFILE = tmp;
+    try {
+      write(path.join(rel, 'package.json'), '{"name":"t"}');
+      const r = await runCli(['docs', 'tokens'], path.join(tmp, rel));
+      expect(r.stderr).not.toMatch(NUDGE);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it('is suppressed in --json (machine mode stays clean), stdout valid JSON', async () => {
     asProject();
     const r = await runCli(['--json', 'docs', 'tokens'], tmp);

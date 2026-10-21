@@ -29,6 +29,7 @@
  * --agent-docs-path <path>: explicit file path(s)
  */
 
+import {spawnSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -1075,7 +1076,56 @@ const CREATED_HEADING =
  * @returns {boolean}
  */
 function rootClaudeIgnored(targetDir) {
-  return ignoredHere(targetDir, CLAUDE_MD, true);
+  return uncommittedHere(targetDir, CLAUDE_MD, true);
+}
+
+/**
+ * Whether a fresh clone lacks `rel` in `targetDir`: the project's ignore rules
+ * exclude it and the repository does not track it. git and hg ignore only
+ * untracked files, so a tracked file is committed whatever the ignore files
+ * say. `unreadable` is the answer when an ignore file, or whether the
+ * repository tracks the file, cannot be read.
+ * @param {string} targetDir
+ * @param {string} rel
+ * @param {boolean} unreadable
+ * @returns {boolean}
+ */
+function uncommittedHere(targetDir, rel, unreadable) {
+  if (!ignoredHere(targetDir, rel, unreadable)) return false;
+  const tracked = trackedHere(targetDir, rel);
+  return tracked == null ? unreadable : !tracked;
+}
+
+/** How each repository kind says whether it tracks a path: exit 0 tracks it, exit 1 does not. */
+const TRACKED_QUERIES = [
+  {marker: '.git', command: 'git', args: ['ls-files', '--error-unmatch', '--']},
+  {marker: '.sl', command: 'sl', args: ['files', '--']},
+  {marker: '.hg', command: 'hg', args: ['files', '--']},
+];
+
+/**
+ * Whether the repository holding `targetDir` tracks `rel`. False outside a
+ * repository; null when its tool cannot be run or answers anything else.
+ * @param {string} targetDir
+ * @param {string} rel
+ * @returns {boolean | null}
+ */
+function trackedHere(targetDir, rel) {
+  const root = repositoryRootOf(targetDir);
+  if (!root) return false;
+  const query = TRACKED_QUERIES.find(q => fs.existsSync(path.join(root, q.marker)));
+  if (!query) return null;
+  const result = spawnSync(query.command, [...query.args, rel], {
+    cwd: targetDir,
+    stdio: 'ignore',
+    timeout: 10_000,
+    windowsHide: true,
+    shell: false,
+  });
+  if (result.error) return null;
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  return null;
 }
 
 /**
@@ -1119,17 +1169,18 @@ function repositoryRootOf(dir) {
 
 /**
  * Whether .claude/CLAUDE.md keeps a copy beside root CLAUDE.md (INV31): while
- * the project ignores root CLAUDE.md (a fresh clone lacks it), a
- * .claude/CLAUDE.md the project commits gets the copy too (DEC-2: an extra
- * copy beats none). One the project ignores follows the usual rule: its block
- * goes once root CLAUDE.md holds one. An ignore file that cannot be read
- * keeps the copy.
+ * a fresh clone lacks root CLAUDE.md (the project ignores it and does not
+ * track it), a .claude/CLAUDE.md the project commits (tracked, or not
+ * ignored) gets the copy too (DEC-2: an extra copy beats none). One the
+ * project ignores and does not track follows the usual rule: its block goes
+ * once root CLAUDE.md holds one. An ignore file, or tracking, that cannot be
+ * read keeps the copy.
  * @param {string} targetDir
  * @returns {boolean}
  */
 function claudeDirKeepsCopy(targetDir) {
   if (!rootClaudeIgnored(targetDir)) return false;
-  return !ignoredHere(targetDir, CLAUDE_DIR_MD, false);
+  return !uncommittedHere(targetDir, CLAUDE_DIR_MD, false);
 }
 
 /**
