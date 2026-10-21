@@ -32,6 +32,7 @@
     "inactive_component_replacement",
     "integration_error",
     "invalid_agent_docs",
+    "invalid_cli_command",
     "invalid_codemod",
     "invalid_codemod_version",
     "invalid_component",
