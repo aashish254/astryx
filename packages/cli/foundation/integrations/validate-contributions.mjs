@@ -446,7 +446,7 @@ async function judgeBlockComponents(integration) {
         .map(name => ({field: 'componentsUsed', name})),
     ];
     if (fields.length === 0) continue;
-    const imported = importedNames(template.filePath);
+    const imported = importedNames(template.filePath, integration.name);
     for (const {field, name} of fields) {
       if (own.has(name) || imported.names.has(name)) continue;
       if (coreHas(name)) continue;
@@ -511,6 +511,41 @@ function walkNodes(node, visit) {
 const LOCAL_MODULE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs'];
 
 /**
+ * Libraries that render no component of this package or of Core: React's
+ * own exports and StyleX. Importing them, even as a namespace
+ * (`import * as stylex`), leaves no name unjudged.
+ */
+const RENDERLESS_SOURCES = ['react', 'react-dom', '@stylexjs/stylex'];
+
+/**
+ * Packages a template may import from without leaving its names unjudged:
+ * Core and the renderless libraries. Any other package may render components
+ * this check does not see, such as a grid that renders its cards.
+ */
+const KNOWN_SOURCES = ['@astryxdesign/core', ...RENDERLESS_SOURCES];
+
+/** @param {string} source */
+function renderlessSource(source) {
+  return RENDERLESS_SOURCES.some(
+    known => source === known || source.startsWith(`${known}/`),
+  );
+}
+
+/**
+ * Whether an import source is one whose components this check sees: the
+ * package itself, Core, a library that renders none, or a relative helper
+ * (followed and read in full on its own).
+ * @param {string} source
+ * @param {string | undefined} packageName
+ */
+function knownSource(source, packageName) {
+  if (source.startsWith('.')) return true;
+  return [...KNOWN_SOURCES, ...(packageName ? [packageName] : [])].some(
+    known => source === known || source.startsWith(`${known}/`),
+  );
+}
+
+/**
  * Every name a template imports, as imported and as bound locally, read
  * without running it, with the names its local helper modules import (a
  * relative import or re-export is followed, so a barrel such as
@@ -521,11 +556,16 @@ const LOCAL_MODULE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs'];
  * alias of an imported binding, a member read off one (in JSX or not,
  * optional or computed), a rendered component it cannot trace to an import,
  * `require()`, a dynamic `import()`, an `export *` from another package, and
- * a local module it cannot read.
+ * a local module it cannot read. So does any `default` binding (`import X`,
+ * `{default as X}`, `export {default as X} from`) and any import from a
+ * package other than this one, Core, or a library that renders no component
+ * (see KNOWN_SOURCES). Type-only imports render nothing and are skipped, as
+ * is a namespace import of a library that renders no component.
  * @param {string} file
+ * @param {string | undefined} packageName the package's own name
  * @returns {{names: Set<string>, unread: string[]}}
  */
-function importedNames(file) {
+function importedNames(file, packageName) {
   /** @type {Set<string>} */
   const names = new Set();
   /** @type {string[]} */
@@ -565,10 +605,25 @@ function importedNames(file) {
         (node.type === 'ExportNamedDeclaration' && node.source != null) ||
         node.type === 'ExportAllDeclaration';
       if (node.type !== 'ImportDeclaration' && !reexport) continue;
+      // A type-only import or re-export renders nothing.
+      if (
+        /** @type {any} */ (node).importKind === 'type' ||
+        /** @type {any} */ (node).exportKind === 'type'
+      ) {
+        continue;
+      }
       const source = String(/** @type {any} */ (node).source.value);
+      if (!knownSource(source, packageName)) {
+        unread.push(
+          `${shown} imports from "${source}", another package whose components may render ones this check does not see.`,
+        );
+      }
       if (node.type === 'ImportDeclaration') {
         for (const specifier of node.specifiers) {
+          if (/** @type {any} */ (specifier).importKind === 'type') continue;
           if (specifier.type === 'ImportNamespaceSpecifier') {
+            // `import * as stylex`: a library that renders no component.
+            if (renderlessSource(source)) continue;
             unread.push(
               `${shown} imports "${source}" as a namespace (${specifier.local.name}), whose component names this check does not read.`,
             );
@@ -584,22 +639,45 @@ function importedNames(file) {
           bindings.set(specifier.local.name, source);
           if (specifier.type === 'ImportSpecifier') {
             const imported = specifier.imported;
-            names.add(
-              imported.type === 'Identifier' ? imported.name : imported.value,
-            );
+            const importedName =
+              imported.type === 'Identifier' ? imported.name : imported.value;
+            if (importedName === 'default') {
+              unread.push(
+                `${shown} imports the default of "${source}" as ${specifier.local.name}, which may be any component.`,
+              );
+            } else {
+              names.add(importedName);
+            }
           }
         }
       } else if (node.type === 'ExportNamedDeclaration') {
         // A barrel: `export {Body} from './Body'` passes Body on, and what
         // Body renders comes from the module it names.
         for (const specifier of node.specifiers) {
-          for (const each of [
-            /** @type {any} */ (specifier).local,
-            specifier.exported,
-          ]) {
-            if (each == null) continue;
-            names.add(each.type === 'Identifier' ? each.name : each.value);
+          if (/** @type {any} */ (specifier).exportKind === 'type') continue;
+          if (specifier.type !== 'ExportSpecifier') {
+            // `export * as UI from`, `export UI from`.
+            unread.push(
+              `${shown} re-exports "${source}" as a whole (${specifier.exported.type === 'Identifier' ? specifier.exported.name : specifier.exported.value}), whose component names this check does not read.`,
+            );
+            continue;
           }
+          const local =
+            specifier.local.type === 'Identifier'
+              ? specifier.local.name
+              : specifier.local.value;
+          const exported =
+            specifier.exported.type === 'Identifier'
+              ? specifier.exported.name
+              : specifier.exported.value;
+          if (local === 'default') {
+            unread.push(
+              `${shown} re-exports the default of "${source}" as ${exported}, which may be any component.`,
+            );
+          } else {
+            names.add(local);
+          }
+          names.add(exported);
         }
       } else if (!source.startsWith('.')) {
         // `export * from` another package passes on names this check
@@ -608,6 +686,11 @@ function importedNames(file) {
           `${shown} re-exports everything from "${source}", whose component names this check does not read.`,
         );
         continue;
+      } else if (/** @type {any} */ (node).exported) {
+        // `export * as UI from './parts'`.
+        unread.push(
+          `${shown} re-exports "${source}" as a whole, whose component names this check does not read.`,
+        );
       }
       if (!source.startsWith('.')) continue;
       const base = path.resolve(path.dirname(current), source);
@@ -764,10 +847,11 @@ function defaultBinding(file) {
  * The block component names this check could not judge, shaped like the
  * doc type report so `integration check` counts them as not compared: each
  * name a template gives in `exampleFor` or `componentsUsed` that neither the
- * package nor Core has, when the template may render it through a namespace
- * import or a local module this check cannot read, or when Core is not
- * installed to look it up in. A name judged unknown is an `unknown_block_component` issue,
- * so `findings` is always empty.
+ * package nor Core has, when the template reaches components through
+ * anything but named imports and re-exports from the package, Core, or
+ * helpers read in full (see importedNames), or when Core is not installed to
+ * look it up in. A name judged unknown is an `unknown_block_component`
+ * issue, so `findings` is always empty.
  * @param {LoadedIntegration} integration
  * @returns {Promise<{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}>}
  */

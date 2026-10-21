@@ -72,8 +72,9 @@
  * the package nor Core has, and the template does not import, is an
  * `unknown_block_component` issue, so `findings` is always empty;
  * `unchecked` lists each name that cannot be judged: one the template may
- * reach through anything other than named imports and re-exports (a
- * default or namespace import, an alias of or member read off an imported
+ * reach through anything other than named imports and re-exports from
+ * the package, Core, React, StyleX or local helpers (an import from another
+ * package, a default or namespace import, an alias of or member read off an imported
  * binding, require(), a dynamic import(), a local module this check cannot
  * read), or, without Core installed, any name Core would have to resolve: `file` (the template doc, package-relative),
  * `name`, and `reason`.
