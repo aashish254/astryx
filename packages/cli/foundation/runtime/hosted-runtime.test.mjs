@@ -248,12 +248,15 @@ describe("the host's discover sources", () => {
     const run = host({argv: ['discover', '--json'], cwd: empty}, {sources});
     expect(run.status).toBe(0);
     const out = JSON.parse(run.stdout);
+    // The host's source comes after every other source and before the
+    // official list, which is always last.
     expect(out.meta.sources).toEqual([
       expect.objectContaining({
         name: 'Acme catalog',
         from: 'the host',
         status: 'fresh',
       }),
+      expect.objectContaining({name: 'Astryx'}),
     ]);
     expect(JSON.stringify(out.meta.available)).toContain('acme-widgets');
   });
