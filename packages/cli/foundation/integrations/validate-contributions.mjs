@@ -852,23 +852,33 @@ async function checkComponents(integration, issues) {
       const doc = path.basename(docPath);
       const renamed = `${source.slice(0, -'.tsx'.length)}${doc.slice(docStemOf(doc).length)}`;
       const shown = slash(path.relative(root, docPath));
-      // A hidden doc lists nothing, so nothing goes missing: a warning, as
-      // validate exited 0 for it before.
+      const linux = `They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run`;
+      const fix = `Fix: rename ${doc} to ${renamed}.`;
+      // Where discovery still pairs the doc with its source (a
+      // case-insensitive disk), or the doc is hidden and lists nothing, the
+      // component works here: a warning, as validate exited 0 for it before.
       if (componentDiscovery.isHiddenComponentDoc(docPath)) {
         issues.push(
           issueWarning(
-            'invalid_component',
-            `Hidden component doc "${shown}" and its source "${source}" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run. Fix: rename ${doc} to ${renamed}.`,
+            'source_without_component_doc',
+            `Hidden component doc "${shown}" and its source "${source}" differ only in letter case. ${linux}. ${fix}`,
           ),
         );
-        continue;
+      } else if (componentDiscovery.integrationSourceForDoc(docPath) != null) {
+        issues.push(
+          issueWarning(
+            'source_without_component_doc',
+            `Component doc "${shown}" and its source "${source}" differ only in letter case. ${linux}, so there the component is missing. ${fix}`,
+          ),
+        );
+      } else {
+        issues.push(
+          issueError(
+            'invalid_component',
+            `Component doc "${shown}" and its source "${source}" differ only in letter case. ${linux}, so here the component is missing. ${fix}`,
+          ),
+        );
       }
-      issues.push(
-        issueError(
-          'invalid_component',
-          `Component doc "${shown}" and its source "${source}" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run, so there the component is missing. Fix: rename ${doc} to ${renamed}.`,
-        ),
-      );
     }
     for (const {read, ignored} of files.duplicates) {
       const readName = path.basename(read);
