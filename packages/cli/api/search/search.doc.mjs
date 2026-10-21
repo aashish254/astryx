@@ -17,11 +17,12 @@ export const doc = {
     'Unified ranked search across components, hooks, docs, templates, and themes.',
   description:
     'The single "I\'m looking for X" entry point across every content domain. ' +
-    'Ranking is keyword + fuzzy (not embeddings); name and keyword signals outrank ' +
-    'incidental prose mentions, so an exact match always sorts first. A component\'s ' +
-    'usage guidance (its best practices) is indexed one tier below its description, ' +
-    'so the words a reader types still find it — but a component that IS the answer ' +
-    'always outranks one whose advice merely mentions the term.',
+    'Matching and scores are keyword + fuzzy (not embeddings). Results keep the ' +
+    'order of their score bands, and a query that is an entry\'s exact name answers ' +
+    'with that entry first. Inside a band, fixed weights order the matches, so a ' +
+    'description match can lead a keyword match in the same band (55–99 holds both). ' +
+    'A component\'s usage guidance (its best practices) is indexed one tier below ' +
+    'its description, so the words a reader types still find it.',
   importPath: '@astryxdesign/cli/api',
   signature:
     'search(query: string, options?: SearchOptions): Promise<SearchResponse>',
