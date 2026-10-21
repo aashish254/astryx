@@ -6,8 +6,12 @@
  * @output Guard that module directories come from decoded file paths, not URI paths
  * @position Testing; build-previews.ts derived its __dirname from
  *   `new URL(import.meta.url).pathname`, so every checkout whose path contains a
- *   character that percent-encodes (a space, &, #, or any non-ASCII name) resolved
- *   VIBE_DIR/REPO_ROOT to a directory that does not exist
+ *   character a file URL percent-encodes — a space, `"`, `#`, `%`, `<`, `>`, `?`,
+ *   `[`, `]`, `^`, `{`, `|`, `}`, `~`, or any non-ASCII name — resolved
+ *   VIBE_DIR/REPO_ROOT to a directory that does not exist. `&`, `+`, `!`, `$`,
+ *   `'`, `(`, `)`, `*`, `,`, `-`, `:`, `;`, `=`, `@` and `_` pass through untouched,
+ *   so a checkout named with one of those already worked. Both lists are measured
+ *   against `pathToFileURL(...).pathname`, not guessed
  */
 
 import * as fs from 'node:fs';
@@ -92,9 +96,11 @@ describe('module directory derivation', () => {
   });
 
   it('reaches the repo root this package actually needs from a decoded path', () => {
-    // build-previews.ts injects REPO_ROOT/packages/core/src/tailwind-theme.css
-    // into every generated preview entry (:160) and writes rootDir into the
-    // generated config (:353); both come from the module directory.
+    // The two REPO_ROOT derivations a build cannot do without: the
+    // `packages/core/src/tailwind-theme.css` import injected into every
+    // generated preview entry, and the `rootDir` written into the generated
+    // tsconfig. Both are resolved from the module directory, so a URI-escaped
+    // one points the import and the compiler at nothing.
     const vibeDir = path.resolve(SRC_DIR, '..');
     const repoRoot = path.resolve(vibeDir, '../..');
     expect(
