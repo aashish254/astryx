@@ -69,7 +69,10 @@ export {};
  * issues, so `findings` stays empty; `unchecked` lists what it could not
  * judge (listed, never failed on).
  * @typedef {object} PublicImportsReport
- * @property {'checked'} status
+ * @property {'checked' | 'skipped'} status `skipped` when package.json has
+ *   no `name`: imports of the package's own name cannot be told apart, so
+ *   only the checks that need no name ran
+ * @property {string} [reason] why it was skipped
  * @property {never[]} findings
  * @property {PublicImportUnchecked[]} unchecked
  */
