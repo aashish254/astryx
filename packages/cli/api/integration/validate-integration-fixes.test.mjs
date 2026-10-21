@@ -37,6 +37,8 @@ const componentDoc = name =>
   `export default {type: 'component', name: '${name}', displayName: '${name}', usage: {description: '${name}.'}, props: []};\n`;
 /** @param {string} name */
 const componentSource = name => `export function ${name}() { return null; }\n`;
+const templateSource = name =>
+  `export default function ${name}() { return null; }\n`;
 /** @param {string} name */
 const topic = name =>
   `export default ${JSON.stringify({
@@ -1135,8 +1137,8 @@ describe('source_without_template_doc fixes hold when followed', () => {
   it('adds the named doc, which resolves the warning', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({templates: './templates'}),
-      'templates/hero.tsx': componentSource('Hero'),
-      'templates/hero.test.tsx': componentSource('HeroTest'),
+      'templates/hero.tsx': templateSource('Hero'),
+      'templates/hero.test.tsx': templateSource('HeroTest'),
     });
 
     const message = only(await issuesOf(dir), 'source_without_template_doc');
@@ -1152,29 +1154,43 @@ describe('source_without_template_doc fixes hold when followed', () => {
     expect(await issuesOf(fixed)).toEqual([]);
   });
 
-  it('names a nested source by its path under the templates root', async () => {
+  it('checks a dotted template id, but no test, spec or story file', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({templates: './templates'}),
-      'templates/blocks/Carousel.tsx': componentSource('Carousel'),
+      'templates/landing.page.tsx': templateSource('LandingPage'),
+      'templates/hero.test.tsx': templateSource('HeroTest'),
+      'templates/hero.spec.tsx': templateSource('HeroSpec'),
+      'templates/hero.stories.tsx': templateSource('HeroStories'),
     });
 
     const message = only(await issuesOf(dir), 'source_without_template_doc');
     expect(message).toContain(
-      'Template source "blocks/Carousel.tsx" has no same-stem metadata file Carousel.doc.mjs',
+      'Template source "landing.page.tsx" has no same-stem metadata file landing.page.doc.mjs',
     );
 
     const fixed = follow(dir, {
       write: {
-        'templates/blocks/Carousel.doc.mjs': `export default {type: 'block', name: 'Carousel', displayName: 'Carousel', aspectRatio: 1};\n`,
+        'templates/landing.page.doc.mjs': `export default {type: 'page', name: 'landing.page', displayName: 'Landing'};\n`,
       },
     });
     expect(await issuesOf(fixed)).toEqual([]);
   });
 
+  it('never flags a helper in a subfolder of the templates root', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({templates: './templates'}),
+      'templates/hero.doc.mjs': `export default {type: 'page', name: 'hero', displayName: 'Hero'};\n`,
+      'templates/hero.tsx': templateSource('Hero'),
+      'templates/hero/HeroCard.tsx': templateSource('HeroCard'),
+    });
+
+    expect(await issuesOf(dir)).toEqual([]);
+  });
+
   it('accepts a released .template.mjs spec as the metadata', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({templates: './templates'}),
-      'templates/hero.tsx': componentSource('Hero'),
+      'templates/hero.tsx': templateSource('Hero'),
       'templates/hero.template.mjs': `export default {type: 'page', name: 'hero', displayName: 'Hero'};\n`,
     });
 

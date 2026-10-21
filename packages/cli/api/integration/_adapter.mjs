@@ -15,6 +15,8 @@ import {
   integrationSourceForDoc,
 } from '../../foundation/discovery/component-discovery.mjs';
 import {comparePropDocs} from '../../foundation/discovery/prop-drift.mjs';
+import {findCopiedPassages} from '../../foundation/discovery/copied-passages.mjs';
+import {findFluff} from '../../foundation/discovery/doc-fluff.mjs';
 
 /**
  * Each component doc's props compared with the component's TypeScript props,
@@ -51,4 +53,28 @@ export async function integrationPropDrift(integration, cwd) {
     packageDir: packageDir ?? cwd,
     resolveFrom: [cwd, packageDir],
   });
+}
+
+/**
+ * The passages two of a package's topics, or one of them and a Core topic,
+ * repeat word for word (architecture:cli-surface DEC-8). Reads the package's
+ * topics and Core's guides.
+ *
+ * @param {Parameters<typeof findCopiedPassages>[0]} discovered the package's
+ *   docs, as discoverIntegrationDocs returns them
+ */
+export function integrationCopiedPassages(discovered) {
+  return findCopiedPassages(discovered);
+}
+
+/**
+ * Padding phrases and low-density topics in a package's prose
+ * (architecture:cli-surface DEC-8). Reads the package's topics, and Core's
+ * guides for the density median a finding names.
+ *
+ * @param {Parameters<typeof findFluff>[0]} discovered the package's docs, as
+ *   discoverIntegrationDocs returns them
+ */
+export function integrationFluff(discovered) {
+  return findFluff(discovered);
 }

@@ -332,8 +332,11 @@ export async function collectIdentities(loaded) {
 
   if (loaded.docs && isFolder(loaded.docs)) {
     try {
-      const {records, guides, errors: docErrors} =
-        await discoverIntegrationDocs(loaded);
+      const {
+        records,
+        guides,
+        errors: docErrors,
+      } = await discoverIntegrationDocs(loaded);
       for (const docError of docErrors) {
         errors.push({kind: 'docs', message: docError.message});
       }
@@ -530,47 +533,34 @@ const TEMPLATE_DOC_SUFFIXES = [
   '.template.js',
 ];
 
-/** A `.tsx` whose stem has no further dot: not `x.test.tsx` or `x.stories.tsx`. */
-const PLAIN_TSX = /^([^.]+)\.tsx$/u;
+/** A `.tsx` source and its stem, which may hold a dot (`landing.page`). */
+const TSX_SOURCE = /^(.+)\.tsx$/u;
+
+/** A test, spec or story stem: never a template. */
+const NOT_A_TEMPLATE = /\.(?:test|spec|stories)$/u;
 
 /**
- * Find `.tsx` files under a templates root that have no same-stem template
- * metadata, so template discovery never lists them. Template discovery walks
- * the root recursively, so this does too; it never enters node_modules or a
- * dot-directory. Like the component check, a file with a dotted stem (a test,
- * story, or similar companion) is never a candidate.
+ * Find `.tsx` files directly in a templates root that have no same-stem
+ * template metadata, so template discovery never lists them. Like the
+ * component check, it scans only direct children of the root: a file in a
+ * subfolder may be a helper a template imports. A file with a dotted stem (a
+ * test, story, or similar companion) is never a candidate.
  *
  * @param {string|undefined} templatesRoot absolute path
- * @returns {string[]} root-relative POSIX paths of the unpaired sources, sorted
+ * @returns {string[]} basenames of the unpaired sources, sorted
  */
 export function findTemplateSourceOnlyCandidates(templatesRoot) {
   if (!templatesRoot || !fs.existsSync(templatesRoot)) return [];
   /** @type {string[]} */
   const candidates = [];
-  /** @param {string} dir */
-  const walk = dir => {
-    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name.startsWith('.')) {
-          continue;
-        }
-        walk(full);
-        continue;
-      }
-      if (!entry.isFile() && !entry.isSymbolicLink()) continue;
-      const match = entry.name.match(PLAIN_TSX);
-      if (!match) continue;
-      const paired = TEMPLATE_DOC_SUFFIXES.some(suffix =>
-        fs.existsSync(path.join(dir, `${match[1]}${suffix}`)),
-      );
-      if (!paired) {
-        candidates.push(
-          path.relative(templatesRoot, full).split(path.sep).join('/'),
-        );
-      }
-    }
-  };
-  walk(templatesRoot);
+  for (const entry of fs.readdirSync(templatesRoot, {withFileTypes: true})) {
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    const match = entry.name.match(TSX_SOURCE);
+    if (!match || NOT_A_TEMPLATE.test(match[1])) continue;
+    const paired = TEMPLATE_DOC_SUFFIXES.some(suffix =>
+      fs.existsSync(path.join(templatesRoot, `${match[1]}${suffix}`)),
+    );
+    if (!paired) candidates.push(entry.name);
+  }
   return candidates.sort();
 }
