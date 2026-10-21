@@ -372,6 +372,10 @@ export function clampTime(
 
 /**
  * Adjusts a time by adding/subtracting minutes.
+ *
+ * `deltaMinutes` is a whole number of minutes. A fractional delta leaves the
+ * time unchanged rather than returning a value that is no longer a time —
+ * `HH:MM` has no place for a fraction of a minute.
  */
 export function adjustTime(
   time: ISOTimeString,
