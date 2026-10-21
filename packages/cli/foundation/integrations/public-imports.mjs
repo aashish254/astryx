@@ -25,7 +25,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {parse} from '@babel/parser';
-import {findCoreDir} from '../fs/paths.mjs';
+import {findProjectCoreDir} from '../fs/paths.mjs';
 import {
   discoverIntegrationComponents,
   resolveIntegrationImportPath,
@@ -652,7 +652,10 @@ export async function publicImportIssues(packageDir, integration) {
   const pkg = readJson(path.join(packageDir, 'package.json'));
   if (!isRecord(pkg) || typeof pkg.name !== 'string')
     return {issues: [], report};
-  const coreDir = pkg.name === CORE ? packageDir : findCoreDir(packageDir);
+  // The Core installed beside the package, which its templates' imports
+  // resolve against; never the CLI's own copy, which may be another release.
+  const coreDir =
+    pkg.name === CORE ? packageDir : findProjectCoreDir(packageDir);
   /** @type {Context} */
   const ctx = {
     packageDir,
