@@ -20,6 +20,7 @@ import {doc as integrationAddFn} from '../../../api/integration/integrationAdd.d
 import {doc as integrationCheckFn} from '../../../api/integration/integrationCheck.doc.mjs';
 import {printIntegrationCheckResponse} from './doctor.mjs';
 import {doc as integrationPackCheckFn} from '../../../api/integration/integrationPackCheck.doc.mjs';
+import {formatCliCommand} from '../../../foundation/env/package-manager.mjs';
 
 /**
  * @param {import('commander').Command} command
@@ -79,10 +80,16 @@ async function verifyPackage(program) {
     if (issues.length > 0) {
       blocks.push(
         list(
-          issues.map(
-            issue =>
-              `[${issue.severity === 'error' ? 'fail' : 'warn'}] ${issue.message}`,
-          ),
+          issues.map(issue => [
+            `[${issue.severity === 'error' ? 'fail' : 'warn'}] ${issue.message}`,
+            // Every field the JSON issue carries.
+            ...(issue.file != null
+              ? [
+                  `file: ${issue.file}${issue.line != null ? `:${issue.line}` : ''}`,
+                ]
+              : []),
+            ...(issue.fix != null ? [`fix: ${issue.fix}`] : []),
+          ]),
         ),
       );
     }
@@ -277,14 +284,14 @@ export function registerIntegration(program) {
       if (!options.check) {
         // One way forward: the new name. `npm pack` is what builds a tarball.
         return cliError(
-          '`integration pack` is now `integration verify`: run `astryx integration verify` to check the package the way npm will publish it. To build the tarball, run `npm pack`.',
+          `\`integration pack\` is now \`integration verify\`: run \`${formatCliCommand('integration verify')}\` to check the package the way npm will publish it. To build the tarball, run \`npm pack\`.`,
           {code: ERROR_CODES.ERR_INVALID_ARGUMENT},
         );
       }
       // stderr, and only in text: JSON callers get the same envelope as verify.
       if (!program.opts().json) {
         console.error(
-          'Note: `integration pack --check` is deprecated. Run `astryx integration verify`: it runs the same check.',
+          `Note: \`integration pack --check\` is deprecated. Run \`${formatCliCommand('integration verify')}\`: it runs the same check.`,
         );
       }
       return verifyPackage(program);
