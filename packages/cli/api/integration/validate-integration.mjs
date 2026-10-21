@@ -79,7 +79,7 @@ export {validateLoadedIntegration};
  * @property {'no_package_json'} [reason] Why nothing was validated (internal).
  * @property {Issue[]} issues
  * @property {import('../../foundation/integrations/integrations.mjs').LoadedIntegration} [integration]
- * @property {import('../../foundation/integrations/public-imports.mjs').PublicImportsReport} [publicImports]
+ * @property {import('./validate-integration.type.mjs').PublicImportsReport} [publicImports]
  *   what the public-import check could not judge
  */
 

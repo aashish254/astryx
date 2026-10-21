@@ -38,7 +38,7 @@
  * "healthy" — the two are otherwise byte-identical.
  * @typedef {object} ValidateIntegrationResponse
  * @property {'integration.validate'} type
- * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, publicImports?: import('../../foundation/integrations/public-imports.mjs').PublicImportsReport}} data
+ * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, publicImports?: PublicImportsReport}} data
  */
 
 /**
@@ -53,3 +53,22 @@
  */
 
 export {};
+
+/**
+ * An import, or a component name a block gives, the public-import check
+ * could not judge.
+ * @typedef {object} PublicImportUnchecked
+ * @property {string} file package-relative file that names it
+ * @property {string} specifier the import specifier, or the component name
+ * @property {string} reason why it was not checked
+ */
+
+/**
+ * The public-import check's report on validate's result: its warnings are
+ * issues, so `findings` stays empty; `unchecked` lists what it could not
+ * judge (listed, never failed on).
+ * @typedef {object} PublicImportsReport
+ * @property {'checked'} status
+ * @property {never[]} findings
+ * @property {PublicImportUnchecked[]} unchecked
+ */

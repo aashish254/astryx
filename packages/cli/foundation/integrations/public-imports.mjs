@@ -529,23 +529,8 @@ function uncheckedReason(files) {
  * @property {PublicImportUnchecked[]} unchecked what could not be judged
  */
 
-/**
- * An import, or a name a block gives, the check could not judge.
- * @typedef {object} PublicImportUnchecked
- * @property {string} file package-relative file that names it
- * @property {string} specifier the import specifier, or the component name
- * @property {string} reason why it was not checked
- */
-
-/**
- * The public-import check's report on validate's result: its warnings are
- * issues, so `findings` stays empty; `unchecked` lists what it could not
- * judge.
- * @typedef {object} PublicImportsReport
- * @property {'checked'} status
- * @property {never[]} findings
- * @property {PublicImportUnchecked[]} unchecked
- */
+/** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportUnchecked} PublicImportUnchecked */
+/** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportsReport} PublicImportsReport */
 
 /**
  * Judge an import of the package's own name.
