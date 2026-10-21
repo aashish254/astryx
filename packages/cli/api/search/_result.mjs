@@ -22,8 +22,18 @@ import {SEARCH_DOMAINS} from './_query.mjs';
  * @param {string} reason
  * @param {number} matchedTerms - Query concepts this result answered.
  * @param {number} queryTerms - Query concepts there were to answer.
+  * @param {boolean} [outside] - The search runs outside a project, where a
+ *   theme cannot be added to an app, so its command forks the source instead
+ *   (spec AST-081 FR3).
  */
-export function toResult(c, score, reason, matchedTerms, queryTerms) {
+export function toResult(
+  c,
+  score,
+  reason,
+  matchedTerms,
+  queryTerms,
+  outside = false,
+) {
   const base = {
     domain: c.domain,
     name: c._resultName ?? c.name,
@@ -72,7 +82,9 @@ export function toResult(c, score, reason, matchedTerms, queryTerms) {
       result = {
         ...base,
         displayName: c._displayName,
-        command: `astryx theme add ${c.name}`,
+        command: outside
+          ? `astryx theme eject ${c.name}`
+          : `astryx theme add ${c.name}`,
       };
       break;
     default:

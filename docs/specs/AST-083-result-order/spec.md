@@ -45,28 +45,28 @@ owns response fields and compatibility.
 
 ## Requirements
 
-- **FR1: search answers with the lexical matches.** Every result is an entry
+- **FR1 — search answers with the lexical matches.** Every result is an entry
   the lexical ranker matched, with that ranker's score and reason, and
   `matchCount` equals its match count. Search never returns more results than
   the lexical ranker does for the same query and limit.
-- **FR2: bands do not cross.** Search orders matches only inside a run of one
+- **FR2 — bands do not cross.** Search orders matches only inside a run of one
   score band and one kind (doc or not); a band is a range of lexical scores,
   so inside one a lower score can lead a higher one. A match never moves past a
   match of another band or kind; between runs, the lexical order holds,
   including its domain priority.
-- **FR3: a whole name keeps today's answer.** A query that is an entry's
+- **FR3 — a whole name keeps today's answer.** A query that is an entry's
   whole name or title, read with dashes and spaces alike, gets the lexical
   ranker's answer unchanged.
-- **FR4: build re-orders only its own blocks.** `spec:AST-048` owns which
+- **FR4 — build re-orders only its own blocks.** `spec:AST-048` owns which
   blocks build lists and delegates their order here. Build's `blocks` are the
   blocks build itself lists, each with its own score and reason. Build never
   adds one and never lists more than before. A block the request names, a
   block the weights do not know, and a block from an integration package
   keep the place build gave them.
-- **FR5: the order is local, deterministic, and static.** The order inside a
+- **FR5 — the order is local, deterministic, and static.** The order inside a
   run comes from plain code and fixed values shipped with the CLI. No model
   runtime runs, no network is used, and the same inputs give the same order.
-- **FR6: the order changes only when measured.** A change to the order
+- **FR6 — the order changes only when measured.** A change to the order
   inside runs, whether new weights, a new searcher, or a new rule, ships only
   when measured against the held-out, fresh, and synthetic evaluation sets
   shows no row worse than the previous order. A row is worse when the paired
@@ -92,7 +92,7 @@ owns response fields and compatibility.
 
 ## Decision log
 
-### DEC-1: equal-strength matches are ordered by measured, static weights
+### DEC-1 — matches inside a score band are ordered by measured, static weights
 
 **Reference:** `spec:AST-083/DEC-1`
 **Decider:** `josephfarina`, `2026-10-20`
@@ -106,7 +106,7 @@ inside a match band is therefore the part that improves.
 Rejected: a model runtime in the CLI, which adds install size and gives
 answers that cannot be traced to code.
 
-### DEC-2: the answer's facts are the contract; the order is measured
+### DEC-2 — the answer's facts are the contract; the order is measured
 
 **Reference:** `spec:AST-083/DEC-2`
 **Decider:** `josephfarina`, `2026-10-20`

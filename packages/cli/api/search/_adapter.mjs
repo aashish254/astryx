@@ -7,9 +7,9 @@
  */
 
 import {readFileSync} from 'node:fs';
-import {findCoreDir} from '../../foundation/fs/paths.mjs';
-import {AstryxError} from '../error.mjs';
-import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
+import {requireCoreDir} from '../../foundation/fs/paths.mjs';
+import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
+import {coreDirOrThrow} from '../error.mjs';
 import {CORELESS_DOMAINS} from './_query.mjs';
 import {gatherComponents} from './_gather-components.mjs';
 import {gatherHooks} from './_gather-hooks.mjs';
@@ -21,10 +21,21 @@ export {componentKeywords} from './_gather-components.mjs';
 /** @typedef {import('./_lexical.mjs').Candidate} Candidate */
 
 /**
+ * The Core a typed search reads: the project's, else the release's own,
+ * installed into the per-user cache first when needed (a network install and
+ * an npm subprocess; spec AST-081 FR3). Throws as requireCoreDir does.
+ * @param {string} cwd
+ * @returns {string}
+ */
+export function requireSearchCoreDir(cwd) {
+  return requireCoreDir(cwd);
+}
+
+/**
  * Gathers every candidate the query's domains hold.
  *
  * @param {{cwd?: string, type?: string}} options
- * @returns {Promise<{all: Candidate[], components: Candidate[], searchedComponents: boolean}>}
+ * @returns {Promise<{all: Candidate[], components: Candidate[], searchedComponents: boolean, outside: boolean, coreSkipped: string | null}>}
  */
 export async function gatherCandidates(options) {
   const {cwd = process.cwd(), type} = options;
@@ -34,13 +45,23 @@ export async function gatherCandidates(options) {
   // name, it is an error without core; an open search then covers the docs
   // and themes alone.
   const needsCore = !type || !CORELESS_DOMAINS.includes(type);
-  const coreDir = needsCore ? findCoreDir(cwd) : null;
-  if (type && needsCore && !coreDir) {
-    throw new AstryxError(
-      'Could not find @astryxdesign/core package',
-      undefined,
-      ERROR_CODES.ERR_CORE_NOT_FOUND,
-    );
+  // A domain that reads Core gets it as `component` does: the project's, else
+  // the answering release's own, installed into the per-user cache on first
+  // need (spec AST-081 FR3). Asked for by name, a Core that cannot be had is
+  // the error; an open search answers from the rest and says what it skipped
+  // and why, never silently.
+  /** @type {string | null} */
+  let coreDir = null;
+  /** @type {string | null} */
+  let coreSkipped = null;
+  if (needsCore && type) {
+    coreDir = coreDirOrThrow(requireSearchCoreDir, cwd);
+  } else if (needsCore) {
+    try {
+      coreDir = requireSearchCoreDir(cwd);
+    } catch (error) {
+      coreSkipped = /** @type {Error} */ (error).message;
+    }
   }
 
   // Gather candidates from each requested domain in parallel.
@@ -58,7 +79,16 @@ export async function gatherCandidates(options) {
   ]);
 
   const all = [...components, ...hooks, ...docTopics, ...templates, ...themes];
-  return {all, components, searchedComponents: wants('component')};
+  // Outside a project a theme cannot be added to an app, so its command forks
+  // the source instead (spec AST-081 FR3).
+  const outside = themes.length > 0 && isOutsideProject(cwd);
+  return {
+    all,
+    components,
+    searchedComponents: wants('component'),
+    outside,
+    coreSkipped,
+  };
 }
 
 /**
@@ -81,8 +111,8 @@ let searchData = null;
  * The search tree's static data, read once: the entry cards and each node's
  * weights file.
  *
- * These files are static, reviewed data that only order matches inside a band
- * of equal match strength; ORDERING.md beside them says what each holds and how
+ * These files are static, reviewed data that only order matches inside a score
+ * band; ORDERING.md beside them says what each holds and how
  * they are refreshed.
  * @returns {SearchData}
  */

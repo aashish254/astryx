@@ -17,14 +17,13 @@ import {
   searchCore as search,
   searchedComponents,
 } from '../../search/search.mjs';
-import {findCoreDir} from '../../../foundation/fs/paths.mjs';
-import {AstryxError} from '../../error.mjs';
-import {ERROR_CODES} from '../../../foundation/response/error-codes.mjs';
+import {coreDirOrThrow} from '../../error.mjs';
 import {getResultCoverage} from '../../search/coverage.mjs';
 import {CORE_PROVIDER_ID} from '../../../foundation/identity/providers.mjs';
 import {
   loadComponents,
   loadTemplates,
+  requireBuildCoreDir,
   templateSetupNotes,
 } from '../_adapter.mjs';
 import {ideaKind} from './kind.mjs';
@@ -125,13 +124,7 @@ export async function kitSignals(query, options = {}) {
   const {cwd = process.cwd(), type, limit = 60} = options;
   // A kit is built from Core's components, hooks, and templates. An open
   // search without core covers the docs alone, so the kit asks for core here.
-  if (type !== 'doc' && !findCoreDir(cwd)) {
-    throw new AstryxError(
-      'Could not find @astryxdesign/core package',
-      undefined,
-      ERROR_CODES.ERR_CORE_NOT_FOUND,
-    );
-  }
+  if (type !== 'doc') coreDirOrThrow(requireBuildCoreDir, cwd);
   // search()'s JSDoc @returns widens results to object[]; the SearchResponse
   // shape is the contract (api/search/search.type.mjs). Cast locally rather than
   // tightening the search @returns (a separate follow-up).

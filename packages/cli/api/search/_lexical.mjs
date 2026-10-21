@@ -124,7 +124,7 @@ export function namesWhole(candidate, term) {
  *
  * @param {string} query
  * @param {{limit?: number}} options
- * @param {{all: Candidate[], components: Candidate[], searchedComponents: boolean}} catalog
+ * @param {{all: Candidate[], components: Candidate[], searchedComponents: boolean, outside?: boolean, coreSkipped?: string | null}} catalog
  * @returns {import('./search.type.mjs').SearchResponse}
  */
 export function rankLexical(query, options, catalog) {
@@ -224,6 +224,7 @@ export function rankLexical(query, options, catalog) {
           hit.reason,
           hit.matched,
           hit.total,
+          catalog.outside,
         ),
         priority: domainPriority(term, tokens, candidate, hit, words),
         key: hit.score,
@@ -332,6 +333,14 @@ export function rankLexical(query, options, catalog) {
       ),
     },
   };
+  if (catalog.coreSkipped) {
+    response.meta = {
+      partial: {
+        skipped: ['component', 'hook', 'template'],
+        reason: catalog.coreSkipped,
+      },
+    };
+  }
   if (catalog.searchedComponents) {
     searchedComponentsOf.set(
       response,
