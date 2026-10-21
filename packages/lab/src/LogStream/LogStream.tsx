@@ -232,7 +232,7 @@ const styles = stylex.create({
     textTransform: 'uppercase',
   },
   levelInfo: {color: colorVars['--color-text-secondary']},
-  levelDebug: {color: colorVars['--color-text-disabled']},
+  levelDebug: {color: colorVars['--color-text-secondary']},
   // Plain-surface warning/error labels use the dedicated foreground roles.
   levelWarn: {
     color: colorVars['--color-status-foreground-warning'],

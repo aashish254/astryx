@@ -233,25 +233,25 @@ export const StatusAllStates: Story = {
           <Step
             step={0}
             label="Accent"
-            description="--color-accent"
+            description="--color-status-foreground-info"
             status="accent"
           />
           <Step
             step={1}
             label="Success"
-            description="--color-success"
+            description="--color-status-foreground-success"
             status="success"
           />
           <Step
             step={2}
             label="Warning"
-            description="--color-warning"
+            description="--color-status-foreground-warning"
             status="warning"
           />
           <Step
             step={3}
             label="Error"
-            description="--color-error"
+            description="--color-status-foreground-error"
             status="error"
           />
           <Step

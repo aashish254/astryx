@@ -4,9 +4,9 @@
  * @file Banner.test.tsx
  * @input Uses vitest, @testing-library/react, Banner component
  * @output Unit tests for Banner component behavior, including default and
- *   explicit live-region roles, the 'banner-frame' theme target on the outer
- *   elevation/radius painter, and the 'banner-icon' theme target on the status
- *   icon glyph (#4166)
+ *   explicit live-region roles, augmented-status color fallback, the
+ *   'banner-frame' theme target on the outer elevation/radius painter, and the
+ *   'banner-icon' theme target on the status icon glyph (#4166)
  * @position Testing; validates Banner.tsx implementation
  *
  * SYNC: When modified, update this header
@@ -15,16 +15,10 @@
 import {describe, it, expect, vi, afterEach} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {Banner} from './Banner';
+import {Banner, type BannerStatus} from './Banner';
 import {defineTheme, generateThemeCSS} from '../theme';
 import {registerIcons, resetIcons} from '../Icon';
 import {InternationalizationProvider} from '../i18n';
-
-declare module './index' {
-  interface BannerStatusMap {
-    neutral: true;
-  }
-}
 
 describe('Banner', () => {
   afterEach(() => {
@@ -108,9 +102,10 @@ describe('Banner', () => {
   });
 
   it('keeps base title and description colors for an augmented status', () => {
+    const augmentedStatus = 'neutral' as unknown as BannerStatus;
     const {rerender} = render(
       <Banner
-        status="neutral"
+        status={augmentedStatus}
         title="Neutral title"
         description="Neutral description"
       />,

@@ -295,9 +295,9 @@ const styles = stylex.create({
     color: colorVars['--color-text-secondary'],
     overflowWrap: 'anywhere',
   },
-  // Status title, description, icon, and built-in controls share the header's
-  // on-muted color. The same style is passed last to ghost Buttons so their
-  // variant color cannot override the semantic content pairing.
+  // Built-in status title, description, and icon inherit the header's on-muted
+  // color. Controls keep their own Button painting; the Status surface supplies
+  // their built-in status context through --color-text-primary.
   statusForeground: {
     color: 'inherit',
   },
