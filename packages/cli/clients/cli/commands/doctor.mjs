@@ -92,7 +92,7 @@ function issueBlocks(issues) {
   return [
     section('Integration issues'),
     records(issues, {
-      fields: ['severity', 'code', 'message'],
+      fields: ['severity', 'code', 'message', 'fix', 'file', 'line'],
       format: {severity: statusToken},
     }),
   ];
@@ -203,7 +203,7 @@ function printIntegrationValidation(data) {
     ...(data.issues.length > 0
       ? [
           records(data.issues, {
-            fields: ['severity', 'code', 'message'],
+            fields: ['severity', 'code', 'message', 'fix', 'file', 'line'],
             format: {severity: statusToken},
           }),
         ]
@@ -302,6 +302,9 @@ function propDriftBlocks(report, failed) {
           'codeType',
           'docRequired',
           'codeRequired',
+          'docDefault',
+          'codeDefault',
+          'fix',
         ],
         format: {severity: statusToken},
       }),
