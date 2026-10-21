@@ -447,6 +447,26 @@ describe('trusted PR preview identity', () => {
     ).rejects.toThrow(/headSha does not match/);
   });
 
+  it('fails rather than stands down when the run differs and the pull request also moved', async () => {
+    const value = identity();
+    const {github} = githubFixture({value});
+    github.rest.actions.getWorkflowRun.mockResolvedValue({
+      data: sourceRun(identity({headSha: 'f'.repeat(40)})),
+    });
+    github.rest.pulls.get.mockResolvedValue({
+      data: pull(identity({headSha: 'e'.repeat(40)})),
+    });
+    await expect(
+      confirmOrStandDown({
+        github,
+        core: {info: vi.fn()},
+        owner: 'facebook',
+        repo: 'astryx',
+        expected: value,
+      }),
+    ).rejects.toThrow(/headSha does not match/);
+  });
+
   it('keeps every write-capable job behind the valid identity output', () => {
     const writeCapableJobs = Object.entries(PR_COMMENT_WORKFLOW.jobs)
       .filter(([, job]) =>

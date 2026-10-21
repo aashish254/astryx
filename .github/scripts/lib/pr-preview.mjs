@@ -148,18 +148,24 @@ function identityFromPullAndRun({pull, run, baseRepository}) {
   };
 }
 
-function sameIdentity(actual, expected) {
-  for (const key of [
-    'prNumber',
-    'headSha',
-    'headRef',
-    'headRepository',
-    'headRepositoryId',
-    'baseRepository',
-    'sourceRunId',
-    'sourceRunAttempt',
-    'sourceConclusion',
-  ]) {
+const RUN_IDENTITY_KEYS = [
+  'headSha',
+  'headRef',
+  'headRepository',
+  'headRepositoryId',
+  'sourceRunId',
+  'sourceRunAttempt',
+  'sourceConclusion',
+];
+
+const SOURCE_IDENTITY_KEYS = [
+  'prNumber',
+  'baseRepository',
+  ...RUN_IDENTITY_KEYS,
+];
+
+function sameIdentity(actual, expected, keys = SOURCE_IDENTITY_KEYS) {
+  for (const key of keys) {
     if (String(actual[key]) !== String(expected[key])) {
       refuse(`${key} does not match the trusted source identity`);
     }
@@ -273,6 +279,22 @@ export async function confirmSourceRunIdentity({
     readRun,
     github.rest.pulls.get({owner, repo, pull_number: prNumber}),
   ]);
+  // Compare the run with the trusted event before looking at the pull request.
+  // A run's own identity never changes, so a mismatch there refuses even when
+  // the pull request has also moved on.
+  sameIdentity(
+    {
+      headSha: run?.head_sha,
+      headRef: run?.head_branch,
+      headRepository: run?.head_repository?.full_name,
+      headRepositoryId: run?.head_repository?.id,
+      sourceRunId: run?.id,
+      sourceRunAttempt: run?.run_attempt,
+      sourceConclusion: run?.conclusion ?? '',
+    },
+    expected,
+    RUN_IDENTITY_KEYS,
+  );
   const actual = identityFromPullAndRun({
     pull,
     run,
