@@ -20,7 +20,7 @@ import {
   GLOBAL_REVIEW_TRIGGERS,
   collectGlobalReviewMatches,
   discoverKnowledgeRecords,
-  documentedPublicNames,
+  consumerDocPublicNames,
   parseKnowledgeDocument,
 } from './check-knowledge.mjs';
 
@@ -28,7 +28,6 @@ const require = createRequire(import.meta.url);
 const {componentPackage} = require('./component-packages.cjs');
 const {
   classifyComponentKnowledgePath,
-  isIgnoredComponentKnowledgeSegment,
 } = require('../.github/scripts/knowledge-paths.cjs');
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -142,9 +141,34 @@ export function loadKnowledgeIndex(root = DEFAULT_ROOT) {
 
 const componentNameCache = new Map();
 
+function docNames(docPath) {
+  let names = componentNameCache.get(docPath);
+  if (!names) {
+    names = fs.existsSync(docPath) ? consumerDocPublicNames(docPath) : [];
+    componentNameCache.set(docPath, names);
+  }
+  return names;
+}
+
+function directoryHasDoc(directory) {
+  const key = `dir:${directory}`;
+  let has = componentNameCache.get(key);
+  if (has === undefined) {
+    has =
+      fs.existsSync(directory) &&
+      fs.statSync(directory).isDirectory() &&
+      fs.readdirSync(directory).some(name => name.endsWith('.doc.mjs'));
+    componentNameCache.set(key, has);
+  }
+  return has;
+}
+
 /**
  * The component a path belongs to under the shared component-package path
- * contract, with the names its consumer docs declare.
+ * contract, and the public names that path speaks for: its own same-stem
+ * consumer doc when it has one, otherwise the root's `<Root>.doc.mjs`. A root
+ * with no consumer docs (a plain helper directory) is named by itself; a flat
+ * package's top-level module by its stem.
  */
 function componentLocation(root, filePath) {
   const match = /^packages\/([^/]+)\/src\/(.+)$/.exec(filePath);
@@ -152,90 +176,136 @@ function componentLocation(root, filePath) {
   const packageConfig = componentPackage(match[1]);
   if (!packageConfig) return null;
   const segments = match[2].split('/');
-  if (segments.slice(0, -1).some(isIgnoredComponentKnowledgeSegment)) {
-    return null;
-  }
+  const stem = segments.at(-1).split('.')[0];
   let componentRoot;
   if (packageConfig.layout === 'flat') {
-    componentRoot =
-      segments.length > 1 ? segments[0] : segments[0].split('.')[0];
+    componentRoot = segments.length > 1 ? segments[0] : stem;
   } else {
     if (segments.length < 2) return null;
     componentRoot = segments[0];
   }
-  const rootDirectory = path.join(root, packageConfig.src, componentRoot);
-  let names = componentNameCache.get(rootDirectory);
-  if (!names) {
-    // A flat package's top-level module is named by its stem. A component
-    // root is named by its consumer docs; a root without docs (a shared hook
-    // directory, say) by the directory itself.
-    const documented =
-      fs.existsSync(rootDirectory) && fs.statSync(rootDirectory).isDirectory()
-        ? documentedPublicNames(rootDirectory)
-        : [];
-    names = new Set(documented.length > 0 ? documented : [componentRoot]);
-    componentNameCache.set(rootDirectory, names);
+  let names;
+  if (packageConfig.layout === 'flat' && segments.length === 1) {
+    names = [stem];
+  } else {
+    const rootDirectory = path.join(root, packageConfig.src, componentRoot);
+    const own = docNames(
+      path.join(root, path.dirname(filePath), `${stem}.doc.mjs`),
+    );
+    const primary = docNames(
+      path.join(rootDirectory, `${componentRoot}.doc.mjs`),
+    );
+    if (own.length > 0) names = own;
+    else if (primary.length > 0) names = primary;
+    else if (!directoryHasDoc(rootDirectory)) names = [componentRoot];
+    else names = [];
   }
   return {
     packageName: match[1],
     layout: packageConfig.layout,
     componentRoot,
-    names,
+    names: new Set(names),
   };
 }
 
-/** Records whose own canonical location places `filePath` inside their scope. */
+function fileStem(filePath) {
+  return path.posix.basename(filePath).split('.')[0];
+}
+
+/**
+ * Records whose own canonical location places `filePath` inside their scope:
+ * the record itself; a theme record over its package; the component record
+ * named after its root over the whole root; any other component record over
+ * its same-stem files; and a module record over same-stem files under its
+ * component root or beside a same-stem `verified_by` file, or over a
+ * directory it is the only module record in.
+ */
 function placementMatches(index, filePath, location) {
   const matches = [];
+  const stem = fileStem(filePath);
+  const fileDirectory = path.posix.dirname(filePath);
   for (const record of index.records) {
     if (record.path === filePath) {
       matches.push({record, via: 'self', detail: 'the file is this record'});
       continue;
     }
     const theme = /^packages\/themes\/([^/]+)\/\1\.spec\.md$/.exec(record.path);
-    if (theme && filePath.startsWith(`packages/themes/${theme[1]}/`)) {
-      matches.push({
-        record,
-        via: 'placement',
-        detail: `theme record for packages/themes/${theme[1]}/`,
-      });
+    if (theme) {
+      if (filePath.startsWith(`packages/themes/${theme[1]}/`)) {
+        matches.push({
+          record,
+          via: 'placement',
+          detail: `theme record for packages/themes/${theme[1]}/`,
+        });
+      }
       continue;
     }
-    if (!location) continue;
     const {classified} = record;
+    if (!classified) continue;
+    const recordDirectory = path.posix.dirname(record.path);
+    const recordStem = classified.publicName;
+
+    if (classified.kind === 'module' && stem === recordStem) {
+      const besideEvidence = asList(record.frontmatter.get('verified_by')).some(
+        entry =>
+          looksLikePath(entry) &&
+          fileStem(entry) === recordStem &&
+          path.posix.dirname(entry) === fileDirectory,
+      );
+      if (besideEvidence) {
+        matches.push({
+          record,
+          via: 'placement',
+          detail: `module record beside its verified_by evidence for ${recordStem}`,
+        });
+        continue;
+      }
+    }
+
     if (
-      !classified ||
+      !location ||
       classified.packageName !== location.packageName ||
       classified.componentRoot !== location.componentRoot
     ) {
       continue;
     }
+
     if (classified.kind === 'component') {
+      if (
+        classified.layout === 'flat' ||
+        recordStem === location.componentRoot
+      ) {
+        matches.push({
+          record,
+          via: 'placement',
+          detail: `component record for ${location.componentRoot}`,
+        });
+      } else if (stem === recordStem && fileDirectory === recordDirectory) {
+        matches.push({
+          record,
+          via: 'placement',
+          detail: `component record beside ${recordStem}`,
+        });
+      }
+      continue;
+    }
+
+    if (stem === recordStem) {
       matches.push({
         record,
         via: 'placement',
-        detail: `component record for ${location.componentRoot}`,
+        detail: `module record for ${recordStem} in ${location.componentRoot}`,
       });
       continue;
     }
-    const recordDirectory = path.posix.dirname(record.path);
-    const stem = path.posix.basename(record.path, '.spec.md');
-    const fileName = path.posix.basename(filePath);
-    const fileDirectory = path.posix.dirname(filePath);
-    const siblingsInDirectory = index.records.filter(
+    const siblingsInDirectory = index.records.some(
       other =>
         other !== record &&
         path.posix.dirname(other.path) === recordDirectory &&
         other.classified?.kind === 'module',
     );
-    if (fileDirectory === recordDirectory && fileName.split('.')[0] === stem) {
-      matches.push({
-        record,
-        via: 'placement',
-        detail: `module record beside ${stem}`,
-      });
-    } else if (
-      siblingsInDirectory.length === 0 &&
+    if (
+      !siblingsInDirectory &&
       (fileDirectory === recordDirectory ||
         fileDirectory.startsWith(`${recordDirectory}/`))
     ) {
@@ -268,10 +338,10 @@ function declaredPathMatches(index, filePath) {
 const MENTION_SIZE_LIMIT = 1024 * 1024;
 
 /**
- * System specs the file itself cites by number, as prose or code-comment text
- * (`per AST-067`, `spec:AST-017/DEC-1`). A number inside a path such as
- * `docs/specs/AST-017/spec.md` is not a citation: record paths appear in
- * fixtures and examples far more often than as links.
+ * System specs the file itself cites by number in prose or a code comment,
+ * optionally scoped to one decision ("AST-" + three digits, then "/DEC-" and a
+ * number). A number inside a path under docs/specs is not a citation: record
+ * paths appear in fixtures and examples far more often than as links.
  */
 function mentionedMatches(index, filePath) {
   const absolute = path.join(index.root, filePath);
@@ -385,7 +455,7 @@ function addDecision(decisions, record, decision, route) {
 /**
  * Close the visible directly matched set over inherited references, then
  * collect the system specs that decided a governing record. A reference scoped
- * to one decision (`spec:AST-017/DEC-1`) lists that decision, never the whole
+ * to one decision (`spec:AST-NNN/DEC-N`) lists that decision, never the whole
  * record. Only visible records are followed, so a draft never steers the
  * result unless drafts were asked for.
  */
@@ -455,7 +525,7 @@ function closeOverReferences(index, direct, visible) {
  * `records` lists every record linked to the path, with each route that
  * reached it. `decidingSpecs` lists the system specs that decided one of those
  * records without being linked to the path themselves. `decisions` lists the
- * single decisions (`spec:AST-017/DEC-1`) a linked record or the file cites.
+ * single decisions (`spec:AST-NNN/DEC-N`) a linked record or the file cites.
  * Records come from the working tree: on a pull-request branch that includes
  * the branch's proposed records, so the result is not review authority.
  * `globalClaims` lists the trigger-routed global baseline claims, exactly as

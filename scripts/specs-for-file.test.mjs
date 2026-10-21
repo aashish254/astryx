@@ -1,6 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 import fs from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
@@ -197,6 +198,69 @@ function popoverFixture() {
     verified_by: [],
     deciding_specs: [],
   });
+  write(
+    root,
+    'packages/core/src/Chat/Chat.doc.mjs',
+    "export const docs = {name: 'Chat'};\n",
+  );
+  write(root, 'packages/core/src/Chat/ChatMessageList.tsx');
+  write(root, 'packages/core/src/Chat/ChatComposerDrawer.tsx');
+  write(root, 'packages/core/src/Chat/ChatComposerDrawer.test.tsx');
+  writeRecord(root, 'packages/core/src/Chat/ChatComposerDrawer.spec.md', {
+    kind: 'component',
+    id: 'component:ChatComposerDrawer',
+    review_triggers: ['motion'],
+    verified_by: [],
+    families: [],
+    architecture: [],
+    modules: [],
+  });
+  write(root, 'packages/core/src/Markdown/Markdown.tsx');
+  write(root, 'packages/core/src/Markdown/plugins/headingLinks.ts');
+  write(root, 'packages/core/src/Markdown/plugins/softBreaks.ts');
+  writeRecord(root, 'packages/core/src/Markdown/modules/headingLinks.spec.md', {
+    kind: 'module',
+    id: 'module:Markdown/headingLinks',
+    parent_component: 'component:Markdown',
+    references: [],
+  });
+  writeRecord(root, 'packages/core/src/Markdown/modules/softBreaks.spec.md', {
+    kind: 'module',
+    id: 'module:Markdown/softBreaks',
+    parent_component: 'component:Markdown',
+    references: [],
+  });
+  write(root, 'packages/core/src/hooks/useMenuPress.ts');
+  write(root, 'packages/core/src/hooks/useMenuPress.test.tsx');
+  write(root, 'packages/core/src/hooks/useEntryAnimation.ts');
+  write(
+    root,
+    'packages/core/src/hooks/useMenuPress.doc.mjs',
+    "export const docs = {name: 'useMenuPress'};\n",
+  );
+  write(
+    root,
+    'packages/core/src/hooks/useEntryAnimation.doc.mjs',
+    "export const docs = {name: 'useEntryAnimation'};\n",
+  );
+  writeRecord(
+    root,
+    'packages/core/src/DropdownMenu/modules/useMenuPress.spec.md',
+    {
+      kind: 'module',
+      id: 'module:DropdownMenu/useMenuPress',
+      parent_component: 'component:DropdownMenu',
+      verified_by: ['packages/core/src/hooks/useMenuPress.test.tsx'],
+      references: [],
+    },
+  );
+  writeRecord(root, 'docs/specs/AST-014/spec.md', {
+    kind: 'system-spec',
+    id: 'spec:AST-014',
+    affects_architecture: [],
+    affects_families: [],
+    affects_consumer_docs: ['useEntryAnimation'],
+  });
   write(root, 'packages/core/src/TabList/TabList.tsx');
   writeRecord(root, 'packages/core/src/TabList/TabList.spec.md', {
     kind: 'component',
@@ -370,6 +434,68 @@ describe('resolveSpecsForFile', () => {
     ]);
   });
 
+  it('places a member component record only over its same-stem files', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const unrelated = resolveSpecsForFile(
+      index,
+      'packages/core/src/Chat/ChatMessageList.tsx',
+    );
+    expect(ids(unrelated.records)).toEqual([]);
+    expect(unrelated.triggers).not.toEqual(['motion']);
+    const own = resolveSpecsForFile(
+      index,
+      'packages/core/src/Chat/ChatComposerDrawer.test.tsx',
+    );
+    expect(ids(own.records)).toEqual(['component:ChatComposerDrawer']);
+    expect(own.triggers).toEqual(['motion']);
+  });
+
+  it('places a module record over its same-stem sources anywhere in its component root', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    expect(
+      ids(
+        resolveSpecsForFile(
+          index,
+          'packages/core/src/Markdown/plugins/headingLinks.ts',
+        ).records,
+      ),
+    ).toEqual(['module:Markdown/headingLinks']);
+    expect(
+      ids(
+        resolveSpecsForFile(index, 'packages/core/src/Markdown/Markdown.tsx')
+          .records,
+      ),
+    ).toEqual([]);
+  });
+
+  it('places a module record beside the same-stem verified_by evidence outside its root', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const source = resolveSpecsForFile(
+      index,
+      'packages/core/src/hooks/useMenuPress.ts',
+    );
+    expect(ids(source.records)).toEqual(['module:DropdownMenu/useMenuPress']);
+    expect(source.records[0].routes[0].via).toBe('placement');
+    expect(
+      ids(
+        resolveSpecsForFile(
+          index,
+          'packages/core/src/hooks/useEntryAnimation.ts',
+        ).records,
+      ),
+    ).toEqual(['spec:AST-014']);
+  });
+
+  it('names a file in a shared directory by its own same-stem doc', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const result = resolveSpecsForFile(
+      index,
+      'packages/core/src/hooks/useMenuPress.ts',
+    );
+    expect(result.component.names).toEqual(['useMenuPress']);
+    expect(ids(result.records)).not.toContain('spec:AST-014');
+  });
+
   it('ignores spec numbers inside record paths', () => {
     const index = loadKnowledgeIndex(popoverFixture());
     const result = resolveSpecsForFile(index, 'scripts/fixture-heavy.test.mjs');
@@ -455,12 +581,17 @@ describe('coverage audits', () => {
     ];
     expect(ids(findUnreachedRecords(index, files))).toEqual([
       'architecture:container-padding',
+      'component:ChatComposerDrawer',
       'component:TabList',
       'family:data-display',
       'module:Dialog/DialogBody',
       'module:Dialog/DialogHeader',
+      'module:DropdownMenu/useMenuPress',
+      'module:Markdown/headingLinks',
+      'module:Markdown/softBreaks',
       'module:Table/useTableActivation',
       'spec:AST-013',
+      'spec:AST-014',
       'spec:AST-017',
       'spec:AST-020',
     ]);
@@ -488,29 +619,59 @@ describe('coverage audits', () => {
 describe('repository records', () => {
   const index = loadKnowledgeIndex(repoRoot);
 
-  it('routes every current component and module record from a file beside it', () => {
+  // Current component and module records with no same-stem source to place
+  // them from. Each is still reached another way; listing them keeps the
+  // placement invariant below honest about what it does not cover.
+  const KNOWN_UNPLACED = [];
+
+  it('routes every current component and module record from each same-stem source', () => {
+    const tracked = execFileSync('git', ['-C', repoRoot, 'ls-files'], {
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+    })
+      .split('\n')
+      .filter(Boolean);
     const missing = [];
+    const unplaced = [];
     for (const record of index.records) {
-      if (record.authority !== 'current') continue;
-      if (record.kind !== 'component' && record.kind !== 'module') continue;
-      const directory = path.join(repoRoot, path.dirname(record.path));
-      const stem = path.basename(record.path, '.spec.md');
-      const sibling = fs
-        .readdirSync(directory)
-        .find(
-          name => name.split('.')[0] === stem && !name.endsWith('.spec.md'),
-        );
-      if (!sibling) continue;
-      const file = path.posix.join(path.posix.dirname(record.path), sibling);
-      if (
-        !ids(resolveSpecsForFile(index, file, {triggers: []}).records).includes(
-          record.id,
-        )
-      ) {
-        missing.push(`${record.id} from ${file}`);
+      if (record.authority !== 'current' || !record.classified) continue;
+      const {packageName, componentRoot, publicName, layout} =
+        record.classified;
+      const root =
+        layout === 'flat'
+          ? `packages/${packageName}/src/`
+          : `packages/${packageName}/src/${componentRoot}/`;
+      const evidenceDirectories = new Set(
+        (record.frontmatter.get('verified_by') ?? [])
+          .filter(
+            entry => path.posix.basename(entry).split('.')[0] === publicName,
+          )
+          .map(entry => `${path.posix.dirname(entry)}/`),
+      );
+      const candidates = tracked.filter(
+        file =>
+          !file.endsWith('.spec.md') &&
+          path.posix.basename(file).split('.')[0] === publicName &&
+          (file.startsWith(root) ||
+            (record.kind === 'module' &&
+              evidenceDirectories.has(`${path.posix.dirname(file)}/`))),
+      );
+      if (candidates.length === 0) {
+        unplaced.push(record.id);
+        continue;
+      }
+      for (const file of candidates) {
+        if (
+          !ids(
+            resolveSpecsForFile(index, file, {triggers: []}).records,
+          ).includes(record.id)
+        ) {
+          missing.push(`${record.id} from ${file}`);
+        }
       }
     }
     expect(missing).toEqual([]);
+    expect(unplaced.sort()).toEqual(KNOWN_UNPLACED);
   });
 
   it('routes every current architecture record from each applies_to path', () => {

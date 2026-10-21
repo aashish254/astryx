@@ -641,30 +641,24 @@ function isFullConsumerDocEntry(entry) {
 }
 
 /**
- * Public names a component root's consumer docs define: each doc's own `name`
- * and its full `components` entries, as `componentRootDefinesPublicComponent`
- * reads them. Anatomy parts and other nested `name` fields are not names.
+ * Public names one consumer doc defines: its own `name` and its full
+ * `components` entries, as `componentRootDefinesPublicComponent` reads them.
+ * Anatomy parts and other nested `name` fields are not names.
  */
-export function documentedPublicNames(componentRootPath) {
+export function consumerDocPublicNames(docPath) {
+  let mod;
+  try {
+    mod = require(docPath);
+  } catch {
+    return [];
+  }
+  const doc = mod.docs ?? mod.default;
+  if (!doc) return [];
   const names = new Set();
-  for (const docPath of matchingFilesRecursively(
-    componentRootPath,
-    name => name.endsWith('.doc.mjs'),
-    {skipDirectory: isIgnoredComponentKnowledgeSegment},
-  )) {
-    let mod;
-    try {
-      mod = require(docPath);
-    } catch {
-      continue;
-    }
-    const doc = mod.docs ?? mod.default;
-    if (!doc) continue;
-    if (typeof doc.name === 'string') names.add(doc.name.replace(/^XDS/, ''));
-    for (const entry of doc.components ?? []) {
-      if (typeof entry?.name === 'string' && isFullConsumerDocEntry(entry)) {
-        names.add(entry.name.replace(/^XDS/, ''));
-      }
+  if (typeof doc.name === 'string') names.add(doc.name.replace(/^XDS/, ''));
+  for (const entry of doc.components ?? []) {
+    if (typeof entry?.name === 'string' && isFullConsumerDocEntry(entry)) {
+      names.add(entry.name.replace(/^XDS/, ''));
     }
   }
   return [...names].sort();
