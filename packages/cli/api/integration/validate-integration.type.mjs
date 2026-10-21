@@ -38,7 +38,7 @@
  * "healthy" — the two are otherwise byte-identical.
  * @typedef {object} ValidateIntegrationResponse
  * @property {'integration.validate'} type
- * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, docNames?: DocNamesReport}} data
+ * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport}} data
  */
 
 /**
@@ -50,18 +50,6 @@
  * @typedef {import('../../foundation/discovery/doc-types.mjs').DocTypesReport & {fixtures?: number}} DocTypesReport
  *   `fixtures`: how many test fixture docs (under `__tests__` in the
  *   components or docs root, which those readers skip) were not checked
- */
-
-/**
- * Each component doc whose `name` differs from the name it is listed under,
- * judged against its source. Present when the manifest loads. A name the
- * source provably does not export is a `doc_name_mismatch` issue, so
- * `findings` is always empty; `unchecked` lists each doc whose source's
- * exports could not all be read (a re-export from another package, `export
- * =`, a destructured binding, a namespace): `file` (the doc, package-relative),
- * `name` (what the doc says), and `reason`.
- *
- * @typedef {{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}} DocNamesReport
  */
 
 export {};
