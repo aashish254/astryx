@@ -34,6 +34,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
+import {normalizeProviderId} from '../../foundation/identity/provider-identity.mjs';
 import {integrationDocTypes} from '../docs/_adapter.mjs';
 import {integrationDocConsistency} from '../../foundation/discovery/doc-consistency.mjs';
 import {
@@ -477,6 +478,19 @@ export async function validateLocalIntegration(cwd = process.cwd()) {
 }
 
 /**
+ * Whether `name` is a bare npm package name, the form a provider ID takes.
+ * @param {string} name
+ */
+function isPackageName(name) {
+  try {
+    normalizeProviderId(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A warning for each field npm needs that package.json lacks.
  * @param {{name?: unknown, version?: unknown, private?: unknown}} pkg
  * @param {string} pkgJsonPath
@@ -493,6 +507,13 @@ function packageJsonFieldIssues(pkg, pkgJsonPath) {
       warning(
         'invalid_package_json',
         `${shown} has no "name", so npm cannot pack or publish the package, and a project that installs it has no name to select it by. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
+      ),
+    );
+  } else if (!isPackageName(pkg.name)) {
+    issues.push(
+      warning(
+        'invalid_package_json',
+        `${shown} has "name": ${JSON.stringify(pkg.name)}, which is not a valid npm package name, so npm cannot pack or publish the package, and a project that installs it cannot select it by that name. Fix: use lowercase letters, digits, "-", "." and "_", not starting with "." or "_", with an optional @scope/ prefix, such as "@your-scope/your-package".`,
       ),
     );
   }

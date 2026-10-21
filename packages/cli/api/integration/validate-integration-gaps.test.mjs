@@ -696,6 +696,53 @@ describe('package.json', () => {
     );
   });
 
+  it.each([['acme kit'], ['_acme'], ['acme/kit']])(
+    'warns about a name npm rejects (%s) and keeps checking',
+    async name => {
+      const dir = writePackage(
+        {
+          [MANIFEST]: manifest({components: './components'}),
+          'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidget'),
+        },
+        {name, version: '1.0.0'},
+      );
+
+      const issues = await issuesOf(dir);
+      expect(issues.map(issue => [issue.code, issue.severity])).toEqual([
+        ['invalid_package_json', 'warning'],
+        ['invalid_component', 'error'],
+      ]);
+      expect(issues[0].message).toBe(
+        `package.json has "name": ${JSON.stringify(name)}, which is not a valid npm package name, so npm cannot pack or publish the package, and a project that installs it cannot select it by that name. Fix: use lowercase letters, digits, "-", "." and "_", not starting with "." or "_", with an optional @scope/ prefix, such as "@your-scope/your-package".`,
+      );
+      const result = await integrationCheck({cwd: dir});
+      expect(result.data.checks.every(check => check.response.type)).toBe(true);
+    },
+  );
+
+  it('checks a package without a name whose root is a file, without crashing', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({
+          templates: './templates/account-card.tsx',
+          docs: './docs/deploying.doc.mjs',
+        }),
+        'templates/account-card.tsx': templateSource,
+        'docs/deploying.doc.mjs': topic('deploying'),
+      },
+      {version: '1.0.0'},
+    );
+
+    const result = await integrationCheck({cwd: dir});
+    for (const check of result.data.checks) {
+      expect(
+        check.response.data.issues
+          .filter(issue => issue.severity === 'error')
+          .map(issue => issue.code),
+      ).toEqual(['invalid_root', 'invalid_root']);
+    }
+  });
+
   it('fails only --strict on a missing name when nothing else is wrong', async () => {
     const dir = writePackage(
       {

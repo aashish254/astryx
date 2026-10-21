@@ -89,16 +89,17 @@ async function resolveIntegration(pkg, cwd) {
     : await validateLocalIntegration(cwd);
   const integration = resolved.found ? resolved.integration : undefined;
   if (!integration) return resolved;
-  // A package without a name (validate warned about it) is still checked; the
-  // docs check names its docs under a stand-in provider ID.
+  // A root that is not a readable folder is reported in the issues; the
+  // checks read nothing from it rather than fail on it.
+  /** @type {typeof integration & {__unnamed?: boolean}} */
+  const usable = {...integration};
+  // A package without a valid name (validate warned about it) is still
+  // checked; the docs check names its docs under a stand-in provider ID.
   try {
     normalizeProviderId(integration.name);
   } catch {
-    return {...resolved, integration: {...integration, __unnamed: true}};
+    usable.__unnamed = true;
   }
-  // A root that is not a readable folder is reported in the issues; the
-  // checks read nothing from it rather than fail on it.
-  const usable = {...integration};
   for (const kind of /** @type {const} */ ([
     'components',
     'templates',
