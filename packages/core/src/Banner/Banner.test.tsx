@@ -4,9 +4,10 @@
  * @file Banner.test.tsx
  * @input Uses vitest, @testing-library/react, Banner component
  * @output Unit tests for Banner component behavior, including default and
- *   explicit live-region roles, augmented-status color fallback, the
- *   'banner-frame' theme target on the outer elevation/radius painter, and the
- *   'banner-icon' theme target on the status icon glyph (#4166)
+ *   explicit live-region roles, augmented-status color fallback, scoped status
+ *   control context that does not recolor tooltips, the 'banner-frame' theme
+ *   target on the outer elevation/radius painter, and the 'banner-icon' theme
+ *   target on the status icon glyph (#4166)
  * @position Testing; validates Banner.tsx implementation
  *
  * SYNC: When modified, update this header
@@ -127,6 +128,36 @@ describe('Banner', () => {
     expect(screen.getByText('Info title').className).not.toBe(customTitleClass);
     expect(screen.getByText('Info description').className).not.toBe(
       customDescriptionClass,
+    );
+  });
+
+  it('scopes status text context to built-in controls, not their tooltips', () => {
+    render(
+      <Banner
+        status="warning"
+        title="Warning"
+        collapsible={{defaultIsOpen: true}}
+        isDismissable>
+        <div>Details</div>
+      </Banner>,
+    );
+
+    const collapse = screen.getByRole('button', {name: 'Collapse'});
+    const dismiss = screen.getByRole('button', {name: 'Dismiss Warning'});
+    const collapseTooltip = document.getElementById(
+      collapse.getAttribute('aria-describedby')!,
+    );
+    const dismissTooltip = document.getElementById(
+      dismiss.getAttribute('aria-describedby')!,
+    );
+
+    expect(collapse.className).toContain('Banner__statusControlStyles.warning');
+    expect(dismiss.className).toContain('Banner__statusControlStyles.warning');
+    expect(collapseTooltip).not.toHaveClass(
+      'Banner__statusControlStyles.warning',
+    );
+    expect(dismissTooltip).not.toHaveClass(
+      'Banner__statusControlStyles.warning',
     );
   });
 

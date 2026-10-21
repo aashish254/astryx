@@ -261,10 +261,39 @@ describe('rule order and writes', () => {
     expect(count(generateAdaptationCSS(theme).component, '@media')).toBe(1);
   });
 
-  it('keeps concrete root status roles while rebinding canonical aliases in adaptations', () => {
-    const concrete = defineTheme({
-      name: 'concrete-adaptation-role',
-      tokens: {'--color-info': '#123456'},
+  it('keeps status aliases at the root so conditional authored roles win', () => {
+    const theme = defineTheme({
+      name: 'conditional-status-role-precedence',
+      tokens: {'--color-accent': '#0074e2'},
+      adaptations: {
+        rules: [
+          {
+            when: {contrast: 'more'},
+            value: {tokens: {'--color-info': '#123456'}},
+          },
+          {
+            when: {pointer: 'coarse'},
+            value: {tokens: {'--color-accent': '#abcdef'}},
+          },
+        ],
+      },
+      onDark: {tokens: {'--color-accent': '#ffffff'}},
+    });
+    const {component} = generateThemeCSS(theme);
+    const adaptationCss = generateAdaptationCSS(theme).component;
+
+    // The root alias follows source-only adaptation writes through var(), but
+    // no later generated role declaration can outrank the first adaptation's
+    // explicit role when both conditions match.
+    expect(count(component, '--color-info: var(--color-accent);')).toBe(1);
+    expect(component).toContain('--color-info: #123456;');
+    expect(adaptationCss).toContain('--color-accent: #abcdef;');
+    expect(adaptationCss).not.toContain('--color-info: var(--color-accent);');
+  });
+
+  it('emits a guarded alias when only an adaptation authors the source', () => {
+    const theme = defineTheme({
+      name: 'adaptation-only-status-source',
       adaptations: {
         rules: [
           {
@@ -274,27 +303,10 @@ describe('rule order and writes', () => {
         ],
       },
     });
-    const concreteCss = generateAdaptationCSS(concrete).component;
+    const css = generateAdaptationCSS(theme).component;
 
-    expect(concreteCss).toContain('--color-accent: #abcdef;');
-    expect(concreteCss).not.toContain('--color-info: var(--color-accent);');
-
-    const canonical = defineTheme({
-      name: 'canonical-adaptation-role',
-      tokens: {'--color-info': 'var(--color-accent)'},
-      adaptations: {
-        rules: [
-          {
-            when: {contrast: 'more'},
-            value: {tokens: {'--color-accent': '#abcdef'}},
-          },
-        ],
-      },
-    });
-    const canonicalCss = generateAdaptationCSS(canonical).component;
-
-    expect(canonicalCss).toContain('--color-accent: #abcdef;');
-    expect(canonicalCss).toContain('--color-info: var(--color-accent);');
+    expect(css).toContain('--color-accent: #abcdef;');
+    expect(css).toContain('--color-info: var(--color-accent);');
   });
 
   it('lets explicit values beat generated values within one rule', () => {

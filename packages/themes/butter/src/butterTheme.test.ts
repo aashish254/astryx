@@ -23,3 +23,32 @@ describe('butter touch + narrow type pin', () => {
     );
   });
 });
+
+describe('butter input status roles', () => {
+  it('keeps bright per-input status rims on the foreground roles', () => {
+    const inputs = [
+      'text-input',
+      'text-area',
+      'number-input',
+      'date-input',
+      'time-input',
+      'selector',
+      'multi-selector',
+      'typeahead',
+      'tokenizer',
+    ];
+
+    for (const input of inputs) {
+      const component = butterTheme.components![input];
+      expect(component['status:success']).toMatchObject({
+        '--color-status-foreground-success': '#91D143',
+      });
+      expect(component['status:warning']).toMatchObject({
+        '--color-status-foreground-warning': '#ffc502',
+      });
+      expect(component['status:error']).toMatchObject({
+        '--color-status-foreground-error': '#fc473b',
+      });
+    }
+  });
+});

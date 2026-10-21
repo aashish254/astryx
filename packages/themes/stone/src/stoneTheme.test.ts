@@ -23,3 +23,32 @@ describe('stone touch + narrow type pin', () => {
     );
   });
 });
+
+describe('stone input status roles', () => {
+  it('keeps soft per-input status rims on the foreground roles', () => {
+    const inputs = [
+      'text-input',
+      'text-area',
+      'number-input',
+      'date-input',
+      'time-input',
+      'selector',
+      'multi-selector',
+      'typeahead',
+      'tokenizer',
+    ];
+
+    for (const input of inputs) {
+      const component = stoneTheme.components![input];
+      expect(component['status:success']).toMatchObject({
+        '--color-status-foreground-success': 'light-dark(#7f977e, #99b298)',
+      });
+      expect(component['status:warning']).toMatchObject({
+        '--color-status-foreground-warning': 'light-dark(#9f8f68, #bbaa81)',
+      });
+      expect(component['status:error']).toMatchObject({
+        '--color-status-foreground-error': 'light-dark(#a58b86, #c0a5a1)',
+      });
+    }
+  });
+});

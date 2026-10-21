@@ -30,6 +30,7 @@ import type {ComponentStyleMap, DefinedTheme} from './defineTheme';
 import {
   normalizeThemeAdaptations,
   resolveThemeAdaptationRules,
+  type ResolvedThemeAdaptationRule,
 } from './themeAdaptations';
 import {parseStyleKey} from '../utils/parseStyleKey';
 import {getDerivedVars} from './derivedVarRegistry';
@@ -460,13 +461,15 @@ function joinDeclarations(
 
 /**
  * Public status roles whose canonical default references an existing semantic
- * source token. StyleX owns the root defaults; the theme CSS generator repeats
- * an omitted role beside any authored source so nested Theme regions bind the
- * alias to their own source value. Conditional scopes keep concrete root roles,
- * while a root value that is exactly the canonical var() alias remains a
- * default and rebinds to the conditional source. These generated declarations
- * stay out of DefinedTheme.tokens and therefore out of authored-override
- * metadata.
+ * source token. StyleX owns the document defaults. A theme that authors a
+ * source repeats its omitted role at the theme root so nested Theme regions
+ * bind the alias locally without changing authored-token metadata.
+ *
+ * Conditional scopes need a guarded fallback when no root alias can follow an
+ * adaptation write, or when a MediaTheme descendant writes the source on a
+ * different element. Those fallbacks are suppressed for every role authored
+ * at the root or by any adaptation rule, so generated aliases can never outrank
+ * authored role writes when conditions overlap.
  */
 const SCOPED_STATUS_ROLE_DEFAULTS: ReadonlyArray<
   readonly [role: string, source: string]
@@ -486,17 +489,50 @@ const SCOPED_STATUS_ROLE_DEFAULTS: ReadonlyArray<
 
 function tokenEntriesWithScopedStatusRoleDefaults(
   tokens: Record<string, string>,
-  inheritedTokens: Record<string, string> = {},
 ): [string, string][] {
   const entries = Object.entries(tokens);
   for (const [role, source] of SCOPED_STATUS_ROLE_DEFAULTS) {
-    const inheritedRole = inheritedTokens[role];
-    const inheritsDefaultAlias =
-      inheritedRole === undefined || inheritedRole === `var(${source})`;
+    if (tokens[role] === undefined && tokens[source] !== undefined) {
+      entries.push([role, `var(${source})`]);
+    }
+  }
+  return entries;
+}
+
+function adaptationAuthoredStatusRoles(
+  rules: ReadonlyArray<ThemeRuleSource>,
+): ReadonlySet<string> {
+  const roles = new Set<string>();
+  for (const rule of rules) {
+    for (const [role] of SCOPED_STATUS_ROLE_DEFAULTS) {
+      if (rule.tokens[role] !== undefined) {
+        roles.add(role);
+      }
+    }
+  }
+  return roles;
+}
+
+function tokenEntriesWithConditionalStatusRoleDefaults(
+  tokens: Record<string, string>,
+  rootTokens: Record<string, string>,
+  adaptationAuthoredRoles: ReadonlySet<string>,
+  scope: 'adaptation' | 'media',
+): [string, string][] {
+  const entries = Object.entries(tokens);
+  for (const [role, source] of SCOPED_STATUS_ROLE_DEFAULTS) {
+    const rootRole = rootTokens[role];
+    const rootAllowsDefault =
+      rootRole === undefined || rootRole === `var(${source})`;
+    const rootAlreadyCarriesAlias =
+      rootRole === `var(${source})` ||
+      (rootRole === undefined && rootTokens[source] !== undefined);
     if (
       tokens[role] === undefined &&
-      inheritsDefaultAlias &&
-      tokens[source] !== undefined
+      tokens[source] !== undefined &&
+      rootAllowsDefault &&
+      !adaptationAuthoredRoles.has(role) &&
+      (scope === 'media' || !rootAlreadyCarriesAlias)
     ) {
       entries.push([role, `var(${source})`]);
     }
@@ -509,14 +545,10 @@ function tokenBlock(
   source: ThemeRuleSource,
   location: string,
   sink: DiagnosticSink,
-  inheritedTokens: Record<string, string> = {},
+  tokenEntries: [string, string][] = Object.entries(source.tokens),
 ): string | null {
   const declarations = [
-    joinDeclarations(
-      tokenEntriesWithScopedStatusRoleDefaults(source.tokens, inheritedTokens),
-      `${location}tokens`,
-      sink,
-    ),
+    joinDeclarations(tokenEntries, `${location}tokens`, sink),
     joinDeclarations(
       Object.entries(source.localTokens ?? {}),
       `${location}localTokens`,
@@ -526,8 +558,7 @@ function tokenBlock(
     .filter(block => block.length > 0)
     .join('\n');
   const hasEntries =
-    Object.keys(source.tokens).length > 0 ||
-    Object.keys(source.localTokens ?? {}).length > 0;
+    tokenEntries.length > 0 || Object.keys(source.localTokens ?? {}).length > 0;
   return hasEntries ? `  :scope {\n${declarations}\n  }` : null;
 }
 
@@ -579,8 +610,14 @@ export function generateThemeRules(
   // without duplicating prose selectors inside every media query.
   const val = (key: string): string => `var(${key})`;
 
-  // 1. Token block — CSS custom properties on :scope
-  const tokenRules = tokenBlock(theme, '', sink);
+  // 1. Token block — CSS custom properties on :scope. Source-derived status
+  // aliases live here once; conditional rules only emit authored writes.
+  const tokenRules = tokenBlock(
+    theme,
+    '',
+    sink,
+    tokenEntriesWithScopedStatusRoleDefaults(theme.tokens),
+  );
   if (tokenRules !== null) {
     parts.push(tokenRules);
   }
@@ -589,8 +626,8 @@ export function generateThemeRules(
   // Components styled with `font-family: inherit` (SideNav items, Buttons)
   // otherwise resolve against the browser default serif, since nothing else
   // sets a page font. `font-family` inherits, so one rule on :scope covers
-  // the tree. Only emitted when the theme declares a body font, so a bare
-  // theme still contributes no scope rules of its own.
+  // the tree. Only emitted when the theme declares a body font; a bare theme
+  // still contributes no font rule of its own.
   if (theme.tokens['--font-family-body']) {
     parts.push(`  :scope {\n    font-family: var(--font-family-body);\n  }`);
   }
@@ -1053,6 +1090,32 @@ export function generateThemeRulesSplit(
   return {component, prose};
 }
 
+function resolvedAdaptationRules(
+  theme: DefinedTheme,
+): ResolvedThemeAdaptationRule[] {
+  if (Array.isArray(theme.__adaptationRules)) {
+    return theme.__adaptationRules;
+  }
+  if (theme.__adaptations === undefined) {
+    return [];
+  }
+  const normalized = normalizeThemeAdaptations(
+    theme.name,
+    theme.__adaptations,
+    undefined,
+  );
+  return (
+    resolveThemeAdaptationRules(
+      theme.name,
+      normalized,
+      theme.__axes ?? {},
+      theme.tokens,
+      theme.localTokens,
+      theme.components,
+    ) ?? []
+  );
+}
+
 /**
  * Generate CSS for on-media token and component overrides.
  *
@@ -1068,6 +1131,9 @@ export function generateOnMediaCSS(
   const parts: string[] = [];
   const scopeSelector = themeScopeStart(theme.name);
   const sink = diagnosticSink(warnings);
+  const adaptationAuthoredRoles = adaptationAuthoredStatusRoles(
+    resolvedAdaptationRules(theme),
+  );
 
   for (const surface of ['dark', 'light'] as const) {
     const onMedia = surface === 'dark' ? theme.__onDark : theme.__onLight;
@@ -1076,10 +1142,13 @@ export function generateOnMediaCSS(
     }
     const location = surface === 'dark' ? 'onDark.' : 'onLight.';
 
-    // Token overrides
-    const tokenEntries = tokenEntriesWithScopedStatusRoleDefaults(
+    // Token overrides. MediaTheme writes on a descendant surface, so a source
+    // alias must be local unless an authored root/adaptation role owns it.
+    const tokenEntries = tokenEntriesWithConditionalStatusRoleDefaults(
       onMedia.tokens,
       theme.tokens,
+      adaptationAuthoredRoles,
+      'media',
     );
     if (tokenEntries.length > 0) {
       const declarations = joinDeclarations(
@@ -1124,11 +1193,22 @@ export function generateOnMediaCSS(
 function generateAdaptationRuleRules(
   rule: ThemeRuleSource,
   rootTokens: Record<string, string>,
+  adaptationAuthoredRoles: ReadonlySet<string>,
   location: string,
   sink: DiagnosticSink,
 ): string[] {
   const parts: string[] = [];
-  const tokens = tokenBlock(rule, location, sink, rootTokens);
+  const tokens = tokenBlock(
+    rule,
+    location,
+    sink,
+    tokenEntriesWithConditionalStatusRoleDefaults(
+      rule.tokens,
+      rootTokens,
+      adaptationAuthoredRoles,
+      'adaptation',
+    ),
+  );
   if (tokens !== null) {
     parts.push(tokens);
   }
@@ -1181,30 +1261,16 @@ export function generateAdaptationCSS(
 ): ThemeCSSOutput {
   const sink = diagnosticSink(warnings);
   // Built themes can reach this compiler without passing through defineTheme.
-  // Validate retained metadata even when it has no rules (and therefore emits
-  // no CSS): width points remain observable through AppShell and inheritance.
-  const normalizedAdaptations =
-    theme.__adaptations === undefined
-      ? undefined
-      : normalizeThemeAdaptations(theme.name, theme.__adaptations, undefined);
-  const rules =
-    theme.__adaptationRules ??
-    (normalizedAdaptations
-      ? resolveThemeAdaptationRules(
-          theme.name,
-          normalizedAdaptations,
-          theme.__axes ?? {},
-          theme.tokens,
-          theme.localTokens,
-          theme.components,
-        )
-      : undefined);
-  if (!rules || rules.length === 0) {
+  // Resolve retained metadata so width points remain observable through
+  // AppShell and inheritance even when a rule emits no CSS.
+  const rules = resolvedAdaptationRules(theme);
+  if (rules.length === 0) {
     return {prose: '', component: ''};
   }
 
   const scopeSelector = themeScopeStart(theme.name);
   const blocks: string[] = [];
+  const adaptationAuthoredRoles = adaptationAuthoredStatusRoles(rules);
   const adaptsHeading = rules.some(rule =>
     hasHeadingComponentRules(rule.components),
   );
@@ -1218,6 +1284,7 @@ export function generateAdaptationCSS(
     const parts = generateAdaptationRuleRules(
       rule,
       theme.tokens,
+      adaptationAuthoredRoles,
       `adaptations[${index}].`,
       sink,
     );

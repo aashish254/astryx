@@ -296,8 +296,8 @@ const styles = stylex.create({
     overflowWrap: 'anywhere',
   },
   // Built-in status title, description, and icon inherit the header's on-muted
-  // color. Controls keep their own Button painting; the Status surface supplies
-  // their built-in status context through --color-text-primary.
+  // color. Built-in controls receive the same context on their Button element
+  // only, so the sibling tooltip bubble keeps the theme's ordinary text color.
   statusForeground: {
     color: 'inherit',
   },
@@ -357,34 +357,35 @@ const statusStyles = stylex.create({
   info: {
     backgroundColor: colorVars['--color-info-muted'],
     color: colorVars['--color-on-info-muted'],
-    '--color-text-primary': colorVars['--color-on-info-muted'],
-    '--color-text-secondary': colorVars['--color-on-info-muted'],
-    '--color-icon-primary': colorVars['--color-on-info-muted'],
-    '--color-icon-secondary': colorVars['--color-on-info-muted'],
   },
   warning: {
     backgroundColor: colorVars['--color-warning-muted'],
     color: colorVars['--color-on-warning-muted'],
-    '--color-text-primary': colorVars['--color-on-warning-muted'],
-    '--color-text-secondary': colorVars['--color-on-warning-muted'],
-    '--color-icon-primary': colorVars['--color-on-warning-muted'],
-    '--color-icon-secondary': colorVars['--color-on-warning-muted'],
   },
   error: {
     backgroundColor: colorVars['--color-error-muted'],
     color: colorVars['--color-on-error-muted'],
-    '--color-text-primary': colorVars['--color-on-error-muted'],
-    '--color-text-secondary': colorVars['--color-on-error-muted'],
-    '--color-icon-primary': colorVars['--color-on-error-muted'],
-    '--color-icon-secondary': colorVars['--color-on-error-muted'],
   },
   success: {
     backgroundColor: colorVars['--color-success-muted'],
     color: colorVars['--color-on-success-muted'],
+  },
+});
+
+// Scope status text context to each built-in Button. Its tooltip is a sibling,
+// so it does not inherit these control-only variables.
+const statusControlStyles = stylex.create({
+  info: {
+    '--color-text-primary': colorVars['--color-on-info-muted'],
+  },
+  warning: {
+    '--color-text-primary': colorVars['--color-on-warning-muted'],
+  },
+  error: {
+    '--color-text-primary': colorVars['--color-on-error-muted'],
+  },
+  success: {
     '--color-text-primary': colorVars['--color-on-success-muted'],
-    '--color-text-secondary': colorVars['--color-on-success-muted'],
-    '--color-icon-primary': colorVars['--color-on-success-muted'],
-    '--color-icon-secondary': colorVars['--color-on-success-muted'],
   },
 });
 
@@ -707,6 +708,11 @@ export function Banner({
                   />
                 }
                 onClick={handleToggleExpand}
+                className={
+                  hasStatusStyle(status)
+                    ? stylex.props(statusControlStyles[status]).className
+                    : undefined
+                }
                 aria-expanded={isExpanded}
                 aria-controls={showContent ? contentId : undefined}
                 isIconOnly
@@ -720,6 +726,11 @@ export function Banner({
                 tooltip={dismissTooltip}
                 icon={<Icon icon="close" size="sm" color="inherit" />}
                 onClick={handleDismiss}
+                className={
+                  hasStatusStyle(status)
+                    ? stylex.props(statusControlStyles[status]).className
+                    : undefined
+                }
                 isIconOnly
               />
             )}
