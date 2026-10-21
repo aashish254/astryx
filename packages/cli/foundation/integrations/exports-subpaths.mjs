@@ -188,7 +188,8 @@ function objectMembers(text, i) {
 /**
  * Add subpath entries to the `exports` map of a package.json text, leaving
  * every other byte as it is: each entry goes after the map's last entry, on
- * its own line with that entry's indentation (or on the same line when the
+ * its own line with that entry's indentation and the file's line ending (or on
+ * the same line when the
  * map is written on one line), with the map's own key/value separator. Null
  * when the text has no non-empty top-level `exports` object.
  * @param {string} text
@@ -207,7 +208,9 @@ export function insertExportEntries(text, entries) {
   const multiline = text.slice(field.valueStart, field.valueEnd).includes('\n');
   const lineStart = text.lastIndexOf('\n', last.keyStart) + 1;
   const indent = text.slice(lineStart, last.keyStart);
-  const lead = multiline && /^[ \t]*$/u.test(indent) ? `,\n${indent}` : ', ';
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lead =
+    multiline && /^[ \t]*$/u.test(indent) ? `,${eol}${indent}` : ', ';
   const added = entries
     .map(
       ([key, value]) =>

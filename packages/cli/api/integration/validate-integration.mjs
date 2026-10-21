@@ -62,7 +62,6 @@ import {
 } from '../../foundation/integrations/validate-contributions.mjs';
 
 import {publicImportIssues} from '../../foundation/integrations/public-imports.mjs';
-import {peerRangeReport} from '../../foundation/integrations/peer-ranges.mjs';
 
 export {validateLoadedIntegration};
 
@@ -486,10 +485,6 @@ export async function validateIntegration(pkg, options = {}) {
         ? [{code: 'no_package', severity: 'error', message: 'No package.json found. Run this command inside a package directory.'}]
         : result.issues,
       ...(docTypes ? {docTypes} : {}),
-      // Reported only: never counted, never fails a check.
-      ...(integration
-        ? {peerRanges: peerRangeReport(integration.__packageDir)}
-        : {}),
     },
   };
 }

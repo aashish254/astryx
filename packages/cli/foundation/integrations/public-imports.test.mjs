@@ -15,8 +15,6 @@ import {spawnSync} from 'node:child_process';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {validateLocalIntegration} from '../../api/integration/validate-integration.mjs';
 import {readImports} from './public-imports.mjs';
-import {validRange} from './peer-ranges.mjs';
-import {validateIntegration} from '../../api/integration/validate-integration.mjs';
 import {subpathDeclaration} from './exports-subpaths.mjs';
 import {
   integrationAddComponent,
@@ -37,15 +35,7 @@ const CODES = new Set([
   'template_import_missing_name',
   'template_no_default_export',
   'unknown_block_component',
-  'invalid_peer_range',
-  'core_not_peer',
-  'cli_peer_excludes_cli',
-  'core_peer_excludes_core',
 ]);
-
-const CLI_VERSION = JSON.parse(
-  fs.readFileSync(path.join(CLI_ROOT, 'package.json'), 'utf-8'),
-).version;
 
 let dir;
 
@@ -312,6 +302,53 @@ describe('public imports: component examples', () => {
     expect(await codes()).toEqual(['example_import_not_exported']);
   });
 
+  it('points an undeclared example import at the doc import when that is declared', async () => {
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeWidget} from '@acme/widgets/src/AcmeWidget';\\n<AcmeWidget />",
+      ),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'example_import_not_exported',
+    );
+    expect(issue?.message).toContain(
+      "Fix: import from '@acme/widgets/components/AcmeWidget' in the example, as the doc's import does.",
+    );
+  });
+
+  it('never points an example back at the same undeclared doc import', async () => {
+    pkg(p => delete p.exports['./components/AcmeWidget']);
+    const issue = (await found()).find(
+      i => i.code === 'example_import_not_exported',
+    );
+    expect(issue?.message).not.toContain('in the example, as the doc');
+    expect(issue?.message).toContain(
+      'add "./components/AcmeWidget": "./components/AcmeWidget.tsx" to package.json "exports"',
+    );
+  });
+
+  it('points an example at the subpath the source is already exported under', async () => {
+    pkg(p => {
+      delete p.exports['./components/AcmeWidget'];
+      p.exports['./widget'] = './components/AcmeWidget.tsx';
+    });
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        '@acme/widgets/nope',
+        "import {AcmeWidget} from '@acme/widgets/nope';\\n<AcmeWidget />",
+      ),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'example_import_not_exported',
+    );
+    expect(issue?.message).toContain(
+      "Fix: import from '@acme/widgets/widget' in the example (already exported).",
+    );
+  });
+
   it('leaves a CommonJS target unjudged for names', async () => {
     write(
       'components/AcmeWidget.doc.mjs',
@@ -498,119 +535,6 @@ describe('public imports: block component names', () => {
   });
 });
 
-describe('public imports: peer ranges', () => {
-  it('lists a CLI peer range that excludes the running CLI in peerRanges, never counted', async () => {
-    pkg(p => {
-      p.peerDependencies['@astryxdesign/cli'] = '>=99.0.0';
-    });
-    const validated = await validateIntegration(undefined, {cwd: dir});
-    expect(validated.data.issues).toEqual([]);
-    expect(validated.data.peerRanges?.status).toBe('checked');
-    const [finding] = validated.data.peerRanges?.findings ?? [];
-    expect(finding).toMatchObject({
-      code: 'cli_peer_excludes_cli',
-      severity: 'info',
-    });
-    expect(finding.fix).toContain(`">=${CLI_VERSION}"`);
-    const check = await integrationCheck({cwd: dir, strict: true});
-    expect(check.data.failed).toBe(false);
-    expect(check.data.warnings).toBe(0);
-    expect(check.data.skipped).toEqual([]);
-    expect(check.data.failures).toEqual([]);
-    expect(check.data.checks[0].response.data.peerRanges).toEqual(
-      validated.data.peerRanges,
-    );
-  });
-
-  it('lists a Core peer range that excludes the installed Core in peerRanges, never counted', async () => {
-    pkg(p => {
-      p.peerDependencies['@astryxdesign/core'] = '^0.0.1';
-    });
-    const validated = await validateIntegration(undefined, {cwd: dir});
-    expect(validated.data.issues).toEqual([]);
-    expect(
-      validated.data.peerRanges?.findings.map(f => [f.code, f.severity]),
-    ).toEqual([['core_peer_excludes_core', 'info']]);
-    const check = await integrationCheck({cwd: dir, strict: true});
-    expect(check.data.failed).toBe(false);
-    expect(check.data.errors).toBe(0);
-    expect(check.data.warnings).toBe(0);
-  });
-
-  it("leaves the rest of validate's JSON as it was", async () => {
-    const validated = await validateIntegration(undefined, {cwd: dir});
-    expect(Object.keys(validated.data).sort()).toEqual([
-      'docTypes',
-      'issues',
-      'name',
-      'peerRanges',
-      'validated',
-      'version',
-    ]);
-    expect(validated.data.peerRanges).toEqual({
-      status: 'checked',
-      findings: [],
-    });
-  });
-
-  it('lists an invalid range in peerRanges, never counted, and leaves protocol specs alone', async () => {
-    pkg(p => {
-      p.peerDependencies['@astryxdesign/core'] = 'latest-ish';
-    });
-    const validated = await validateIntegration(undefined, {cwd: dir});
-    expect(validated.data.issues).toEqual([]);
-    expect(
-      validated.data.peerRanges?.findings.map(f => [f.code, f.severity]),
-    ).toEqual([['invalid_peer_range', 'info']]);
-    const check = await integrationCheck({cwd: dir, strict: true});
-    expect(check.data.failed).toBe(false);
-    expect(check.data.warnings).toBe(0);
-    pkg(p => {
-      p.peerDependencies['@astryxdesign/core'] = 'workspace:*';
-    });
-    expect(
-      (await validateIntegration(undefined, {cwd: dir})).data.peerRanges,
-    ).toEqual({status: 'checked', findings: []});
-  });
-
-  it('lists Core as a dependency in peerRanges, never counted', async () => {
-    pkg(p => {
-      delete p.peerDependencies['@astryxdesign/core'];
-      p.dependencies = {'@astryxdesign/core': '^0.7.0'};
-    });
-    const validated = await validateIntegration(undefined, {cwd: dir});
-    expect(validated.data.issues).toEqual([]);
-    const [finding] = validated.data.peerRanges?.findings ?? [];
-    expect(finding).toMatchObject({code: 'core_not_peer', severity: 'info'});
-    expect(finding.fix).toContain(
-      '"peerDependencies": {"@astryxdesign/core": "^0.7.0"}',
-    );
-    const check = await integrationCheck({cwd: dir, strict: true});
-    expect(check.data.failed).toBe(false);
-    expect(check.data.warnings).toBe(0);
-  });
-
-  it('reads the range grammar', () => {
-    for (const range of [
-      '',
-      '*',
-      '^0.7.0',
-      '>=0.6.3 <0.7.0',
-      '0.7.1',
-      '1.x || >=2',
-      '>= 1.2',
-      '1.0.0 - 2.0.0',
-      '~0.7',
-    ]) {
-      expect(validRange(range), range).toBe(true);
-    }
-    for (const range of ['latest-ish', 'latest', '>=a', '^']) {
-      expect(validRange(range), range).toBe(false);
-    }
-    expect(validRange('npm:@x/y@1')).toBe(null);
-  });
-});
-
 describe('subpathDeclaration', () => {
   it('reads each way exports can declare a subpath', () => {
     expect(subpathDeclaration(undefined, './a').state).toBe('no_exports');
@@ -712,6 +636,19 @@ describe('integration add only inserts the missing exports entry', () => {
         '        "./alpha": [ "./alpha.js" ],\n' +
           '        "./components/AcmeThing": "./components/AcmeThing.tsx",\n' +
           '        "./templates/acme-page": "./templates/acme-page.tsx"\n',
+      ),
+    );
+  });
+
+  it('keeps CRLF line endings', async () => {
+    const crlf = ORIGINAL.replaceAll('\n', '\r\n');
+    fs.writeFileSync(path.join(dir, 'package.json'), crlf);
+    await integrationAddComponent('AcmeThing', {cwd: dir});
+    expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).toBe(
+      crlf.replace(
+        '        "./alpha": [ "./alpha.js" ]\r\n',
+        '        "./alpha": [ "./alpha.js" ],\r\n' +
+          '        "./components/AcmeThing": "./components/AcmeThing.tsx"\r\n',
       ),
     );
   });

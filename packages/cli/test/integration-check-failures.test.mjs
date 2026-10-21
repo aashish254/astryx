@@ -47,9 +47,6 @@ const NOT_SCANNED = {
   // Only `integration verify` compares a packed tarball with the source.
   'foundation/integrations/contribution-inventory.mjs':
     'its codes come from comparing a packed tarball, which only integration verify does',
-  // Validate's peerRanges report: its findings are info, never counted or failed on.
-  'foundation/integrations/peer-ranges.mjs':
-    'its findings are listed in a report as info, never counted or failed on',
 };
 
 /** The authoring schemas: their codes are the schema library's, not issues. */

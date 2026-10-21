@@ -12,8 +12,7 @@
  *   package does not export; a template source that imports a relative path
  *   outside the templates root, an undeclared subpath of its own package or
  *   of Core, or a name its package does not export; a block whose
- *   `exampleFor`/`componentsUsed` names no known component. Peer ranges are
- *   peer-ranges.mjs's report, never issues.
+ *   `exampleFor`/`componentsUsed` names no known component.
  * @position foundation/integrations, beside the other on-disk contribution
  *   validators; run by `astryx doctor integration validate` (and so by
  *   `integration check`) through api/integration/validate-integration.mjs.
@@ -600,6 +599,37 @@ async function componentIssues(ctx, integration) {
       }
     }
 
+    /**
+     * Where an example with an undeclared import should import from: the
+     * doc's own import, when it differs from the example's and is declared;
+     * else the subpath the component's source is already exported under;
+     * else the exact `exports` entry to add for the example's subpath.
+     * @param {string} specifier
+     * @param {string} subpath
+     * @param {SubpathDeclaration} undeclared
+     */
+    const exampleFix = (specifier, subpath, undeclared) => {
+      const own = authored ? splitSpecifier(authored) : null;
+      if (
+        authored &&
+        authored !== specifier &&
+        own?.pkg === ctx.name &&
+        declarationIn(ctx.exportsField, ctx.packageDir, own.subpath).state ===
+          'declared'
+      ) {
+        return `import from '${authored}' in the example, as the doc's import does.`;
+      }
+      if (declared && declared !== subpath) {
+        return `import from '${ctx.name}${declared.slice(1)}' in the example (already exported).`;
+      }
+      return exportsFix(
+        ctx.exportsField,
+        undeclared.state,
+        subpath,
+        sourceTarget ?? `./${subpath.slice(2)}.tsx`,
+      );
+    };
+
     const examples = Array.isArray(doc.examples) ? doc.examples : [];
     for (const [index, example] of examples.entries()) {
       if (!isRecord(example) || typeof example.code !== 'string') continue;
@@ -619,7 +649,7 @@ async function componentIssues(ctx, integration) {
           issues.push(
             issueWarning(
               'example_import_not_exported',
-              `Component doc "${shownDoc}" example ${label} imports "${statement.source}", but ${whyUndeclared(undeclared, parts.subpath)}, so the example fails when an app copies it. Fix: import from '${authored && splitSpecifier(authored)?.pkg === ctx.name ? authored : `${ctx.name}${suggested ? suggested.slice(1) : ''}`}' in the example, or declare the subpath in package.json "exports".`,
+              `Component doc "${shownDoc}" example ${label} imports "${statement.source}", but ${whyUndeclared(undeclared, parts.subpath)}, so the example fails when an app copies it. Fix: ${exampleFix(statement.source, parts.subpath, undeclared)}`,
             ),
           );
         } else if (missing && missing.length > 0) {

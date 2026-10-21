@@ -38,15 +38,7 @@
  * "healthy" — the two are otherwise byte-identical.
  * @typedef {object} ValidateIntegrationResponse
  * @property {'integration.validate'} type
- * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, peerRanges?: PeerRangesReport}} data
- */
-
-/**
- * The package's Astryx peer ranges against the CLI running and the Core
- * installed: listed, never counted or failed on (a package that pins its
- * peers exactly while it builds on a newer release is correct). Present when
- * the manifest loads.
- * @typedef {import('../../foundation/integrations/peer-ranges.mjs').PeerRangeReport} PeerRangesReport
+ * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport}} data
  */
 
 /**
