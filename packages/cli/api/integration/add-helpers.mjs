@@ -16,6 +16,7 @@ import {randomUUID} from 'node:crypto';
 import {AstryxError} from '../error.mjs';
 import {publishNewFile} from '../../foundation/fs/publish-file.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
+import {subpathDeclaration} from '../../foundation/integrations/exports-subpaths.mjs';
 
 /** @param {string} value */
 export function projectPath(value) {
@@ -133,6 +134,12 @@ export function packageJsonFilesUpdate(
     let exportsMap;
     if (authored === undefined) {
       exportsMap = {};
+      // A new map makes every path it does not list private: keep the root
+      // entry the package already resolves through `module`/`main`.
+      const root = [pkg.module, pkg.main].find(
+        value => typeof value === 'string' && value !== '',
+      );
+      if (root != null) exportsMap['.'] = `./${normalize(root)}`;
     } else if (
       authored == null ||
       typeof authored !== 'object' ||
@@ -166,6 +173,8 @@ export function packageJsonFilesUpdate(
         }
         continue;
       }
+      // A wildcard the package already declares (`./components/*`) covers it.
+      if (subpathDeclaration(exportsMap, key).state === 'declared') continue;
       exportsMap[key] = value;
       changed = true;
     }

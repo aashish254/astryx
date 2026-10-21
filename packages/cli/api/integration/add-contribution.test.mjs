@@ -130,7 +130,7 @@ describe('integrationAdd component', () => {
     ).toContain('import: "@acme/integration/components/MyWidget"');
   });
 
-  it('does not create exports when the package has no exports map', async () => {
+  it('creates the component export when the package has no exports map', async () => {
     setup();
 
     await integrationAddComponent('MyWidget', {cwd: tmpDir});
@@ -138,7 +138,9 @@ describe('integrationAdd component', () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(tmpDir, 'package.json'), 'utf-8'),
     );
-    expect(pkg.exports).toBeUndefined();
+    expect(pkg.exports).toEqual({
+      './components/MyWidget': './components/MyWidget.tsx',
+    });
   });
 
   it('refuses an existing conflicting component export before writing files', async () => {

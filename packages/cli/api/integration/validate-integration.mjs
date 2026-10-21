@@ -61,6 +61,8 @@ import {
   rootProblem,
 } from '../../foundation/integrations/validate-contributions.mjs';
 
+import {publicImportIssues} from '../../foundation/integrations/public-imports.mjs';
+
 export {validateLoadedIntegration};
 
 /**
@@ -332,6 +334,9 @@ async function validateAtPackageDir(
   issues.push(...(await validateLoadedIntegration(loaded)));
   if (loaded.themes && !rootProblem(loaded.themes))
     issues.push(...unreadThemeFolderIssues(packageDir, loaded));
+  // What the package tells apps to import, and its Astryx peer ranges, read
+  // from source: package.json `exports`, docs, examples and template imports.
+  issues.push(...(await publicImportIssues(packageDir, loaded)));
   if (scanUnreachable) {
     issues.push(
       ...(await findUnreachableContributionIssues(packageDir, loaded)),

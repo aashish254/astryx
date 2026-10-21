@@ -2273,8 +2273,16 @@ describe('extensionless subpath resolution', () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(tmpDir, 'package.json'), 'utf-8'),
     );
-    // No exports map created
-    expect(pkg.exports).toBeUndefined();
+    // Add declares both subpaths; drop the map to see the no-map package.
+    expect(pkg.exports).toEqual({
+      './components/AcmeWidget': './components/AcmeWidget.tsx',
+      './templates/hero-page': './templates/hero-page.tsx',
+    });
+    delete pkg.exports;
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      `${JSON.stringify(pkg)}\n`,
+    );
 
     const result = await integrationPackCheck({cwd: tmpDir});
 
