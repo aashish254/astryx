@@ -544,6 +544,18 @@ describe('package.json', () => {
     },
   );
 
+  it('leaves the provider ID to invalid_manifest when the manifest does not load', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({providerId: '@acme/kit', issuesUrl: 42}),
+      },
+      {name: '-acme', version: '1.0.0'},
+    );
+
+    const issues = await issuesOf(dir);
+    expect(issues.map(issue => issue.code)).toEqual(['invalid_manifest']);
+  });
+
   it('derives the provider ID from the manifest when the name cannot give one', async () => {
     const dir = writePackage(
       {
