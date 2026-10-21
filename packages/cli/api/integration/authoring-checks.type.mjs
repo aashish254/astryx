@@ -80,10 +80,31 @@
  * @property {'phrase' | 'density'} kind
  * @property {string | null} phrase the padding phrase, for `kind: 'phrase'`
  * @property {string | null} section the title of the section it is in
- * @property {string} file the doc file
+ * @property {string} file the doc file, relative to the package root
  * @property {number | null} line the file line that holds the phrase, when one line does
  * @property {number | null} density the share of content words, for `kind: 'density'`
  * @property {string} message what to cut or write instead
+ */
+
+/**
+ * A code span in prose that is exactly `astryx docs <name>` for a doc that
+ * exists, where the doc's `{@link generic:<name>}` would be checked. Each is
+ * also a `stray_doc_pointer` warning, so `integration check --strict` fails on
+ * it (architecture:cli-surface DEC-8).
+ *
+ * @typedef {object} StrayPointer
+ * @property {string} topic the package topic, or component doc, that has it
+ * @property {'topic' | 'component'} kind whether it sits in a topic or a
+ *   component doc
+ * @property {string | null} section the title of the section it is in
+ * @property {string | null} field the field it is in outside any section: a
+ *   topic's `description` or `summary`, or a component doc's field path, such
+ *   as `usage.bestPractices[0].description`
+ * @property {string} file the doc file, relative to the package root
+ * @property {number | null} line the file line that holds it, when found
+ * @property {string} pointer the written command, `astryx docs <name>`
+ * @property {string} link the link that replaces it
+ * @property {string} message the exact replacement
  */
 
 /**
@@ -118,7 +139,7 @@
 /**
  * @typedef {object} IntegrationDocConflictResponse
  * @property {'integration.doc-conflicts'} type
- * @property {{validated: boolean, name: string | null, version: string | null, findings: IntegrationDocFinding[], copiedPassages: CopiedPassage[], fluff: DocFluff[], issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[]}} data
+ * @property {{validated: boolean, name: string | null, version: string | null, findings: IntegrationDocFinding[], copiedPassages: CopiedPassage[], fluff: DocFluff[], strayPointers: StrayPointer[], issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[]}} data
  */
 
 export {};

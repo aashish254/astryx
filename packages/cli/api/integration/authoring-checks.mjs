@@ -18,8 +18,10 @@
  * @position Public integration-authoring API over private discovery adapters.
  */
 
+import path from 'node:path';
 import {getCliInvocation} from '../../foundation/env/package-manager.mjs';
 import {
+  packageComponentLinkProblems,
   packageDocsProblems,
   packageReferenceProblems,
 } from '../docs/_adapter.mjs';
@@ -33,6 +35,7 @@ import {
   integrationCopiedPassages,
   integrationFluff,
   integrationPropDrift,
+  integrationStrayPointers,
 } from './_adapter.mjs';
 import {
   discoverBuiltinTopics,
@@ -255,6 +258,19 @@ export async function integrationComponentConflicts(pkg, options = {}) {
   // the project's own compiler; without one the report says it was skipped.
   const propDrift = await integrationPropDrift(resolved.integration, cwd);
 
+  // A link in a component doc's text reads as the command that opens its doc,
+  // as one in a topic does; one that names no doc prints as written, so it is
+  // a warning (spec:AST-047 FR9). The package's own topics are linkable.
+  const ownDocs = resolved.integration.docs
+    ? await discoverIntegrationDocs(resolved.integration)
+    : null;
+  for (const {severity, message} of await packageComponentLinkProblems(
+    resolved.integration,
+    ownDocs,
+  )) {
+    issues.push({code: 'invalid_doc_graph', severity, message});
+  }
+
   const coreDir = findCoreDir(cwd);
   if (!coreDir) {
     issues.push({
@@ -331,7 +347,31 @@ export async function integrationDocConflicts(pkg, options = {}) {
   const copiedPassages = [];
   /** @type {import('./authoring-checks.type.mjs').DocFluff[]} */
   const fluff = [];
+  /** @type {import('./authoring-checks.type.mjs').StrayPointer[]} */
+  const strayPointers = [];
+  // Like the other findings' `doc`, a fluff or stray-pointer `file` is
+  // relative to the package root.
+  const packageDir = /** @type {any} */ (resolved.integration)?.__packageDir;
+  const fromPackage = (/** @type {string} */ file) =>
+    typeof packageDir === 'string'
+      ? path.relative(packageDir, file).split(path.sep).join('/')
+      : file;
   if (!resolved.integration?.docs || name == null) {
+    // A package that ships components and no topics still has component docs
+    // a written pointer can sit in.
+    if (name != null && resolved.integration?.components) {
+      strayPointers.push(
+        ...(
+          await integrationStrayPointers(
+            {records: [], guides: []},
+            resolved.integration,
+          )
+        ).map(each => ({...each, file: fromPackage(each.file)})),
+      );
+      for (const {message} of strayPointers) {
+        issues.push({code: 'stray_doc_pointer', severity: 'warning', message});
+      }
+    }
     return {
       type: 'integration.doc-conflicts',
       data: {
@@ -341,6 +381,7 @@ export async function integrationDocConflicts(pkg, options = {}) {
         findings: [],
         copiedPassages,
         fluff,
+        strayPointers,
         issues,
       },
     };
@@ -443,14 +484,37 @@ export async function integrationDocConflicts(pkg, options = {}) {
     }
     // Docs should be dense: padding phrases and mostly-glue topics, listed
     // and warned about the same way (DEC-8).
-    fluff.push(...(await integrationFluff(discovered)));
+    fluff.push(
+      ...(await integrationFluff(discovered)).map(each => ({
+        ...each,
+        file: fromPackage(each.file),
+      })),
+    );
     for (const {message} of fluff) {
       issues.push({code: 'doc_fluff', severity: 'warning', message});
+    }
+    // A pointer to a doc is a link, so doctor checks it (DEC-8).
+    strayPointers.push(
+      ...(await integrationStrayPointers(discovered, resolved.integration)).map(
+        each => ({...each, file: fromPackage(each.file)}),
+      ),
+    );
+    for (const {message} of strayPointers) {
+      issues.push({code: 'stray_doc_pointer', severity: 'warning', message});
     }
   }
 
   return {
     type: 'integration.doc-conflicts',
-    data: {validated, name, version, findings, copiedPassages, fluff, issues},
+    data: {
+      validated,
+      name,
+      version,
+      findings,
+      copiedPassages,
+      fluff,
+      strayPointers,
+      issues,
+    },
   };
 }

@@ -4,7 +4,7 @@
     "validate": ["docTypes", "issues", "publicImports"],
     "components": ["conflicts", "issues", "propDrift"],
     "templates": ["conflicts", "issues"],
-    "docs": ["copiedPassages", "findings", "fluff", "issues"]
+    "docs": ["copiedPassages", "findings", "fluff", "issues", "strayPointers"]
   },
   "reports": {
     "docTypes": "doc_types_skipped",
@@ -67,6 +67,7 @@
     "shadowed_component_name",
     "source_without_component_doc",
     "source_without_template_doc",
+    "stray_doc_pointer",
     "template_id_conflict",
     "template_import_missing_name",
     "template_import_not_exported",
