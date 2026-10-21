@@ -12,6 +12,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {spawn} from 'node:child_process';
 import {
+  recordDeclaredCliCommands,
+  runWithCliDoor,
+} from '../env/cli-command.mjs';
+import {
   NOTICE_INTERVAL_MS,
   availableLine,
   globalBehind,
@@ -20,6 +24,7 @@ import {
   oldGlobalCommand,
   oldGlobalLines,
   projectLag,
+  alignCliAndCore,
   lastNoticeSkip,
   recordNoticeSkip,
   takeNotice,
@@ -368,6 +373,54 @@ describe('globalBehind and projectLag', () => {
       install: 'pnpm add @astryxdesign/core@0.7.3 @astryxdesign/cli@0.7.3',
       upgrade: 'pnpm exec astryx upgrade --from 0.7.1 --apply',
     });
+  });
+});
+
+describe('the commands notices print go through the command-name picker (spec AST-081 FR5)', () => {
+  /** A Core-only npm project behind the newest release. */
+  const coreOnlyProject = () => {
+    const dir = project(tempDir(), {'@astryxdesign/core': '0.7.1'});
+    writeJson(path.join(dir, 'package-lock.json'), {lockfileVersion: 3});
+    installCore(dir, '0.7.1');
+    return dir;
+  };
+
+  it("use an integration's declared cliCommand for the upgrade step", () => {
+    const stateDir = checked('0.7.3');
+    const dir = coreOnlyProject();
+    recordDeclaredCliCommands(dir, [
+      {name: '@acme/a', cliCommand: 'acme astryx'},
+    ]);
+    try {
+      expect(projectLag({cwd: dir, current: '0.7.1', stateDir})?.upgrade).toBe(
+        'acme astryx upgrade --from 0.7.1 --apply',
+      );
+      expect(alignCliAndCore({cwd: dir, cli: '0.7.3', core: '0.7.1'})).toBe(
+        'npm install @astryxdesign/core@0.7.3, then acme astryx upgrade --from 0.7.1 --apply',
+      );
+    } finally {
+      recordDeclaredCliCommands(dir, []);
+    }
+  });
+
+  it("use a host's door when nothing is declared", () => {
+    const stateDir = checked('0.7.3');
+    const dir = coreOnlyProject();
+    runWithCliDoor('host astryx', () => {
+      expect(projectLag({cwd: dir, current: '0.7.1', stateDir})?.upgrade).toBe(
+        'host astryx upgrade --from 0.7.1 --apply',
+      );
+      expect(alignCliAndCore({cwd: dir, cli: '0.7.3', core: '0.7.1'})).toBe(
+        'npm install @astryxdesign/core@0.7.3, then host astryx upgrade --from 0.7.1 --apply',
+      );
+    });
+  });
+
+  it("fall back to the project's own installed CLI", () => {
+    const dir = coreOnlyProject();
+    expect(alignCliAndCore({cwd: dir, cli: '0.7.3', core: '0.7.1'})).toBe(
+      'npm install @astryxdesign/core@0.7.3, then npx astryx upgrade --from 0.7.1 --apply',
+    );
   });
 });
 

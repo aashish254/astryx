@@ -44,7 +44,7 @@ import {astryxCommandsOnSearchPath} from '../env/search-path.mjs';
 import {
   CLI_PACKAGE,
   detectPackageManager,
-  getRunPrefix,
+  getCliInvocation,
 } from '../env/package-manager.mjs';
 import {satisfiesRange, semverCompare} from '../env/semver.mjs';
 import {isInReleaseCache, isReleaseVersion} from './cache.mjs';
@@ -414,7 +414,7 @@ export function alignCliAndCore({cwd, cli, core}) {
   const root = projectRootOf(facts) ?? cwd;
   const add = ADD[detectPackageManager(root)] ?? ADD.npm;
   if (semverCompare(cli, core) > 0) {
-    return `${add} @astryxdesign/core@${cli}, then ${getRunPrefix(root)} astryx upgrade --from ${core} --apply`;
+    return `${add} @astryxdesign/core@${cli}, then ${getCliInvocation(root, {installed: true})} upgrade --from ${core} --apply`;
   }
   return `${add} ${CLI_PACKAGE}@${core}`;
 }
@@ -470,7 +470,9 @@ export function projectLag({cwd, current, stateDir = userConfigDir()}) {
   // The CLI is always installed beside Core: a project that installed only
   // Core gets it too, as recommended, so its version is pinned with Core's.
   const install = `${ADD[pm] ?? ADD.npm} @astryxdesign/core@${newest} ${CLI_PACKAGE}@${newest}`;
-  const stem = `${getRunPrefix(root)} astryx`;
+  // The command runs after the install above, so the picker's guess is the
+  // project's own CLI (spec AST-081 FR5).
+  const stem = getCliInvocation(root, {installed: true});
   return {
     root,
     current,
