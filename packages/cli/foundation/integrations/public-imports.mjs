@@ -5,15 +5,15 @@
  * import is importable, read without a build.
  *
  * @input A package directory and its loaded integration record.
- * @output Issues for: a template source with no default export; a component doc's `import` or a template's public import
- *   whose subpath package.json `exports` does not declare (or that names
- *   another package); a component example that imports an undeclared subpath
- *   or a name the package does not export; a template source that imports a
- *   relative path outside the templates root, an undeclared subpath of its own
- *   package or of Core, or a name its package does not export; a block whose
- *   `exampleFor`/`componentsUsed` names no known component; and
- *   `@astryxdesign/*` peer ranges that are invalid or exclude the CLI or Core
- *   in use, or Core declared as a dependency.
+ * @output Warnings for: a template source with no default export; a
+ *   component doc's `import` or a template's public import whose subpath
+ *   package.json `exports` does not declare (or that names another package);
+ *   a component example that imports an undeclared subpath or a name the
+ *   package does not export; a template source that imports a relative path
+ *   outside the templates root, an undeclared subpath of its own package or
+ *   of Core, or a name its package does not export; a block whose
+ *   `exampleFor`/`componentsUsed` names no known component. Peer ranges are
+ *   peer-ranges.mjs's report, never issues.
  * @position foundation/integrations, beside the other on-disk contribution
  *   validators; run by `astryx doctor integration validate` (and so by
  *   `integration check`) through api/integration/validate-integration.mjs.
@@ -27,7 +27,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {parse} from '@babel/parser';
-import {CLI_ROOT, findCoreDir} from '../fs/paths.mjs';
+import {findCoreDir} from '../fs/paths.mjs';
 import {
   discoverIntegrationComponents,
   discoverOwnedComponents,
@@ -35,7 +35,6 @@ import {
 import {loadComponentDoc} from '../discovery/component-loader.mjs';
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
 import {issueWarning} from './validate-contributions.mjs';
-import {validRange, versionAt} from './peer-ranges.mjs';
 import {
   allTargets,
   importable,
@@ -48,7 +47,6 @@ import {
  */
 
 const CORE = '@astryxdesign/core';
-const CLI = '@astryxdesign/cli';
 const MODULE_EXTENSIONS = [
   '.tsx',
   '.ts',
@@ -412,12 +410,16 @@ export function moduleExportNames(file, seen = new Set()) {
   const cached = exportNameCache.get(file);
   if (cached?.stamp === stamp) return cached.value;
   // A CommonJS module's exports cannot be read from declarations: leave it
-  // unjudged rather than read it as exporting nothing.
+  // unjudged rather than read it as exporting nothing. That is any .cjs/.cts
+  // file, any file (built `dist/*.js` included) with no ES module import or
+  // export, and any file that also assigns `module.exports` or `exports.*`.
   if (/\.c[jt]s$/u.test(file)) return {names, complete: false};
   let complete = true;
   let ast;
+  let text;
   try {
-    ast = parseModuleText(fs.readFileSync(file, 'utf-8'));
+    text = fs.readFileSync(file, 'utf-8');
+    ast = parseModuleText(text);
     if (ast.errors?.length) complete = false;
   } catch {
     return {names, complete: false};
@@ -431,6 +433,9 @@ export function moduleExportNames(file, seen = new Set()) {
       node.type === 'TSExportAssignment',
   );
   if (!esm) return {names, complete: false};
+  if (/\b(?:module\.exports|exports\.[\w$]+)\s*=/u.test(text)) {
+    return {names, complete: false};
+  }
   for (const node of ast.program.body) {
     if (node.type === 'ExportDefaultDeclaration') names.add('default');
     else if (node.type === 'TSExportAssignment') complete = false;
@@ -490,43 +495,6 @@ function missingNames(statement, files) {
     if (file === files[files.length - 1]) return missing;
   }
   return null;
-}
-
-// ── Peer ranges ─────────────────────────────────────────────────────
-
-/**
- * @param {any} pkg
- * @returns {Issue[]}
- */
-function peerIssues(pkg) {
-  /** @type {Issue[]} */
-  const issues = [];
-  if (!isRecord(pkg)) return issues;
-  const peers = isRecord(pkg.peerDependencies) ? pkg.peerDependencies : {};
-  const deps = isRecord(pkg.dependencies) ? pkg.dependencies : {};
-
-  for (const [name, range] of Object.entries(peers)) {
-    if (!name.startsWith('@astryxdesign/')) continue;
-    if (validRange(/** @type {string} */ (range)) === false) {
-      issues.push(
-        issueWarning(
-          'invalid_peer_range',
-          `peerDependencies["${name}"] is "${String(range)}", which is not a semver range, so a package manager cannot match any ${name} version to it. Fix: use a range such as ">=${name === CLI ? (versionAt(CLI_ROOT) ?? '0.7.0') : '0.7.0'}" or "^0.7.0".`,
-        ),
-      );
-    }
-  }
-
-  if (pkg.name !== CORE && Object.hasOwn(deps, CORE)) {
-    const range = String(deps[CORE]);
-    issues.push(
-      issueWarning(
-        'core_not_peer',
-        `package.json lists ${CORE} in "dependencies", so an app that installs this package can get a second copy of Core beside its own: two theme contexts and duplicated styles. Fix: move it to "peerDependencies": {"${CORE}": ${JSON.stringify(Object.hasOwn(peers, CORE) ? String(peers[CORE]) : range)}} (and to "devDependencies" for local development).`,
-      ),
-    );
-  }
-  return issues;
 }
 
 // ── Checks ──────────────────────────────────────────────────────────
@@ -697,13 +665,17 @@ async function templateIssues(ctx, integration) {
     } catch {
       return null;
     }
-    if (ctx.coreDir) {
-      try {
-        for (const r of discoverOwnedComponents(ctx.coreDir, []))
-          knownComponents.add(r.name);
-      } catch {
-        knownComponents = null;
-      }
+    // Without Core installed its names cannot be judged, so nothing is (as
+    // the components check reports core_not_found rather than guess).
+    if (!ctx.coreDir) {
+      knownComponents = null;
+      return null;
+    }
+    try {
+      for (const r of discoverOwnedComponents(ctx.coreDir, []))
+        knownComponents.add(r.name);
+    } catch {
+      knownComponents = null;
     }
     return knownComponents;
   };
@@ -866,7 +838,6 @@ export async function publicImportIssues(packageDir, integration) {
     corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
   };
   return [
-    ...peerIssues(pkg),
     ...(await componentIssues(ctx, integration)),
     ...(await templateIssues(ctx, integration)),
   ];

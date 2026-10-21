@@ -9,7 +9,9 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {validateLocalIntegration} from '../../api/integration/validate-integration.mjs';
 import {readImports} from './public-imports.mjs';
@@ -208,15 +210,13 @@ describe('public imports: component doc import', () => {
   it('adds only warnings: validate keeps its exit, only --strict fails', async () => {
     pkg(p => {
       delete p.exports['./components/AcmeWidget'];
-      p.peerDependencies['@astryxdesign/cli'] = 'latest-ish';
-      p.dependencies = {'@astryxdesign/core': '^0.7.0'};
     });
     write(
       'templates/account-card.tsx',
       "import {X} from '../components/AcmeWidget';\nexport function A() {\n  return <X />;\n}\n",
     );
     const issues = await found();
-    expect(issues.length).toBeGreaterThan(4);
+    expect(issues.length).toBeGreaterThan(2);
     expect(issues.every(i => i.severity === 'warning')).toBe(true);
     const plain = await integrationCheck({cwd: dir});
     expect(plain.data.errors).toBe(0);
@@ -391,6 +391,43 @@ describe('public imports: template sources', () => {
     expect(await codes()).toEqual(['template_import_missing_name']);
   });
 
+  it('leaves a built CommonJS dist file reached through exports unjudged for names', async () => {
+    pkg(p => {
+      p.exports['./components/AcmeWidget'] = {
+        types: './dist/AcmeWidget.d.ts',
+        default: './dist/AcmeWidget.js',
+      };
+    });
+    write(
+      'dist/AcmeWidget.js',
+      "'use strict';\nObject.defineProperty(exports, '__esModule', {value: true});\nexports.AcmeWidget = void 0;\nconst AcmeWidget = () => null;\nexports.AcmeWidget = AcmeWidget;\n",
+    );
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
+    );
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeGadget} from '@acme/widgets/components/AcmeWidget';\\n<AcmeGadget />",
+      ),
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('leaves a module that also assigns exports.* unjudged for names', async () => {
+    write(
+      'components/AcmeWidget.tsx',
+      'export function AcmeWidget() {\n  return null;\n}\nexports.AcmeGadget = AcmeWidget;\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
+    );
+    expect(await codes()).toEqual([]);
+  });
+
   it('leaves a CommonJS target of a template import unjudged for names', async () => {
     write('components/AcmeWidget.tsx', 'exports.AcmeWidget = () => null;\n');
     write(
@@ -516,26 +553,41 @@ describe('public imports: peer ranges', () => {
     });
   });
 
-  it('flags an invalid range and leaves protocol specs alone', async () => {
+  it('lists an invalid range in peerRanges, never counted, and leaves protocol specs alone', async () => {
     pkg(p => {
       p.peerDependencies['@astryxdesign/core'] = 'latest-ish';
     });
-    expect(await codes()).toEqual(['invalid_peer_range']);
+    const validated = await validateIntegration(undefined, {cwd: dir});
+    expect(validated.data.issues).toEqual([]);
+    expect(
+      validated.data.peerRanges?.findings.map(f => [f.code, f.severity]),
+    ).toEqual([['invalid_peer_range', 'info']]);
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.failed).toBe(false);
+    expect(check.data.warnings).toBe(0);
     pkg(p => {
       p.peerDependencies['@astryxdesign/core'] = 'workspace:*';
     });
-    expect(await codes()).toEqual([]);
+    expect(
+      (await validateIntegration(undefined, {cwd: dir})).data.peerRanges,
+    ).toEqual({status: 'checked', findings: []});
   });
 
-  it('flags Core as a dependency instead of a peer', async () => {
+  it('lists Core as a dependency in peerRanges, never counted', async () => {
     pkg(p => {
       delete p.peerDependencies['@astryxdesign/core'];
       p.dependencies = {'@astryxdesign/core': '^0.7.0'};
     });
-    const issue = (await found()).find(i => i.code === 'core_not_peer');
-    expect(issue?.message).toContain(
+    const validated = await validateIntegration(undefined, {cwd: dir});
+    expect(validated.data.issues).toEqual([]);
+    const [finding] = validated.data.peerRanges?.findings ?? [];
+    expect(finding).toMatchObject({code: 'core_not_peer', severity: 'info'});
+    expect(finding.fix).toContain(
       '"peerDependencies": {"@astryxdesign/core": "^0.7.0"}',
     );
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.failed).toBe(false);
+    expect(check.data.warnings).toBe(0);
   });
 
   it('reads the range grammar', () => {
@@ -698,4 +750,57 @@ describe('integration add only inserts the missing exports entry', () => {
       ]);
     }
   });
+});
+
+describe('block component names without Core installed', () => {
+  it('judges no Core name when Core is not installed', () => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-no-core-'));
+    try {
+      const put = (/** @type {string} */ rel, /** @type {string} */ text) => {
+        fs.mkdirSync(path.dirname(path.join(out, rel)), {recursive: true});
+        fs.writeFileSync(path.join(out, rel), text);
+      };
+      put(
+        'package.json',
+        JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+          type: 'module',
+          exports: {'./templates/account-card': './templates/account-card.tsx'},
+        }),
+      );
+      put(
+        'astryx.integration.mjs',
+        "export default {templates: './templates'};\n",
+      );
+      put(
+        'templates/account-card.doc.mjs',
+        BLOCK("\n  exampleFor: 'Button',\n  componentsUsed: ['AcmeGizmo'],"),
+      );
+      put(
+        'templates/account-card.tsx',
+        'export default function A() {\n  return null;\n}\n',
+      );
+      const run = spawnSync(
+        process.execPath,
+        [
+          path.join(CLI_ROOT, 'clients/cli/bin/astryx.mjs'),
+          '--json',
+          'doctor',
+          'integration',
+          'validate',
+        ],
+        {cwd: out, encoding: 'utf-8', timeout: 60_000},
+      );
+      const issues = JSON.parse(run.stdout).data.issues;
+      expect(
+        issues.filter(
+          (/** @type {{code: string}} */ i) =>
+            i.code === 'unknown_block_component',
+        ),
+      ).toEqual([]);
+    } finally {
+      fs.rmSync(out, {recursive: true, force: true});
+    }
+  }, 60_000);
 });

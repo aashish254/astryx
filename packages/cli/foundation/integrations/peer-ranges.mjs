@@ -5,14 +5,17 @@
  * Core in use: a report, listed and never counted or failed on.
  *
  * @input A package directory.
- * @output `{status: 'checked', findings}`: one `info` finding when the
- *   `@astryxdesign/cli` peer range excludes the running CLI, and one when the
- *   `@astryxdesign/core` peer range excludes the installed Core, each with
- *   its code, message and fix.
+ * @output `{status: 'checked', findings}`, each an `info` finding with its
+ *   code, message and fix: an `@astryxdesign/*` peer range that is not a
+ *   semver range (`invalid_peer_range`); Core in `dependencies` instead of
+ *   `peerDependencies` (`core_not_peer`); a `@astryxdesign/cli` peer range
+ *   that excludes the running CLI (`cli_peer_excludes_cli`); a
+ *   `@astryxdesign/core` peer range that excludes the installed Core
+ *   (`core_peer_excludes_core`).
  * @position foundation/integrations; read by `doctor integration validate`
- *   into its additive `peerRanges` field. A package that pins its peers
- *   exactly while it builds on a newer release is correct, so these are
- *   reported only.
+ *   into its additive `peerRanges` field. Nothing about peers fails a check
+ *   (a package that pins its peers exactly while it builds on a newer release
+ *   is correct), so these are reported only.
  */
 
 import * as fs from 'node:fs';
@@ -75,7 +78,7 @@ function floorFor(range, version) {
 
 /**
  * @typedef {object} PeerRangeFinding
- * @property {string} code `cli_peer_excludes_cli` or `core_peer_excludes_core`
+ * @property {'invalid_peer_range' | 'core_not_peer' | 'cli_peer_excludes_cli' | 'core_peer_excludes_core'} code
  * @property {'info'} severity reported, never counted or failed on
  * @property {string} message
  * @property {string} fix
@@ -108,6 +111,33 @@ export function peerRangeReport(packageDir) {
     pkg?.peerDependencies && typeof pkg.peerDependencies === 'object'
       ? pkg.peerDependencies
       : {};
+  const deps =
+    pkg?.dependencies && typeof pkg.dependencies === 'object'
+      ? pkg.dependencies
+      : {};
+
+  for (const [name, range] of Object.entries(peers)) {
+    if (!name.startsWith('@astryxdesign/')) continue;
+    if (validRange(/** @type {string} */ (range)) !== false) continue;
+    findings.push({
+      code: 'invalid_peer_range',
+      severity: 'info',
+      message: `peerDependencies["${name}"] is "${String(range)}", which is not a semver range, so a package manager cannot match any ${name} version to it.`,
+      fix: `Use a range such as ">=${name === CLI ? (versionAt(CLI_ROOT) ?? '0.7.0') : '0.7.0'}" or "^0.7.0".`,
+    });
+  }
+
+  if (pkg?.name !== CORE && Object.hasOwn(deps, CORE)) {
+    const range = Object.hasOwn(peers, CORE)
+      ? String(peers[CORE])
+      : String(deps[CORE]);
+    findings.push({
+      code: 'core_not_peer',
+      severity: 'info',
+      message: `package.json lists ${CORE} in "dependencies", so an app that installs this package can get a second copy of Core beside its own: two theme contexts and duplicated styles.`,
+      fix: `Move it to "peerDependencies": {"${CORE}": ${JSON.stringify(range)}} (and to "devDependencies" for local development).`,
+    });
+  }
 
   const cliRange = peers[CLI];
   const cliVersion = versionAt(CLI_ROOT);
