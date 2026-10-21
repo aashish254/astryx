@@ -173,10 +173,10 @@ function directoryHasDoc(directory) {
 
 /**
  * The component a path belongs to under the shared component-package path
- * contract, and the public names that path speaks for: its own same-stem
- * consumer doc when it has one, otherwise the root's `<Root>.doc.mjs`. A root
- * with no consumer docs (a plain helper directory) is named by itself; a flat
- * package's top-level module by its stem.
+ * contract, and the public names that path speaks for: its file stem, plus its
+ * own same-stem consumer doc when it has one, otherwise the root's
+ * `<Root>.doc.mjs`. A root with no consumer docs (a plain helper directory) is
+ * also named by itself; a flat package's top-level module by its stem.
  */
 function componentLocation(root, filePath) {
   const match = /^packages\/([^/]+)\/src\/(.+)$/.exec(filePath);
@@ -207,6 +207,9 @@ function componentLocation(root, filePath) {
     else if (primary.length > 0) names = primary;
     else if (!directoryHasDoc(rootDirectory)) names = [componentRoot];
     else names = [];
+    // A member a family or system spec names may have no consumer doc of its
+    // own; its file stem is still its name.
+    names = [...names, stem];
   }
   return {
     packageName: match[1],
@@ -223,10 +226,10 @@ function fileStem(filePath) {
 /**
  * Records whose own canonical location places `filePath` inside their scope:
  * the record itself; a theme record over its package; the component record
- * named after its root over the whole root; any other component record over
- * its same-stem files; and a module record over same-stem files under its
- * component root or beside a same-stem `verified_by` file, or over a
- * directory it is the only module record in.
+ * named after its root over the whole root; any other component or module
+ * record over its same-stem files anywhere under its component root; a module
+ * record also beside a same-stem `verified_by` file, or over a directory it is
+ * the only module record in.
  */
 function placementMatches(index, filePath, location) {
   const matches = [];
@@ -288,11 +291,11 @@ function placementMatches(index, filePath, location) {
           via: 'placement',
           detail: `component record for ${location.componentRoot}`,
         });
-      } else if (stem === recordStem && fileDirectory === recordDirectory) {
+      } else if (stem === recordStem) {
         matches.push({
           record,
           via: 'placement',
-          detail: `component record beside ${recordStem}`,
+          detail: `component record for ${recordStem} in ${location.componentRoot}`,
         });
       }
       continue;
@@ -365,7 +368,7 @@ function mentionedMatches(index, filePath) {
   const content = bytes.toString('utf8');
   const cited = new Map();
   for (const match of content.matchAll(
-    /(?<![/\\\w-])AST-([0-9]{3})(?:\/([A-Z][A-Z0-9]*-?[0-9]+[a-z]?))?\b/g,
+    /(?<![/\\\w-])AST-([0-9]{3})(?:[/ ]([A-Z][A-Z0-9]*-?[0-9]+[a-z]?))?\b/g,
   )) {
     const id = `spec:AST-${match[1]}`;
     const claims = cited.get(id) ?? new Set();

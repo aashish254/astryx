@@ -175,7 +175,7 @@ function popoverFixture() {
   writeRecord(root, 'docs/families/data-display.md', {
     kind: 'family',
     id: 'family:data-display',
-    members: ['component:Table', 'component:Item'],
+    members: ['component:Table', 'component:Item', 'component:ChatHeadingItem'],
     architecture: [],
     deciding_specs: [],
   });
@@ -206,6 +206,11 @@ function popoverFixture() {
   write(root, 'packages/core/src/Chat/ChatMessageList.tsx');
   write(root, 'packages/core/src/Chat/ChatComposerDrawer.tsx');
   write(root, 'packages/core/src/Chat/ChatComposerDrawer.test.tsx');
+  write(
+    root,
+    'packages/core/src/Chat/__tests__/ChatComposerDrawer.a11y.states.ts',
+  );
+  write(root, 'packages/core/src/Chat/ChatHeadingItem.tsx');
   writeRecord(root, 'packages/core/src/Chat/ChatComposerDrawer.spec.md', {
     kind: 'component',
     id: 'component:ChatComposerDrawer',
@@ -301,7 +306,7 @@ function popoverFixture() {
   write(
     root,
     'packages/core/src/utils/plainDate.ts',
-    '// Resolves wall time per AST-013 and docs/architecture/layer-runtime.md.\n// Day boundaries follow AST-017/DEC-1 and AST-020/FR15. Not AST-0130 or XAST-020.\n',
+    '// Resolves wall time per AST-013 and docs/architecture/layer-runtime.md.\n// Day boundaries follow AST-017/DEC-1 and AST-020/FR15 (see AST-020 FR9). Not AST-0130 or XAST-020.\n',
   );
   return root;
 }
@@ -462,6 +467,24 @@ describe('resolveSpecsForFile', () => {
     );
     expect(ids(own.records)).toEqual(['component:ChatComposerDrawer']);
     expect(own.triggers).toEqual(['motion']);
+    expect(
+      ids(
+        resolveSpecsForFile(
+          index,
+          'packages/core/src/Chat/__tests__/ChatComposerDrawer.a11y.states.ts',
+        ).records,
+      ),
+    ).toEqual(['component:ChatComposerDrawer']);
+  });
+
+  it('names a member without its own consumer doc by its file stem', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    expect(
+      ids(
+        resolveSpecsForFile(index, 'packages/core/src/Chat/ChatHeadingItem.tsx')
+          .records,
+      ),
+    ).toEqual(['family:data-display']);
   });
 
   it('places a module record over its same-stem sources anywhere in its component root', () => {
@@ -507,6 +530,10 @@ describe('resolveSpecsForFile', () => {
       'packages/core/src/hooks/useMenuPress.ts',
     );
     expect(result.component.names).toEqual(['useMenuPress']);
+    expect(
+      resolveSpecsForFile(index, 'packages/core/src/Chat/ChatMessageList.tsx')
+        .component.names,
+    ).toEqual(['Chat', 'ChatMessageList']);
     expect(ids(result.records)).not.toContain('spec:AST-014');
   });
 
@@ -567,6 +594,7 @@ describe('resolveSpecsForFile', () => {
     expect(result.decisions.map(decision => decision.id)).toEqual([
       'spec:AST-017/DEC-1',
       'spec:AST-020/FR15',
+      'spec:AST-020/FR9',
     ]);
     expect(ids(result.records)).not.toContain('spec:AST-020');
   });
@@ -670,11 +698,6 @@ describe('coverage audits', () => {
 describe('repository records', () => {
   const index = loadKnowledgeIndex(repoRoot);
 
-  // Current component and module records with no same-stem source to place
-  // them from. Each is still reached another way; listing them keeps the
-  // placement invariant below honest about what it does not cover.
-  const KNOWN_UNPLACED = [];
-
   it('routes every current component and module record from each same-stem source', () => {
     const tracked = execFileSync('git', ['-C', repoRoot, 'ls-files'], {
       encoding: 'utf8',
@@ -682,8 +705,9 @@ describe('repository records', () => {
     })
       .split('\n')
       .filter(Boolean);
+    // A record with no same-stem source is not placed from any file. That is
+    // allowed here: reachability of every current record is a separate check.
     const missing = [];
-    const unplaced = [];
     for (const record of index.records) {
       if (record.authority !== 'current' || !record.classified) continue;
       const {packageName, componentRoot, publicName, layout} =
@@ -707,10 +731,6 @@ describe('repository records', () => {
             (record.kind === 'module' &&
               evidenceDirectories.has(`${path.posix.dirname(file)}/`))),
       );
-      if (candidates.length === 0) {
-        unplaced.push(record.id);
-        continue;
-      }
       for (const file of candidates) {
         if (
           !ids(
@@ -722,7 +742,6 @@ describe('repository records', () => {
       }
     }
     expect(missing).toEqual([]);
-    expect(unplaced.sort()).toEqual(KNOWN_UNPLACED);
   });
 
   it('routes every current architecture record from each applies_to path', () => {
