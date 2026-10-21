@@ -237,6 +237,43 @@ function declaredPathMatches(index, filePath) {
   return matches;
 }
 
+const MENTION_SIZE_LIMIT = 1024 * 1024;
+
+/**
+ * System specs the file itself cites by number. Source that names the spec it
+ * implements declares that link itself. Record paths are not matched: they
+ * appear in fixtures and examples far more often than as citations.
+ */
+function mentionedMatches(index, filePath) {
+  const absolute = path.join(index.root, filePath);
+  let content;
+  try {
+    const stat = fs.statSync(absolute);
+    if (!stat.isFile() || stat.size > MENTION_SIZE_LIMIT) return [];
+    content = fs.readFileSync(absolute, 'utf8');
+  } catch {
+    return [];
+  }
+  if (content.includes('\0')) return [];
+  const matches = [];
+  const cited = new Set(
+    [...content.matchAll(/\bAST-([0-9]{3})\b/g)].map(
+      match => `spec:AST-${match[1]}`,
+    ),
+  );
+  for (const record of index.records) {
+    if (record.path === filePath) continue;
+    if (cited.has(record.id)) {
+      matches.push({
+        record,
+        via: 'mentioned',
+        detail: record.id.replace(/^spec:/, ''),
+      });
+    }
+  }
+  return matches;
+}
+
 /** Consumer-doc topic files a system spec's `affects_consumer_docs` id names. */
 function consumerDocTopicCovers(docId, filePath) {
   const topic = docId.split('/').at(-1);
@@ -374,6 +411,7 @@ export function resolveSpecsForFile(index, file, options = {}) {
     ...placementMatches(index, filePath, location),
     ...declaredPathMatches(index, filePath),
     ...namedMatches(index, filePath, location),
+    ...mentionedMatches(index, filePath),
   ];
   const visible = entry =>
     entry.record.authority === 'current' ||
@@ -448,13 +486,15 @@ export function resolveSpecsForFile(index, file, options = {}) {
 }
 
 /**
- * Current records that no tracked file other than the record itself reaches
+ * Current records that no tracked non-record file reaches
  * through a placement, path, name, inherited, or deciding link. Every such
  * record is invisible to a path-first lookup.
  */
 export function findUnreachedRecords(index, files) {
   const reached = new Set();
+  const recordPaths = new Set(index.records.map(record => record.path));
   for (const file of files) {
+    if (recordPaths.has(toPosix(file))) continue;
     const result = resolveSpecsForFile(index, file, {triggers: []});
     for (const record of [...result.records, ...result.decidingSpecs]) {
       if (record.routes.some(route => route.via !== 'self')) {

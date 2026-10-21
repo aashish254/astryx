@@ -171,6 +171,11 @@ function popoverFixture() {
   write(root, 'packages/cli/assets/docs/browser-support.doc.mjs');
   write(root, 'packages/cli/assets/docs/tree/browser-support.doc.mjs');
   write(root, 'apps/docsite/src/content/blog/posts/release.md');
+  write(
+    root,
+    'packages/core/src/utils/plainDate.ts',
+    '// Resolves wall time per AST-013 and docs/architecture/layer-runtime.md.\n// Not AST-0130 or XAST-020.\n',
+  );
   return root;
 }
 
@@ -269,6 +274,21 @@ describe('resolveSpecsForFile', () => {
         'spec:AST-013',
       ]);
     }
+  });
+
+  it('routes a file to the system specs it cites by number', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const result = resolveSpecsForFile(
+      index,
+      'packages/core/src/utils/plainDate.ts',
+    );
+    expect(
+      result.records.map(record => [
+        record.id,
+        record.routes[0].via,
+        record.routes[0].detail,
+      ]),
+    ).toEqual([['spec:AST-013', 'mentioned', 'AST-013']]);
   });
 
   it('reports a path no record reaches instead of guessing', () => {
