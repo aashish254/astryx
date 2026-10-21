@@ -117,6 +117,16 @@ If `system-spec` receives a future schema revision, replace its legacy
 `architecture:*`, `family:*`, `theme:*`, and `contributing:*`; this PR does not
 change the v1 system-spec shape.
 
+Run `pnpm specs:for <path>` to list the current records linked to any repository
+path: the record's own placement, `applies_to` and `verified_by` entries, family
+and design membership, `affects_consumer_docs` ids, and the references those
+records inherit. It lists the system specs that decided a linked record
+separately, and the global claims the matched component and module triggers route
+(the same selection as `review-global-baselines.mjs`). A path with no linked
+record is reported as such. `pnpm specs:for --unrouted` lists tracked files with
+no governing record; `--unreached` lists current records that no other path
+reaches.
+
 Run `pnpm check:knowledge` to validate templates and records. Pure spec-record
 pull requests do not add Changesets because they do not publish package changes.
 
