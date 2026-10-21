@@ -153,6 +153,7 @@ export function FormLayout({
     <FormLayoutContext value={contextValue}>
       <div
         ref={ref}
+        {...props}
         {...mergeProps(
           themeProps('form-layout', {direction}),
           stylex.props(
@@ -163,8 +164,7 @@ export function FormLayout({
           ),
           className,
           style,
-        )}
-        {...props}>
+        )}>
         {children}
       </div>
     </FormLayoutContext>
