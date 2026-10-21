@@ -1111,7 +1111,9 @@ const IGNORED_QUERIES = [
 
 /**
  * Whether the repository at `root` holds `rel` in `targetDir` as untracked
- * and ignored; null when its tool cannot be run or gives another answer.
+ * and ignored; null, which keeps the copy, when it cannot answer: its tool is
+ * not installed or cannot start, runs past the time limit, or exits with a
+ * code other than its documented answers.
  * @param {string} root
  * @param {string} targetDir
  * @param {string} rel

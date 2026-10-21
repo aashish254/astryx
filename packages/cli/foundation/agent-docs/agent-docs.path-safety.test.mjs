@@ -793,12 +793,46 @@ describe('a Mercurial monorepo whose root .hgignore excludes the package CLAUDE.
     });
   }
 
-  it('keeps the copy when the repository .hgignore cannot be parsed (fails closed)', () => {
-    const repo = path.join(tmpDir, 'hgbad');
+  /**
+   * Run `fn` with a search path holding only `tools`: name to the shell
+   * script body that stands in for it, or null for a real command found on
+   * the current search path. A tool left out cannot be found.
+   * @param {Record<string, string | null>} tools
+   * @param {() => void} fn
+   */
+  function withTools(tools, fn) {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-tools-'));
+    const saved = process.env.PATH;
+    try {
+      for (const [name, body] of Object.entries(tools)) {
+        const file = path.join(bin, name);
+        if (body == null) {
+          const real = spawnSync('sh', ['-c', `command -v ${name}`], {
+            encoding: 'utf-8',
+          }).stdout.trim();
+          fs.symlinkSync(real, file);
+        } else {
+          fs.writeFileSync(file, `#!/bin/sh\n${body}\n`, {mode: 0o755});
+        }
+      }
+      process.env.PATH = bin;
+      fn();
+    } finally {
+      process.env.PATH = saved;
+      fs.rmSync(bin, {recursive: true, force: true});
+    }
+  }
+
+  /** A Mercurial monorepo whose package keeps a committed .claude copy. */
+  function hgProject() {
+    const repo = fs.mkdtempSync(path.join(tmpDir, 'hgrepo-'));
     const project = path.join(repo, 'apps', 'web');
     fs.mkdirSync(path.join(repo, '.hg'), {recursive: true});
     fs.mkdirSync(path.join(project, '.claude'), {recursive: true});
-    fs.writeFileSync(path.join(repo, '.hgignore'), 'syntax: bogus\n');
+    fs.writeFileSync(
+      path.join(repo, '.hgignore'),
+      'syntax: glob\napps/web/CLAUDE.md\n',
+    );
     fs.writeFileSync(path.join(project, 'package.json'), '{"name":"web"}\n');
     fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
     const copy = path.join(project, '.claude', 'CLAUDE.md');
@@ -806,11 +840,33 @@ describe('a Mercurial monorepo whose root .hgignore excludes the package CLAUDE.
       copy,
       '# Team\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
     );
+    return {project, copy};
+  }
 
-    installAgentDocs(project, {renderedBlock: BLOCK});
+  it.skipIf(process.platform === 'win32').each([
+    ['hg is not installed', {}],
+    ['hg fails', {hg: 'exit 255'}],
+    ['hg exits with a code it does not document', {hg: 'exit 2'}],
+  ])(
+    'keeps the copy when the repository cannot answer: %s (fails closed)',
+    (_label, tools) => {
+      const {project, copy} = hgProject();
+      withTools(tools, () => installAgentDocs(project, {renderedBlock: BLOCK}));
+      expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+    },
+  );
 
-    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
-  });
+  it.skipIf(process.platform === 'win32')(
+    'follows the repository when it answers: a root CLAUDE.md it does not list as ignored moves the copy',
+    () => {
+      const {project, copy} = hgProject();
+      // hg answers, and lists nothing as untracked and ignored.
+      withTools({hg: 'exit 0'}, () =>
+        installAgentDocs(project, {renderedBlock: BLOCK}),
+      );
+      expect(fs.readFileSync(copy, 'utf-8').trimEnd()).toBe('# Team');
+    },
+  );
 });
 
 describe('below the project root, an AGENTS.md left as it is', () => {
