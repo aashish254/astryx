@@ -30,6 +30,7 @@ import {
 } from './agent-docs.mjs';
 import {PathSafetyError} from '../fs/path-safety.mjs';
 import {runCli} from '../../test-utils/run-cli.mjs';
+import {doc as initDoc} from '../../clients/cli/commands/init.doc.mjs';
 
 const BLOCK = '<!-- ASTRYX:START -->\nmanaged\n<!-- ASTRYX:END -->';
 
@@ -1185,6 +1186,35 @@ describe('a root CLAUDE.md linked outside the project that only imports AGENTS.m
       '@AGENTS.md\n',
     );
   }, 30_000);
+});
+
+describe("init's exit-code help names every soft exit-0 case these tests pin", () => {
+  const exit0 = initDoc.exitCodes.find(entry => entry.code === 0)?.when ?? '';
+  it.each([
+    ['the home or a settings folder', /home folder, or in a settings folder/u],
+    [
+      'a GEMINI.md that resolves outside the project',
+      /a GEMINI\.md that resolves outside the project/u,
+    ],
+    [
+      'a project-root file below the root',
+      /below the project root, a project-root agent file/u,
+    ],
+    [
+      "the project's Claude Code file that only imports an existing AGENTS.md",
+      /Claude Code file \(root CLAUDE\.md, or \.claude\/CLAUDE\.md when there is no root one\)[^;]*block-less import of an existing AGENTS\.md/u,
+    ],
+    [
+      'beside an ignored CLAUDE.md, the copy --agent claude adds or a block-less import',
+      /beside a CLAUDE\.md the project ignores, the one --agent claude adds or a block-less import of an existing AGENTS\.md/u,
+    ],
+    [
+      '--agent claude removing a block beside a CLAUDE.md',
+      /with --agent claude beside a CLAUDE\.md, one whose block it would remove/u,
+    ],
+  ])('%s', (_label, pattern) => {
+    expect(exit0).toMatch(pattern);
+  });
 });
 
 describe('init exit codes and output', () => {
