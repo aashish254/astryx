@@ -670,6 +670,31 @@ describe('package.json', () => {
     }
   });
 
+  it('completes --strict for a package without a name whose component docs hold links, reporting none', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({components: './components'}),
+        'components/AcmeWidget.doc.mjs':
+          "export default {type: 'component', name: 'AcmeWidget', displayName: 'AcmeWidget', usage: {description: 'Read {@link generic:x} first.'}, props: []};\n",
+        'components/AcmeWidget.tsx': componentSource('AcmeWidget'),
+      },
+      {version: '1.0.0'},
+    );
+
+    const result = await integrationCheck({cwd: dir, strict: true});
+    const components = result.data.checks.find(
+      check => check.check === 'components',
+    );
+    expect(components?.response.data.issues.map(issue => issue.code)).toEqual([
+      'invalid_package_json',
+    ]);
+    expect(
+      result.data.failures.filter(
+        failure => failure.code === 'invalid_doc_graph',
+      ),
+    ).toEqual([]);
+  });
+
   it('checks the docs of a package without a name, naming them by path', async () => {
     const dir = writePackage(
       {
@@ -696,8 +721,8 @@ describe('package.json', () => {
     );
   });
 
-  it.each([['acme kit'], ['_acme'], ['acme/kit']])(
-    'warns about a name npm rejects (%s) and keeps checking',
+  it.each([['acme kit'], ['_acme'], ['acme/kit'], ['-acme']])(
+    'warns that no provider ID can be derived from the name %s, and keeps checking',
     async name => {
       const dir = writePackage(
         {
@@ -709,16 +734,36 @@ describe('package.json', () => {
 
       const issues = await issuesOf(dir);
       expect(issues.map(issue => [issue.code, issue.severity])).toEqual([
-        ['invalid_package_json', 'warning'],
+        ['no_provider_id', 'warning'],
         ['invalid_component', 'error'],
       ]);
       expect(issues[0].message).toBe(
-        `package.json has "name": ${JSON.stringify(name)}, which is not a valid npm package name, so npm cannot pack or publish the package, and a project that installs it cannot select it by that name. Fix: use lowercase letters, digits, "-", "." and "_", not starting with "." or "_", with an optional @scope/ prefix, such as "@your-scope/your-package".`,
+        `No provider ID can be derived for this package: package.json "name" ${JSON.stringify(name)} is not a bare package name (lowercase letters, digits, "-", ".", "_", "~", not starting with "." or "_", with an optional @scope/ prefix), and astryx.integration.mjs declares no providerId that is one. Astryx files the package's components, templates and docs under that ID, so links to them and selecting the package cannot work. Fix: rename the package, such as "@your-scope/your-package", or set \`providerId: '@your-scope/your-package'\` in astryx.integration.mjs.`,
       );
+      expect(issues[0].message).not.toContain('npm cannot pack');
       const result = await integrationCheck({cwd: dir});
       expect(result.data.checks.every(check => check.response.type)).toBe(true);
     },
   );
+
+  it('derives the provider ID from the manifest when the name cannot give one', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({
+          providerId: '@acme/kit',
+          components: './components',
+        }),
+        'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidget'),
+        'components/AcmeWidget.tsx': componentSource('AcmeWidget'),
+      },
+      {name: '@acme/_kit', version: '1.0.0'},
+    );
+
+    expect(await issuesOf(dir)).toEqual([]);
+    expect((await integrationCheck({cwd: dir, strict: true})).data.failed).toBe(
+      false,
+    );
+  });
 
   it('checks a package without a name whose root is a file, without crashing', async () => {
     const dir = writePackage(
