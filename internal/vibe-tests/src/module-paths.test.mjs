@@ -7,7 +7,7 @@
  * @position Testing; build-previews.ts derived its __dirname from
  *   `new URL(import.meta.url).pathname`, so every checkout whose path contains a
  *   character a file URL percent-encodes — a space, `"`, `#`, `%`, `<`, `>`, `?`,
- *   `[`, `]`, `^`, `{`, `|`, `}`, `~`, or any non-ASCII name — resolved
+ *   `[`, `]`, `^`, a backtick, `{`, `|`, `}`, `~`, or any non-ASCII name — resolved
  *   VIBE_DIR/REPO_ROOT to a directory that does not exist. `&`, `+`, `!`, `$`,
  *   `'`, `(`, `)`, `*`, `,`, `-`, `:`, `;`, `=`, `@` and `_` pass through untouched,
  *   so a checkout named with one of those already worked. Both lists are measured
