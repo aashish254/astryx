@@ -136,6 +136,22 @@ describe("a link in a component doc's text", () => {
   );
 
   it(
+    'reads the same in `astryx discover <package>/<Component>`',
+    async () => {
+      scaffold();
+      const json = await runCli(
+        ['--json', 'discover', '@acme/widgets/AcmeButton'],
+        tmpDir,
+      );
+      expect(json.status).toBe(0);
+      expect(JSON.parse(json.stdout).data.usage.description).toBe(
+        'A button. Set it up as `astryx docs acme-setup` says; theme it with `astryx docs theme`.',
+      );
+    },
+    SLOW,
+  );
+
+  it(
     "reads the same in a search hit's description",
     async () => {
       scaffold();
