@@ -110,7 +110,7 @@ describe('olderCliNotes', () => {
     expect(JSON.stringify(strict.data.failures)).not.toContain('stability');
     const validate = strict.data.checks.find(each => each.check === 'validate');
     expect(
-      /** @type {any} */ (validate?.response.data).olderCliNotes,
+      /** @type {any} */ (validate).response.data.olderCliNotes,
     ).toHaveLength(2);
     const text = await runCli(['integration', 'check', '--strict'], dir);
     expect(text.stdout).toContain('Notes for older CLIs');

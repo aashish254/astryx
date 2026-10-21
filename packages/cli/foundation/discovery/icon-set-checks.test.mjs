@@ -568,7 +568,7 @@ describe('integration check over an icon set', () => {
     ).toEqual([]);
     expect(strict.data.warnings).toBe(0);
     const validate = strict.data.checks.find(each => each.check === 'validate');
-    const listed = /** @type {any} */ (validate?.response.data).iconSets;
+    const listed = /** @type {any} */ (validate).response.data.iconSets;
     expect(listed[0].unmappedDefinitions.length).toBeGreaterThan(0);
     expect(JSON.stringify(strict.data)).not.toContain('"severity":"info"');
   }, 60_000);
