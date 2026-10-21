@@ -525,9 +525,54 @@ function readOwnExportNames(file, cache, stack) {
       node.type === 'ExportAllDeclaration' ||
       node.type === 'TSExportAssignment',
   );
+  // A declaration file with no import or export is a global script: no
+  // module import can read it (TypeScript: "is not a module"). Not judged.
   if (!esm) return done(false);
   if (/\b(?:module\.exports|exports\.[\w$]+)\s*=/u.test(text)) {
     return done(false);
+  }
+  // A declaration file that is a module exports every top-level declaration,
+  // marked or not, unless it has an export list (`export {}`), a default
+  // export, `export =`, or `export *` (TypeScript's rule for ambient modules).
+  if (DECLARATION_RE.test(file)) {
+    const implicit = !ast.program.body.some(
+      (/** @type {any} */ node) =>
+        (node.type === 'ExportNamedDeclaration' && !node.declaration) ||
+        node.type === 'ExportDefaultDeclaration' ||
+        node.type === 'TSExportAssignment' ||
+        node.type === 'ExportAllDeclaration',
+    );
+    if (implicit) {
+      for (const node of ast.program.body) {
+        const d = /** @type {any} */ (
+          node.type === 'ExportNamedDeclaration' ? node.declaration : node
+        );
+        if (!d) continue;
+        if (d.type === 'VariableDeclaration') {
+          for (const v of d.declarations ?? []) {
+            if (v.id?.type === 'Identifier') names.add(v.id.name);
+            else complete = false;
+          }
+        } else if (
+          d.type === 'TSInterfaceDeclaration' ||
+          d.type === 'TSTypeAliasDeclaration'
+        ) {
+          names.add(d.id.name);
+          types.add(d.id.name);
+        } else if (
+          [
+            'FunctionDeclaration',
+            'TSDeclareFunction',
+            'ClassDeclaration',
+            'TSEnumDeclaration',
+            'TSModuleDeclaration',
+          ].includes(d.type) &&
+          d.id?.type === 'Identifier'
+        ) {
+          names.add(d.id.name);
+        }
+      }
+    }
   }
   for (const node of ast.program.body) {
     if (node.type === 'ExportDefaultDeclaration') names.add('default');

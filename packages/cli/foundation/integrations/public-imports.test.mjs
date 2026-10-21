@@ -1218,3 +1218,55 @@ describe('what the export-list reader does not model is not checked', () => {
     ]);
   });
 });
+
+describe('declaration files follow TypeScript', () => {
+  const template = (/** @type {string} */ names) =>
+    `import {${names}} from '@acme/widgets/widget';\nexport default function C() {\n  return <div />;\n}\n`;
+
+  beforeEach(() => {
+    pkg(p => {
+      p.exports['./widget'] = './dist/widget.js';
+    });
+    write('dist/widget.js', 'export const AcmeWidget = () => null;\n');
+  });
+
+  it('counts every top-level declaration of a declaration-file module as exported', async () => {
+    write(
+      'dist/widget.d.ts',
+      'interface AcmeWidgetProps {\n  label: string;\n}\nexport declare const AcmeWidget: (p: AcmeWidgetProps) => null;\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      template('AcmeWidget, AcmeWidgetProps'),
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('exports only what is listed once the declaration file has an export list', async () => {
+    write(
+      'dist/widget.d.ts',
+      'interface AcmeWidgetProps {\n  label: string;\n}\ndeclare const AcmeWidget: (p: AcmeWidgetProps) => null;\nexport {AcmeWidget};\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      template('AcmeWidget, AcmeWidgetProps'),
+    );
+    expect(await codes()).toEqual(['template_import_missing_name']);
+  });
+
+  it('leaves a declaration file with no import or export (a global script) unchecked', async () => {
+    write(
+      'dist/widget.d.ts',
+      'interface AcmeWidgetProps {\n  label: string;\n}\ndeclare const AcmeWidget: (p: AcmeWidgetProps) => null;\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      template('AcmeWidget, AcmeWidgetProps'),
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(await codes()).toEqual([]);
+    expect(result.data.publicImports?.unchecked.map(u => u.specifier)).toEqual([
+      '@acme/widgets/widget',
+    ]);
+  });
+});
