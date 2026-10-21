@@ -4,8 +4,9 @@
  * @file Theme CSS generation utilities
  *
  * Shared logic for generating CSS rules from a resolved theme definition,
- * including one component-leaf lowering path for root, adaptation, and
- * media-surface values plus condition-correct Heading weight precedence guards.
+ * including source-scoped semantic role defaults and one component-leaf lowering
+ * path for root, adaptation, and media-surface values plus condition-correct
+ * Heading weight precedence guards.
  * Built adaptation metadata resolves against the same root component defaults
  * as defineTheme, so scale-only rules do not reset authored component styles.
  * Used by both the runtime path (Theme injects <style>) and the build
@@ -457,6 +458,41 @@ function joinDeclarations(
   return lines.join('\n');
 }
 
+/**
+ * Public status roles whose canonical default references an existing semantic
+ * source token. StyleX owns the root defaults; the theme CSS generator repeats
+ * an omitted role beside any authored source so nested Theme regions bind the
+ * alias to their own source value. These generated declarations stay out of
+ * DefinedTheme.tokens and therefore out of authored-override metadata.
+ */
+const SCOPED_STATUS_ROLE_DEFAULTS: ReadonlyArray<
+  readonly [role: string, source: string]
+> = [
+  ['--color-info', '--color-accent'],
+  ['--color-info-muted', '--color-accent-muted'],
+  ['--color-on-info', '--color-on-accent'],
+  ['--color-status-foreground-info', '--color-text-blue'],
+  ['--color-status-foreground-success', '--color-text-green'],
+  ['--color-status-foreground-warning', '--color-text-yellow'],
+  ['--color-status-foreground-error', '--color-text-red'],
+  ['--color-on-info-muted', '--color-text-blue'],
+  ['--color-on-success-muted', '--color-text-green'],
+  ['--color-on-warning-muted', '--color-text-yellow'],
+  ['--color-on-error-muted', '--color-text-red'],
+];
+
+function tokenEntriesWithScopedStatusRoleDefaults(
+  tokens: Record<string, string>,
+): [string, string][] {
+  const entries = Object.entries(tokens);
+  for (const [role, source] of SCOPED_STATUS_ROLE_DEFAULTS) {
+    if (tokens[role] === undefined && tokens[source] !== undefined) {
+      entries.push([role, `var(${source})`]);
+    }
+  }
+  return entries;
+}
+
 /** The `:scope` token block for portable and theme-local token values. */
 function tokenBlock(
   source: ThemeRuleSource,
@@ -464,7 +500,11 @@ function tokenBlock(
   sink: DiagnosticSink,
 ): string | null {
   const declarations = [
-    joinDeclarations(Object.entries(source.tokens), `${location}tokens`, sink),
+    joinDeclarations(
+      tokenEntriesWithScopedStatusRoleDefaults(source.tokens),
+      `${location}tokens`,
+      sink,
+    ),
     joinDeclarations(
       Object.entries(source.localTokens ?? {}),
       `${location}localTokens`,
@@ -1025,7 +1065,9 @@ export function generateOnMediaCSS(
     const location = surface === 'dark' ? 'onDark.' : 'onLight.';
 
     // Token overrides
-    const tokenEntries = Object.entries(onMedia.tokens);
+    const tokenEntries = tokenEntriesWithScopedStatusRoleDefaults(
+      onMedia.tokens,
+    );
     if (tokenEntries.length > 0) {
       const declarations = joinDeclarations(
         tokenEntries,
