@@ -171,6 +171,21 @@ describe('generateOnMediaCSS', () => {
     expect(css).not.toContain('--color-info: var(--color-accent);');
   });
 
+  it('rebinds a root default alias inside a media surface', () => {
+    const theme = defineTheme({
+      name: 'status-role-media-alias',
+      tokens: {
+        '--color-accent': '#0074E2',
+        '--color-info': 'var(--color-accent)',
+      },
+      onDark: {tokens: {'--color-accent': '#FFFFFF'}},
+    });
+    const css = generateOnMediaCSS(theme);
+
+    expect(css).toContain('--color-accent: #FFFFFF;');
+    expect(css).toContain('--color-info: var(--color-accent);');
+  });
+
   it('emits component override rules', () => {
     const theme = defineTheme({
       name: 'test',

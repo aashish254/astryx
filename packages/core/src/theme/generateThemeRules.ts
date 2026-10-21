@@ -462,8 +462,11 @@ function joinDeclarations(
  * Public status roles whose canonical default references an existing semantic
  * source token. StyleX owns the root defaults; the theme CSS generator repeats
  * an omitted role beside any authored source so nested Theme regions bind the
- * alias to their own source value. These generated declarations stay out of
- * DefinedTheme.tokens and therefore out of authored-override metadata.
+ * alias to their own source value. Conditional scopes keep concrete root roles,
+ * while a root value that is exactly the canonical var() alias remains a
+ * default and rebinds to the conditional source. These generated declarations
+ * stay out of DefinedTheme.tokens and therefore out of authored-override
+ * metadata.
  */
 const SCOPED_STATUS_ROLE_DEFAULTS: ReadonlyArray<
   readonly [role: string, source: string]
@@ -487,9 +490,12 @@ function tokenEntriesWithScopedStatusRoleDefaults(
 ): [string, string][] {
   const entries = Object.entries(tokens);
   for (const [role, source] of SCOPED_STATUS_ROLE_DEFAULTS) {
+    const inheritedRole = inheritedTokens[role];
+    const inheritsDefaultAlias =
+      inheritedRole === undefined || inheritedRole === `var(${source})`;
     if (
       tokens[role] === undefined &&
-      inheritedTokens[role] === undefined &&
+      inheritsDefaultAlias &&
       tokens[source] !== undefined
     ) {
       entries.push([role, `var(${source})`]);

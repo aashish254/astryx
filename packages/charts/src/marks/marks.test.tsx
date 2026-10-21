@@ -11,6 +11,7 @@
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {render, act, screen} from '@testing-library/react';
+import {dataVars} from '@astryxdesign/core/theme/dataTokens.stylex';
 import {Chart} from '../Chart';
 import {bar} from './bar';
 import {line} from './line';
@@ -269,12 +270,29 @@ describe('candlestick', () => {
     const wicks = plot.querySelectorAll('line');
     expect(rects).toHaveLength(3);
     expect(wicks).toHaveLength(3);
-    expect(rects[0]).toHaveAttribute('fill', '#0B991F');
-    expect(rects[1]).toHaveAttribute('fill', '#F5394F');
-    expect(rects[2]).toHaveAttribute('fill', '#0B991F');
+    expect(rects[0]).toHaveAttribute(
+      'fill',
+      dataVars['--color-data-categorical-green'],
+    );
+    expect(rects[1]).toHaveAttribute(
+      'fill',
+      dataVars['--color-data-categorical-red'],
+    );
+    expect(rects[2]).toHaveAttribute(
+      'fill',
+      dataVars['--color-data-categorical-green'],
+    );
+    expect(wicks[0]).toHaveAttribute(
+      'stroke',
+      dataVars['--color-data-categorical-green'],
+    );
+    expect(wicks[1]).toHaveAttribute(
+      'stroke',
+      dataVars['--color-data-categorical-red'],
+    );
   });
 
-  it('lets explicit up/down colors override the data-viz semantic defaults', () => {
+  it('lets explicit up/down colors override the data-viz token defaults', () => {
     const custom = candlestick({
       open: 'o',
       high: 'h',
