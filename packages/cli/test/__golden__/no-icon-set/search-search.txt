@@ -135,7 +135,7 @@ name:        cli/api/functions/discover
 domain:      doc
 package:     @astryxdesign/cli
 title:       Astryx CLI › API › Functions › discover()
-description: Browse and search integrations: the ones a project has and, through discover sources, the ones it could add.
+description: Browse and search integrations: the ones a project has and, through the official list and discover sources, the ones it could add.
 command:     pnpm exec astryx docs cli/api/functions/discover
 parent:      pnpm exec astryx docs cli/api/functions
 

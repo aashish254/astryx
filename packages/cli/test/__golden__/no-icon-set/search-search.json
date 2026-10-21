@@ -193,7 +193,7 @@
         "package": "@astryxdesign/cli",
         "score": 90,
         "reason": "keyword \"search\"",
-        "description": "Browse and search integrations: the ones a project has and, through discover sources, the ones it could add.",
+        "description": "Browse and search integrations: the ones a project has and, through the official list and discover sources, the ones it could add.",
         "title": "Astryx CLI › API › Functions › discover()",
         "command": "astryx docs cli/api/functions/discover",
         "parent": "astryx docs cli/api/functions"
