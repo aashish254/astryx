@@ -114,9 +114,13 @@ process.exitCode = result.status;
  */
 function packageSet(version, options = {}) {
   const root = tempDir('set');
-  const cli = installStandInCli(root, version);
+  const cli = installStandInCli(root, version, {bin: options.bin ?? true});
   installCore(root, version);
-  if (options.hostEntry) {
+  if (options.hostEntry === 'broken') {
+    // A host entry that loads but offers no runHostedCli.
+    fs.mkdirSync(path.join(cli, 'host'), {recursive: true});
+    fs.writeFileSync(path.join(cli, 'host', 'index.mjs'), 'export {};\n');
+  } else if (options.hostEntry) {
     fs.mkdirSync(path.join(cli, 'host'), {recursive: true});
     fs.writeFileSync(
       path.join(cli, 'host', 'index.mjs'),
@@ -213,6 +217,19 @@ describe('a project whose own CLI cannot start, in a hosted run', () => {
     const json = host({argv: ['docs', '--json'], cwd: root, roots});
     expect(JSON.parse(json.stdout).meta.answeredBy.copy).toBe('fallback');
     expect(installedARelease(json.cache)).toBe(false);
+  });
+
+  it("installs nothing when the matching set's CLI starts through neither its host entry nor a bin: this copy answers, announced", () => {
+    const root = brokenProject();
+    const set = packageSet('0.7.0', {hostEntry: 'broken', bin: false});
+    const run = host({argv: ['--version'], cwd: root, roots: [set]});
+    expect(run.status).toBe(0);
+    expect(run.stdout.trim()).toBe(SELF_VERSION);
+    expect(run.stderr).toMatch(
+      /astryx: could not get Astryx 0\.7\.0 to match this project's Core \(the CLI 0\.7\.0 in the package set at .+ could not be started\); answering with CLI/,
+    );
+    expect(run.stderr).not.toContain('installing CLI release');
+    expect(installedARelease(run.cache)).toBe(false);
   });
 });
 

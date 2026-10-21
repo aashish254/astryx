@@ -373,6 +373,14 @@ export async function startRun({cliRoot, argv, declinedProjectCli}) {
       });
       if (answered) return answered;
     }
+    // A hosted run installs nothing (INV30): a set whose CLI starts through
+    // neither its host entry nor a bin leaves this copy to answer.
+    if (!served.bin) {
+      await fallBack(
+        `the CLI ${choice.version} in the package set at ${served.root} could not be started`,
+      );
+      return;
+    }
     bin = served.bin;
   }
   if (!bin) {

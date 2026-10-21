@@ -27,11 +27,11 @@ import {dirname, join} from 'node:path';
 
 const binDir = dirname(realpathSync(fileURLToPath(import.meta.url)));
 /** @param {string} rel */
-const importSrc = rel => import(pathToFileURL(join(binDir, '..', rel)).href);
+const importSrc = rel =>
+  import(pathToFileURL(join(binDir, '..', rel)).href);
 
-const {isNodeVersionSupported, unsupportedNodeMessage} = await importSrc(
-  '../../foundation/env/node-version.mjs',
-);
+const {isNodeVersionSupported, unsupportedNodeMessage} =
+  await importSrc('../../foundation/env/node-version.mjs');
 
 if (!isNodeVersionSupported(process.versions.node)) {
   const msg = unsupportedNodeMessage(process.versions.node);

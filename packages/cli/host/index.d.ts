@@ -30,10 +30,11 @@ export interface HostedCliOptions {
    * When the tool found the project's own CLI and did not run it, why, in the
    * tool's own words, such as `cannot-start` or `untrusted`: a non-blank
    * single line of at most 120 characters, with no surrounding spaces. The
-   * run is then never handed to that CLI: this copy answers when it is that
-   * CLI's release, and otherwise answers with one warning line naming the
-   * reason and `meta.answeredBy.copy` set to `fallback`. Default: none; a
-   * project's own CLI answers its project.
+   * run is then never handed to that CLI: its release answers in its place
+   * when this copy, or a package set's host entry, is that release;
+   * otherwise this copy answers with one warning line naming the reason and
+   * `meta.answeredBy.copy` set to `fallback`. Default: none; a project's own
+   * CLI answers its project.
    */
   declinedProjectCli?: string;
   /**
