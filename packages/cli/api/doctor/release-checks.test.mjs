@@ -63,6 +63,29 @@ describe('checkNewestRelease', () => {
     );
   });
 
+  it('says when the last update check did not reach the registry, and why', () => {
+    const check = checkNewestRelease({
+      nodeVersion: '24.0.0',
+      answeredBy,
+      latest: null,
+      lastCheckFailure: {
+        at: Date.UTC(2026, 9, 20, 18),
+        reason: 'npm-failed: ECONNREFUSED',
+      },
+    });
+    expect(check.message).toContain(
+      'The last update check, 2026-10-20T18:00:00.000Z, did not reach the registry: npm failed (ECONNREFUSED); its registry and proxy settings decide where it asks.',
+    );
+    expect(
+      checkNewestRelease({
+        nodeVersion: '24.0.0',
+        answeredBy,
+        latest: null,
+        lastCheckFailure: {at: 0, reason: 'npm-missing'},
+      }).message,
+    ).toContain('did not reach the registry: npm could not be started.');
+  });
+
   it("names the global copy's upgrade, after the Node the newest release needs", () => {
     const check = checkNewestRelease({
       nodeVersion: '22.13.0',
