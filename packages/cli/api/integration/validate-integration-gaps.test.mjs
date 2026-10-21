@@ -791,6 +791,29 @@ describe('component doc files', () => {
   });
 });
 
+describe('a hidden doc beside a source whose name differs only in case', () => {
+  it('warns, without failing validate, about a hidden doc whose name differs from its source only in case', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({components: './components'}),
+      'components/Acmewidget.doc.mjs': componentDoc('AcmeWidget').replace(
+        "type: 'component',",
+        "type: 'component',\n  hidden: true,",
+      ),
+      'components/AcmeWidget.tsx': componentSource('AcmeWidget'),
+    });
+
+    const issues = await issuesOf(dir);
+    expect(issues).toEqual([
+      {
+        code: 'invalid_component',
+        severity: 'warning',
+        message:
+          'Hidden component doc "Acmewidget.doc.mjs" and its source "AcmeWidget.tsx" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run. Fix: rename Acmewidget.doc.mjs to AcmeWidget.doc.mjs.',
+      },
+    ]);
+  });
+});
+
 describe('roots', () => {
   it('warns that npm pack does not follow a symlinked root, and reads its folder through it', async () => {
     const dir = writePackage({

@@ -119,6 +119,16 @@ function scanDocText(text) {
 }
 
 /**
+ * Whether a component doc is hidden (`hidden: true`), read as discovery
+ * reads it: discovery skips a hidden doc.
+ * @param {string} docPath
+ * @returns {boolean}
+ */
+export function isHiddenComponentDoc(docPath) {
+  return readDocMeta(docPath).hidden;
+}
+
+/**
  * Read the `group`, `hiddenComponents`, and `hidden` fields from a
  * component's .doc.mjs file (synchronous), with what {@link scanDocText}
  * finds in it.
