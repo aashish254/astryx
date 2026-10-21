@@ -512,8 +512,8 @@ describe('package.json', () => {
     );
   });
 
-  it.each([['acme kit'], ['_acme'], ['acme/kit']])(
-    'warns about a name npm rejects (%s) and keeps checking',
+  it.each([['acme kit'], ['_acme'], ['acme/kit'], ['-acme']])(
+    'warns that no provider ID can be derived from the name %s, and keeps checking',
     async name => {
       const dir = writePackage(
         {
@@ -525,16 +525,36 @@ describe('package.json', () => {
 
       const issues = await issuesOf(dir);
       expect(issues.map(issue => [issue.code, issue.severity])).toEqual([
-        ['invalid_package_json', 'warning'],
+        ['no_provider_id', 'warning'],
         ['invalid_component', 'error'],
       ]);
       expect(issues[0].message).toBe(
-        `package.json has "name": ${JSON.stringify(name)}, which is not a valid npm package name, so npm cannot pack or publish the package, and a project that installs it cannot select it by that name. Fix: use lowercase letters, digits, "-", "." and "_", not starting with "." or "_", with an optional @scope/ prefix, such as "@your-scope/your-package".`,
+        `No provider ID can be derived for this package: package.json "name" ${JSON.stringify(name)} is not a bare package name (lowercase letters, digits, "-", ".", "_", "~", not starting with "." or "_", with an optional @scope/ prefix), and astryx.integration.mjs declares no providerId that is one. Astryx files the package's components, templates and docs under that ID, so links to them and selecting the package cannot work. Fix: rename the package, such as "@your-scope/your-package", or set \`providerId: '@your-scope/your-package'\` in astryx.integration.mjs.`,
       );
+      expect(issues[0].message).not.toContain('npm cannot pack');
       const result = await integrationCheck({cwd: dir});
       expect(result.data.checks.every(check => check.response.type)).toBe(true);
     },
   );
+
+  it('derives the provider ID from the manifest when the name cannot give one', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({
+          providerId: '@acme/kit',
+          components: './components',
+        }),
+        'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidget'),
+        'components/AcmeWidget.tsx': componentSource('AcmeWidget'),
+      },
+      {name: '@acme/_kit', version: '1.0.0'},
+    );
+
+    expect(await issuesOf(dir)).toEqual([]);
+    expect((await integrationCheck({cwd: dir, strict: true})).data.failed).toBe(
+      false,
+    );
+  });
 
   it('checks a package without a name whose root is a file, without crashing', async () => {
     const dir = writePackage(

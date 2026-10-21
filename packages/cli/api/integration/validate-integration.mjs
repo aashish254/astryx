@@ -383,6 +383,7 @@ async function validateAtPackageDir(
     __agentDocsError: agentDocsError,
     __unknownKeys: unknownKeys,
     __spec: identity.name,
+    __declaredProviderId: manifest.providerId,
     __packageDir: packageDir,
     __manifestFile: manifestFile,
   };
@@ -472,7 +473,16 @@ export async function validateLocalIntegration(cwd = process.cwd()) {
     {name, version: pkg.version},
     {scanUnreachable: true},
   );
-  result.issues.unshift(...fields);
+  result.issues.unshift(
+    ...fields,
+    ...(result.manifestFile
+      ? providerIdIssues(
+          pkg.name,
+          result.integration?.__declaredProviderId,
+          result.manifestFile,
+        )
+      : []),
+  );
   return result;
 }
 
@@ -487,6 +497,29 @@ function isPackageName(name) {
   } catch {
     return false;
   }
+}
+
+/**
+ * A warning when no provider ID can be derived for the package: its
+ * package.json `name` is not a bare package name and its manifest declares
+ * no `providerId` that is one. Readers key the package's contributions on
+ * that ID; a missing name is its own warning.
+ * @param {unknown} name package.json `name`
+ * @param {unknown} declared the manifest's `providerId`
+ * @param {string} manifestFile
+ * @returns {Issue[]}
+ */
+function providerIdIssues(name, declared, manifestFile) {
+  if (typeof name !== 'string' || name === '') return [];
+  if (isPackageName(name)) return [];
+  if (typeof declared === 'string' && isPackageName(declared)) return [];
+  const manifest = path.basename(manifestFile);
+  return [
+    warning(
+      'no_provider_id',
+      `No provider ID can be derived for this package: package.json "name" ${JSON.stringify(name)} is not a bare package name (lowercase letters, digits, "-", ".", "_", "~", not starting with "." or "_", with an optional @scope/ prefix), and ${manifest} declares no providerId that is one. Astryx files the package's components, templates and docs under that ID, so links to them and selecting the package cannot work. Fix: rename the package, such as "@your-scope/your-package", or set \`providerId: '@your-scope/your-package'\` in ${manifest}.`,
+    ),
+  ];
 }
 
 /**
@@ -506,13 +539,6 @@ function packageJsonFieldIssues(pkg, pkgJsonPath) {
       warning(
         'invalid_package_json',
         `${shown} has no "name", so npm cannot pack or publish the package, and a project that installs it has no name to select it by. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
-      ),
-    );
-  } else if (!isPackageName(pkg.name)) {
-    issues.push(
-      warning(
-        'invalid_package_json',
-        `${shown} has "name": ${JSON.stringify(pkg.name)}, which is not a valid npm package name, so npm cannot pack or publish the package, and a project that installs it cannot select it by that name. Fix: use lowercase letters, digits, "-", "." and "_", not starting with "." or "_", with an optional @scope/ prefix, such as "@your-scope/your-package".`,
       ),
     );
   }
