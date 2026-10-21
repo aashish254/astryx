@@ -204,6 +204,9 @@ function printIntegrationValidation(data) {
         `${warnings} warning${warnings === 1 ? '' : 's'}`,
     ),
     ...docTypesBlocks(data.docTypes, errors > 0),
+    ...(data.publicImports?.status === 'skipped'
+      ? [text(`[skip] Imports not checked: ${data.publicImports.reason}`)]
+      : []),
     ...(data.publicImports && data.publicImports.unchecked.length > 0
       ? [
           text(
