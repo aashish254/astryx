@@ -16,6 +16,7 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import {parse} from '@babel/parser';
 import {spawnSync} from 'node:child_process';
 import {
   validateIntegration,
@@ -385,7 +386,7 @@ describe('a name that differs from its file name', () => {
     );
   });
 
-  it('flags a name the printed import cannot give when its module exports only a default', async () => {
+  it('flags a name a default-only printed module cannot give, with a fix that parses and clears it', async () => {
     const dir = writeNamed({
       [MANIFEST]: manifest({components: './components'}),
       'components/acme-widget.doc.mjs': namedDoc('acme-widget', 'AcmeWidget'),
@@ -398,8 +399,35 @@ describe('a name that differs from its file name', () => {
       'but components/acme-widget.tsx, the module its import names, does not export AcmeWidget',
     );
     expect(message).toContain(
-      "Fix: export it by name from components/acme-widget.tsx (`export {default as AcmeWidget}`), or set the doc's import to the module that publishes it as AcmeWidget.",
+      "Fix: add `export {AcmeWidget};` to components/acme-widget.tsx, so it exports AcmeWidget by name as well, or set the doc's import to the module that publishes it as AcmeWidget.",
     );
+
+    const source =
+      'export default function AcmeWidget() { return null; }\nexport {AcmeWidget};\n';
+    expect(() =>
+      parse(source, {sourceType: 'module', plugins: ['typescript', 'jsx']}),
+    ).not.toThrow();
+    const fixed = follow(dir, {write: {'components/acme-widget.tsx': source}});
+    expect(await issuesOf(fixed)).toEqual([]);
+  });
+
+  it('proposes a named binding for an anonymous default, which parses and clears it', async () => {
+    const dir = writeNamed({
+      [MANIFEST]: manifest({components: './components'}),
+      'components/acme-widget.doc.mjs': namedDoc('acme-widget', 'AcmeWidget'),
+      'components/acme-widget.tsx': 'export default () => null;\n',
+    });
+
+    expect(only(await issuesOf(dir), 'doc_name_mismatch')).toContain(
+      'Fix: bind the default to AcmeWidget in components/acme-widget.tsx and export it by name too (`const AcmeWidget = …; export default AcmeWidget; export {AcmeWidget};`)',
+    );
+    const source =
+      'const AcmeWidget = () => null;\nexport default AcmeWidget;\nexport {AcmeWidget};\n';
+    expect(() =>
+      parse(source, {sourceType: 'module', plugins: ['typescript', 'jsx']}),
+    ).not.toThrow();
+    const fixed = follow(dir, {write: {'components/acme-widget.tsx': source}});
+    expect(await issuesOf(fixed)).toEqual([]);
   });
 
   it('lists a default-only source as not checked when no printed import can be resolved', async () => {
@@ -513,6 +541,23 @@ describe('block component names', () => {
     expect(await issuesOf(dir)).toEqual([]);
   });
 
+  it('looks a name up in Core before giving up on a namespace import', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({templates: './templates'}),
+      'templates/account-card.doc.mjs': block(
+        " componentsUsed: ['Layout', 'Panel']",
+      ),
+      'templates/account-card.tsx':
+        "import * as stylex from '@stylexjs/stylex';\nimport * as UI from '@acme/ui';\nexport default function A() {\n  return <UI.Panel />;\n}\n",
+    });
+
+    const {data} = await validateIntegration(undefined, {cwd: dir});
+    expect(data.issues).toEqual([]);
+    expect(data.blockComponents?.unchecked.map(entry => entry.name)).toEqual([
+      'Panel',
+    ]);
+  });
+
   it('lists a name the template may render through a namespace import as not checked', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({templates: './templates'}),
@@ -531,6 +576,25 @@ describe('block component names', () => {
           'account-card.tsx imports "@acme/ui" as a namespace (UI), whose component names this check does not read.',
       },
     ]);
+  });
+
+  it('prints the block names it could not judge', () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({templates: './templates'}),
+      'templates/account-card.doc.mjs': block(" componentsUsed: ['Panel']"),
+      'templates/account-card.tsx':
+        "import * as UI from '@acme/ui';\nexport default function A() {\n  return <UI.Panel />;\n}\n",
+    });
+
+    const run = spawnSync(
+      process.execPath,
+      [CLI, 'doctor', 'integration', 'validate'],
+      {cwd: dir, encoding: 'utf-8', timeout: 60_000},
+    );
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stdout).toContain(
+      '[info] Block component names not checked: 1 name(s) this check could not judge:',
+    );
   });
 
   it('follows a local helper the template renders through', async () => {

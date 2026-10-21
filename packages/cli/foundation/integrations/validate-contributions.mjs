@@ -507,6 +507,7 @@ async function judgeBlockComponents(integration) {
     const imported = importedNames(template.filePath);
     for (const {field, name} of fields) {
       if (own.has(name) || imported.names.has(name)) continue;
+      if (coreHas(name)) continue;
       // A name the template may reach through a namespace import, or
       // through a local module this read could not follow, is not judged.
       if (imported.unread.length > 0) {
@@ -526,7 +527,6 @@ async function judgeBlockComponents(integration) {
         });
         continue;
       }
-      if (coreHas(name)) continue;
       issues.push(
         issueWarning(
           'unknown_block_component',
@@ -625,11 +625,39 @@ function importedNames(file) {
 }
 
 /**
- * The block component names the check could not judge, shaped like the doc
- * type report so `integration check` counts them as not compared: each name
- * a template gives in `exampleFor` or `componentsUsed` that the package does
- * not have and the template does not import, when Core is not installed to
- * look it up in. A name judged unknown is an `unknown_block_component` issue,
+ * The local name a module's default export declares (`export default
+ * function AcmeWidget()`, `export default class AcmeWidget`), or of the
+ * binding it exports as default (`export default AcmeWidget`), or null.
+ * @param {string} file
+ * @returns {string | null}
+ */
+function defaultBinding(file) {
+  let ast;
+  try {
+    ast = parseModule(fs.readFileSync(file, 'utf8'), {
+      sourceType: 'module',
+      plugins: ['typescript', 'jsx'],
+      errorRecovery: true,
+    });
+  } catch {
+    return null;
+  }
+  for (const node of ast.program.body) {
+    if (node.type !== 'ExportDefaultDeclaration') continue;
+    const declaration = /** @type {any} */ (node.declaration);
+    if (typeof declaration?.id?.name === 'string') return declaration.id.name;
+    if (declaration?.type === 'Identifier') return declaration.name;
+  }
+  return null;
+}
+
+/**
+ * The block component names this check could not judge, shaped like the
+ * doc type report so `integration check` counts them as not compared: each
+ * name a template gives in `exampleFor` or `componentsUsed` that neither the
+ * package nor Core has, when the template may render it through a namespace
+ * import or a local module this check cannot read, or when Core is not
+ * installed to look it up in. A name judged unknown is an `unknown_block_component` issue,
  * so `findings` is always empty.
  * @param {LoadedIntegration} integration
  * @returns {Promise<{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}>}
@@ -985,7 +1013,10 @@ async function judgeComponentDocNames(
     // the one component the module exports.
     let fix;
     if (defaultOnly) {
-      fix = `Fix: export it by name from ${shown} (\`export {default as ${name}}\`), or set the doc's import to the module that publishes it as ${name}.`;
+      fix =
+        defaultBinding(module) === name
+          ? `Fix: add \`export {${name}};\` to ${shown}, so it exports ${name} by name as well, or set the doc's import to the module that publishes it as ${name}.`
+          : `Fix: bind the default to ${name} in ${shown} and export it by name too (\`const ${name} = …; export default ${name}; export {${name}};\`), or set the doc's import to the module that publishes it as ${name}.`;
     } else if (moduleExportsName(module, record.name)) {
       fix = `Fix: set name: '${record.name}' in ${file}.`;
     } else {

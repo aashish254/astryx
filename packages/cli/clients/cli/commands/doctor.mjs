@@ -192,14 +192,14 @@ function docNamesBlocks(report) {
 }
 
 /**
- * The block component names that could not be judged, without Core.
+ * The block component names this check could not judge.
  * @param {import('../../../api/integration/validate-integration.type.mjs').BlockComponentsReport | undefined} report
  */
 function blockComponentsBlocks(report) {
   if (!report || report.unchecked.length === 0) return [];
   return [
     text(
-      `[info] Block component names not checked: ${report.unchecked.length} name(s) only Core could resolve:`,
+      `[info] Block component names not checked: ${report.unchecked.length} name(s) this check could not judge:`,
     ),
     records(report.unchecked, {fields: ['file', 'name', 'reason']}),
   ];
