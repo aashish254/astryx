@@ -223,12 +223,16 @@ depends only on runtimes it can maintain.
   A candidate that fails FR13 or falls below the OQ1 thresholds is not
   supported, whatever its other scores.
 
-- **FR13 — Required dependencies are platform or first-party.** A native
-  platform's required runtime dependencies are limited to the platform's own
-  SDKs and open-source projects maintained by the organization that maintains
-  Astryx, such as React, React Native, Hermes, and StyleX. A third-party library
-  or a fork outside that set may be an optional integration, an example, or a
-  reference. It is never required to use Astryx on any platform.
+- **FR13 — Required dependencies are platform, first-party, or React Native's
+  own platforms.** A native platform's required runtime dependencies are limited
+  to the platform's own SDKs, open-source projects maintained by the organization
+  that maintains Astryx, such as React, React Native, Hermes, and StyleX, and,
+  for macOS and Windows, the out-of-tree platforms React Native names as its own
+  for them (`react-native-macos` and `react-native-windows`). Any other
+  third-party library or fork may be an optional integration, an example, or a
+  reference. It is never required to use Astryx on any platform. The FR12
+  dependency measure records each required runtime's maintainer and how far its
+  releases trail React Native's.
 - **FR14 — Core is unchanged by native support.** `@astryxdesign/core` never
   imports or depends on `@astryxdesign/native`. For every theme, generated CSS,
   mounted rules, and rendered web markup are byte-identical whether or not the
@@ -331,7 +335,7 @@ depends only on runtimes it can maintain.
 | FR10     | `defineNativeTheme` unit and type tests, plus a resolution test per platform                                                       | durable `material` only; entry with and without a range; overlapping entries; platform `components`; native theme extension; a token in native configuration; platform term outside its entry or range | A token can be set, a platform term type-checks outside its entry or range, an entry applies outside its platform or range, overlap order is ignored, or extension drops members           |
 | FR11     | FR12 experience scores per scenario step, oldest and newest supported OS                                                           | navigation, sheet, menu, picker, switch, text entry, scrolling, keyboard shortcut, large text; a capability newer than the running OS                                                                  | A step draws a custom control where the platform provides one, misses the touch-target minimum, ignores the text-size setting, or breaks on the oldest supported OS                        |
 | FR12     | Scenario replay on candidates and reference, on real release builds and devices                                                    | each scenario on each candidate and the toolkit reference; oldest and newest supported OS; a lower-end device per platform                                                                             | A candidate is scored without the reference, on a debug build, on emulation only, on one OS version, or on a different scenario set                                                        |
-| FR13     | Dependency manifest audit of each native platform package                                                                          | platform SDK; first-party project; third-party optional integration; third-party fork                                                                                                                  | A third-party library or fork is required to install, build, or render on the platform                                                                                                     |
+| FR13     | Dependency manifest audit of each native platform package                                                                          | platform SDK; first-party project; a React Native out-of-tree desktop platform; third-party optional integration; third-party fork                                                                     | A third-party library or fork is required to install, build, or render on the platform                                                                                                     |
 | FR14     | Compiler and render output comparison, core dependency graph check, and a web type surface diff                                    | each maintained theme with and without the native package installed; runtime-mounted and built CSS; components; web types before and after                                                             | Any byte of CSS, mounted rules, or rendered web markup differs, core depends on native, or a web prop disappears outside a planned minor                                                   |
 | FR15     | Package metadata and release-channel checks                                                                                        | native package manifest; a stable release; a canary release                                                                                                                                            | The native package is publishable as a stable release before a platform is supported                                                                                                       |
 | FR16     | Package-boundary check, plus a native fixture app installed and bundled without `react-dom` or StyleX                              | an import of the portable entry; an import of a core component or the web theme entry from native; a core import of native; a core contract change                                                     | Native resolves a DOM type, `react-dom`, StyleX, or a web module; either direction of the boundary is crossed; or a core contract change does not reach native contracts on the next build |
@@ -377,14 +381,20 @@ both remain candidates. The FR12 scorecard, measured against the platform's own
 toolkit, decides which approach a platform uses, and a platform may change
 approach when a candidate scores higher.
 
-### DEC-4 — Astryx requires only platform and first-party runtimes
+### DEC-4 — Astryx requires only platform, first-party, and React Native's own platform runtimes
 
 **Reference:** `spec:AST-082/DEC-4`
-**Decider:** cixzhang, 2026-10-20
+**Decider:** cixzhang, 2026-10-21
 
 A platform whose required runtime Astryx cannot maintain can break or stall
 outside the project's control, so required dependencies are limited to platform
-SDKs and first-party projects (FR13).
+SDKs and first-party projects (FR13). React Native's out-of-tree desktop
+platforms are allowed so that React Native and pure native can be compared on
+macOS and Windows as on iOS and Android; the scorecard measures their
+maintenance risk instead of excluding them.
+
+Rejected: requiring any other third-party runtime or fork, because Astryx could
+neither fix it nor schedule around it.
 
 ### DEC-5 — Native theme intent is durable; platform and version features are scoped
 
