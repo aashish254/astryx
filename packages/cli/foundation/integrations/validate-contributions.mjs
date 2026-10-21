@@ -514,12 +514,14 @@ const LOCAL_MODULE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs'];
  * Every name a template imports, as imported and as bound locally, read
  * without running it, with the names its local helper modules import (a
  * relative import or re-export is followed, so a barrel such as
- * `parts/index.ts` counts). `unread` says why a name it renders might still
- * be missing from `names`: a namespace import, members rendered through an
- * imported binding (`<UI.Panel />`), a dynamic `import()`, an `export *`
- * from another package, members read off an imported binding outside JSX
- * (`const {Panel} = UI`, `UI.Panel`), `require()`, or a local module it
- * could not read.
+ * `parts/index.ts` counts). A name is judged only where the template reaches
+ * components solely through named imports and re-exports this walk reads:
+ * `unread` gives the reason for anything else it meets, which leaves an
+ * unresolved name unjudged. That covers a default or namespace import, an
+ * alias of an imported binding, a member read off one (in JSX or not,
+ * optional or computed), a rendered component it cannot trace to an import,
+ * `require()`, a dynamic `import()`, an `export *` from another package, and
+ * a local module it cannot read.
  * @param {string} file
  * @returns {{names: Set<string>, unread: string[]}}
  */
@@ -550,6 +552,12 @@ function importedNames(file) {
       );
       return;
     }
+    // A file that parses only with errors recovered may be missing parts.
+    if (/** @type {any} */ (ast).errors?.length > 0) {
+      unread.push(
+        `${shown} does not parse cleanly, so the components it renders are not known.`,
+      );
+    }
     /** @type {Map<string, string>} local binding -> the module it came from */
     const bindings = new Map();
     for (const node of ast.program.body) {
@@ -565,6 +573,12 @@ function importedNames(file) {
               `${shown} imports "${source}" as a namespace (${specifier.local.name}), whose component names this check does not read.`,
             );
             continue;
+          }
+          if (specifier.type === 'ImportDefaultSpecifier') {
+            // A default may be any component, under any name.
+            unread.push(
+              `${shown} imports the default of "${source}" as ${specifier.local.name}, which may be any component.`,
+            );
           }
           names.add(specifier.local.name);
           bindings.set(specifier.local.name, source);
@@ -618,32 +632,74 @@ function importedNames(file) {
         visit(target);
       }
     }
-    // What the module renders through a binding or loads at runtime, which
-    // its import statements do not name.
+    // Anything this check does not model leaves the names unjudged: what
+    // the module renders through a binding, an alias, a member read, a
+    // component held in a variable, or a module loaded at runtime.
+    /** @type {Set<string>} functions and classes the module declares */
+    const declared = new Set();
     walkNodes(ast.program, node => {
       if (
-        node.type === 'JSXMemberExpression' &&
-        node.object?.type === 'JSXIdentifier' &&
-        bindings.has(node.object.name)
+        (node.type === 'FunctionDeclaration' ||
+          node.type === 'ClassDeclaration') &&
+        node.id?.name
       ) {
+        declared.add(node.id.name);
+      } else if (
+        node.type === 'VariableDeclarator' &&
+        node.id?.type === 'Identifier' &&
+        [
+          'ArrowFunctionExpression',
+          'FunctionExpression',
+          'ClassExpression',
+        ].includes(node.init?.type)
+      ) {
+        declared.add(node.id.name);
+      }
+    });
+    const from = (/** @type {string} */ name) =>
+      bindings.has(name) ? ` (imported from "${bindings.get(name)}")` : '';
+    walkNodes(ast.program, node => {
+      if (node.type === 'JSXMemberExpression') {
+        let object = node.object;
+        while (object?.type === 'JSXMemberExpression') object = object.object;
+        const name = object?.name ?? 'an object';
         unread.push(
-          `${shown} renders members of ${node.object.name} (imported from "${bindings.get(node.object.name)}"), whose names this check does not read.`,
+          `${shown} renders members of ${name}${from(name)}, whose names this check does not read.`,
         );
       } else if (
-        // `UI.Panel`, `createElement(UI.Panel)`, `const {Panel} = UI`: a
-        // member read off an imported binding outside JSX.
-        (node.type === 'MemberExpression' &&
-          node.object?.type === 'Identifier' &&
-          bindings.has(node.object.name)) ||
-        (node.type === 'VariableDeclarator' &&
-          node.id?.type === 'ObjectPattern' &&
-          node.init?.type === 'Identifier' &&
-          bindings.has(node.init.name))
+        node.type === 'JSXOpeningElement' &&
+        node.name?.type === 'JSXIdentifier' &&
+        /^[A-Z]/u.test(node.name.name) &&
+        !names.has(node.name.name) &&
+        !declared.has(node.name.name)
       ) {
-        const name =
-          node.type === 'MemberExpression' ? node.object.name : node.init.name;
         unread.push(
-          `${shown} reads members of ${name} (imported from "${bindings.get(name)}"), whose names this check does not read.`,
+          `${shown} renders ${node.name.name}, a value this check does not trace to an import.`,
+        );
+      } else if (
+        node.type === 'VariableDeclarator' &&
+        node.init?.type === 'Identifier' &&
+        bindings.has(node.init.name)
+      ) {
+        // `const UI = Lib`, `const {Panel} = Lib`: an alias of an import.
+        if (node.id?.type === 'Identifier') {
+          bindings.set(
+            node.id.name,
+            /** @type {string} */ (bindings.get(node.init.name)),
+          );
+        }
+        unread.push(
+          `${shown} reads ${node.init.name}${from(node.init.name)} into another name, which this check does not follow.`,
+        );
+      } else if (
+        (node.type === 'MemberExpression' ||
+          node.type === 'OptionalMemberExpression') &&
+        node.object?.type === 'Identifier' &&
+        bindings.has(node.object.name)
+      ) {
+        // `UI.Panel`, `UI?.Panel`, `UI['Panel']`, `createElement(UI.Panel)`.
+        unread.push(
+          `${shown} reads members of ${node.object.name}${from(node.object.name)}, whose names this check does not read.`,
         );
       } else if (
         node.type === 'CallExpression' &&

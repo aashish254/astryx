@@ -652,22 +652,42 @@ describe('block component names', () => {
     [
       'a default import used as a namespace',
       "import UI from '@acme/ui';\nexport default function A() {\n  return <UI.Panel />;\n}\n",
-      'account-card.tsx renders members of UI (imported from "@acme/ui"), whose names this check does not read.',
+      'account-card.tsx imports the default of "@acme/ui" as UI, which may be any component.',
     ],
     [
-      'members destructured off a default import',
-      "import UI from '@acme/ui';\nconst {Panel} = UI;\nexport default function A() {\n  return <Panel />;\n}\n",
-      'account-card.tsx reads members of UI (imported from "@acme/ui"), whose names this check does not read.',
+      'members destructured off a named import',
+      "import {UI} from '@acme/ui';\nconst {Panel} = UI;\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx reads UI (imported from "@acme/ui") into another name, which this check does not follow.',
     ],
     [
-      'a member read off a default import',
-      "import UI from '@acme/ui';\nconst Panel = UI.Panel;\nexport default function A() {\n  return <Panel />;\n}\n",
+      'a member read off a named import',
+      "import {UI} from '@acme/ui';\nconst Panel = UI.Panel;\nexport default function A() {\n  return <Panel />;\n}\n",
       'account-card.tsx reads members of UI (imported from "@acme/ui"), whose names this check does not read.',
     ],
     [
       'createElement with a member',
-      "import {createElement} from 'react';\nimport UI from '@acme/ui';\nexport default function A() {\n  return createElement(UI.Panel);\n}\n",
+      "import {createElement} from 'react';\nimport {UI} from '@acme/ui';\nexport default function A() {\n  return createElement(UI.Panel);\n}\n",
       'account-card.tsx reads members of UI (imported from "@acme/ui"), whose names this check does not read.',
+    ],
+    [
+      'a default import under another name',
+      "import Panel from '@acme/ui/AcmePanel';\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx imports the default of "@acme/ui/AcmePanel" as Panel, which may be any component.',
+    ],
+    [
+      'an alias of an imported binding',
+      "import {Lib} from '@acme/ui';\nconst UI = Lib;\nexport default function A() {\n  return <UI.AcmePanel />;\n}\n",
+      'account-card.tsx reads Lib (imported from "@acme/ui") into another name, which this check does not follow.',
+    ],
+    [
+      'an optional member read',
+      "import {UI} from '@acme/ui';\nconst Panel = UI?.AcmePanel;\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx reads members of UI (imported from "@acme/ui"), whose names this check does not read.',
+    ],
+    [
+      'a component held in a variable',
+      "import {pick} from '@acme/ui';\nconst Panel = pick('panel');\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx renders Panel, a value this check does not trace to an import.',
     ],
     [
       'require()',
@@ -684,14 +704,16 @@ describe('block component names', () => {
     async (_label, source, reason) => {
       const dir = writePackage({
         [MANIFEST]: manifest({templates: './templates'}),
-        'templates/account-card.doc.mjs': block(" componentsUsed: ['Panel2']"),
+        'templates/account-card.doc.mjs': block(
+          " componentsUsed: ['AcmePanel']",
+        ),
         'templates/account-card.tsx': source,
       });
 
       const {data} = await validateIntegration(undefined, {cwd: dir});
       expect(data.issues).toEqual([]);
       expect(data.blockComponents?.unchecked).toEqual([
-        {file: 'templates/account-card.doc.mjs', name: 'Panel2', reason},
+        {file: 'templates/account-card.doc.mjs', name: 'AcmePanel', reason},
       ]);
     },
   );
