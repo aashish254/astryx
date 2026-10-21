@@ -377,6 +377,34 @@ export function buildDocsTree({namespaces, docs, topics = []}) {
       return false;
     }
     const taken = byFoldedRoute.get(folded);
+    if (
+      taken &&
+      taken.provider === CLI_PROVIDER &&
+      node.provider !== CLI_PROVIDER &&
+      !node.generated
+    ) {
+      // Astryx's own doc keeps its route: name both docs as an author knows
+      // them, never by their ids, and say what to change.
+      const what = (/** @type {TreeNode} */ n) =>
+        n.kind === 'namespace'
+          ? 'namespace'
+          : n.kind === 'generic'
+            ? 'topic'
+            : `${n.kind} doc`;
+      const scope = String(node.provider).split('/').pop() ?? '';
+      const suggestion = `${
+        scope
+          .replace(/[^a-z0-9]+/gi, '-')
+          .replace(/^-|-$/g, '')
+          .toLowerCase() || 'my'
+      }-${node.name.toLowerCase()}`;
+      report(
+        'duplicate_route',
+        at,
+        `The ${what(node)} "${node.name}" from ${node.provider} and Astryx's own ${what(taken)} "${taken.name}" both have the route "${node.route}", so \`astryx docs ${node.route}\` cannot open both. Fix: rename "${node.name}" (its \`name\` and its file), such as \`name: '${suggestion}'\`${node.route.includes('/') ? ', or place it elsewhere' : ''}.`,
+      );
+      return false;
+    }
     if (taken) {
       report(
         'duplicate_route',

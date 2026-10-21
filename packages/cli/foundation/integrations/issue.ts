@@ -21,4 +21,10 @@ export interface AstryxIntegrationIssue {
    * lookup suggests, as `map[map] = icon`.
    */
   suggestion?: {map: string; icon: string};
+  /** What to change, ready to paste, when the check knows it. */
+  fix?: string;
+  /** The file the issue is in, relative to the package. */
+  file?: string;
+  /** The 1-based line in `file`, when the check can locate it. */
+  line?: number;
 }

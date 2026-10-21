@@ -94,7 +94,15 @@ function issueBlocks(issues, seen) {
   return [
     section('Integration issues'),
     records(fresh, {
-      fields: ['severity', 'code', 'message', 'suggestion'],
+      fields: [
+        'severity',
+        'code',
+        'message',
+        'suggestion',
+        'fix',
+        'file',
+        'line',
+      ],
       format: {
         severity: statusToken,
         // An unmapped icon definition names the icon to map it to.
@@ -236,9 +244,18 @@ function printIntegrationValidation(data, seen) {
     ...(data.issues.length > 0
       ? [
           records(unseen(data.issues, seen), {
-            fields: ['severity', 'code', 'message', 'suggestion'],
+            fields: [
+              'severity',
+              'code',
+              'message',
+              'suggestion',
+              'fix',
+              'file',
+              'line',
+            ],
             format: {
               severity: statusToken,
+              // An unmapped icon definition names the icon to map it to.
               suggestion: (/** @type {{map: string, icon: string}} */ value) =>
                 `map.${value.map} = "${value.icon}"`,
             },
@@ -340,6 +357,9 @@ function propDriftBlocks(report, failed) {
           'codeType',
           'docRequired',
           'codeRequired',
+          'docDefault',
+          'codeDefault',
+          'fix',
         ],
         format: {severity: statusToken},
       }),
@@ -449,7 +469,10 @@ function printDocConflicts(data, seen) {
     // issue is not printed twice.
     ...issueBlocks(
       data.issues.filter(
-        issue => issue.code !== 'copied_passage' && issue.code !== 'doc_fluff',
+        issue =>
+          issue.code !== 'copied_passage' &&
+          issue.code !== 'doc_fluff' &&
+          issue.code !== 'stray_doc_pointer',
       ),
       seen,
     ),
@@ -520,6 +543,29 @@ function printDocConflicts(data, seen) {
           'file',
           'line',
           'density',
+          'message',
+        ],
+      }),
+    );
+  }
+  const stray = data.strayPointers ?? [];
+  if (stray.length === 0) {
+    if (!data.issues.some(issue => issue.severity === 'error')) {
+      output.push(text('[ok] Every pointer to a doc is a link.'));
+    }
+  } else {
+    output.push(
+      text(
+        `[warn] ${stray.length} stray doc pointer(s) (stray_doc_pointer): a written \`astryx docs <name>\` where a link would be checked. Replace each with the link shown.`,
+      ),
+      records(stray, {
+        fields: [
+          'topic',
+          'section',
+          'file',
+          'line',
+          'pointer',
+          'link',
           'message',
         ],
       }),

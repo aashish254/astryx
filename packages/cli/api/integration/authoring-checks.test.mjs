@@ -912,7 +912,7 @@ describe('integrationDocConflicts fluff', () => {
       kind: 'phrase',
       phrase: 'in order to',
       section: 'Overview',
-      file: expect.stringMatching(/acme-setup\.doc\.mjs$/),
+      file: 'docs/acme-setup.doc.mjs',
       line: 1,
       density: null,
     });
@@ -1036,5 +1036,155 @@ describe('integrationDocConflicts fluff', () => {
     expect(found[0].density).toBeLessThan(0.5);
     expect(found[0].message).toContain("Core's guides have a median of");
     expect(found[0].message).toContain('under the 50% floor');
+  });
+});
+
+describe('integrationDocConflicts stray doc pointers', () => {
+  const stray = (/** @type {any} */ result) => result.data.strayPointers;
+
+  it('lists a pointer to a topic whose name holds an underscore or capitals', async () => {
+    writeTopics([
+      {name: 'acme_setup', text: 'Install it first.'},
+      {name: 'AcmeGuide', text: 'Read on.'},
+      {
+        name: 'acme-menus',
+        text: 'Set it up as `astryx docs acme_setup` says, then `astryx docs AcmeGuide`; flags such as `astryx docs -h` are not pointers.',
+      },
+    ]);
+
+    const found = stray(
+      await integrationDocConflicts(undefined, {cwd: tmpDir}),
+    );
+
+    expect(found.map((/** @type {any} */ each) => each.link)).toEqual([
+      '{@link generic:acme_setup}',
+      '{@link generic:AcmeGuide}',
+    ]);
+  });
+
+  it('links a pointer to an extension topic to the page it extends', async () => {
+    writeTopics([
+      {name: 'acme-theme', text: 'Acme colors.', extendsTopic: 'theme'},
+      {name: 'acme-menus', text: 'Colors are in `astryx docs acme-theme`.'},
+    ]);
+
+    const [hit, ...rest] = stray(
+      await integrationDocConflicts(undefined, {cwd: tmpDir}),
+    );
+
+    expect(rest).toEqual([]);
+    expect(hit).toMatchObject({
+      topic: 'acme-menus',
+      link: '{@link @astryxdesign/cli:generic:theme}',
+    });
+  });
+
+  it('places a pointer-only list item on its own line, not an earlier summary or code block', async () => {
+    writeTopics([{name: 'acme-menus', text: 'Menus.'}]);
+    fs.writeFileSync(
+      path.join(tmpDir, 'docs', 'acme-setup.doc.mjs'),
+      [
+        'export default {',
+        "  type: 'generic',",
+        "  name: 'acme-setup',",
+        "  title: 'Fixture',",
+        "  summary: 'See `astryx docs acme-menus`.',",
+        "  description: 'Fixture topic.',",
+        "  sections: [{title: 'Overview', content: [",
+        "    {type: 'code', lang: 'bash', code: 'astryx docs acme-menus'},",
+        "    {type: 'list', style: 'unordered', items: ['`astryx docs acme-menus`']},",
+        '  ]}],',
+        '};',
+        '',
+      ].join('\n'),
+    );
+
+    const found = stray(
+      await integrationDocConflicts(undefined, {cwd: tmpDir}),
+    ).filter((/** @type {any} */ each) => each.topic === 'acme-setup');
+
+    expect(found.map((/** @type {any} */ each) => each.line)).toEqual([9]);
+  });
+
+  it('lists a written pointer to a doc with the link that replaces it, and warns', async () => {
+    writeTopics([
+      {name: 'acme-setup', text: 'Install it first.'},
+      {
+        name: 'acme-menus',
+        text: 'Set it up as `astryx docs acme-setup` says; the theme is in `astryx docs theme`.',
+      },
+    ]);
+
+    const result = await integrationDocConflicts(undefined, {cwd: tmpDir});
+    const [own, core, ...rest] = stray(result);
+
+    expect(rest).toEqual([]);
+    expect(own).toMatchObject({
+      topic: 'acme-menus',
+      section: 'Overview',
+      file: 'docs/acme-menus.doc.mjs',
+      line: 1,
+      pointer: 'astryx docs acme-setup',
+      link: '{@link generic:acme-setup}',
+    });
+    expect(own.message).toContain(
+      'Replace `astryx docs acme-setup`, code ticks included, with {@link generic:acme-setup}',
+    );
+    expect(core.link).toBe('{@link @astryxdesign/cli:generic:theme}');
+    expect(result.data.issues).toEqual([
+      {code: 'stray_doc_pointer', severity: 'warning', message: own.message},
+      {code: 'stray_doc_pointer', severity: 'warning', message: core.message},
+    ]);
+  });
+
+  it('names a namespace doc by its kind', async () => {
+    writeTopics([
+      {name: 'acme-setup', text: 'Lay it out as `astryx docs layout` says.'},
+    ]);
+
+    const [hit] = stray(
+      await integrationDocConflicts(undefined, {cwd: tmpDir}),
+    );
+
+    expect(hit.link).toBe('{@link @astryxdesign/cli:namespace:layout}');
+  });
+
+  it('finds the line in the string that holds the pointer, not in the summary or code', async () => {
+    writeTopics([]);
+    fs.writeFileSync(
+      path.join(tmpDir, 'docs', 'acme-lines.doc.mjs'),
+      [
+        'export default {',
+        "  type: 'generic',",
+        "  name: 'acme-lines',",
+        "  title: 'Fixture',",
+        "  description: 'Read `astryx docs theme` first.',",
+        "  sections: [{title: 'Overview', content: [",
+        "    {type: 'code', lang: 'bash', code: 'astryx docs theme'},",
+        "    {type: 'prose', text: 'The colors your package sets show up in `astryx docs theme` for every app.'},",
+        '  ]}],',
+        '};',
+        '',
+      ].join('\n'),
+    );
+
+    const found = stray(
+      await integrationDocConflicts(undefined, {cwd: tmpDir}),
+    );
+
+    expect(found.map((/** @type {any} */ each) => each.line)).toEqual([8]);
+  });
+
+  it('leaves a command for a doc that does not exist, and a walkthrough', async () => {
+    writeTopics([
+      {
+        name: 'acme-setup',
+        text: 'Run `astryx docs acme-nothing`, or `astryx docs acme-setup overview`.',
+      },
+    ]);
+
+    expect(
+      stray(await integrationDocConflicts(undefined, {cwd: tmpDir})),
+    ).toEqual([]);
   });
 });
