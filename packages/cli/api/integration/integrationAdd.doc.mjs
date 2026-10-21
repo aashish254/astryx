@@ -23,7 +23,6 @@ export const doc = {
     'template',
     'codemod',
     'theme',
-    'icon-set',
   ],
   params: [
     {
@@ -36,7 +35,7 @@ export const doc = {
       name: 'name',
       type: 'string',
       description:
-        'Contribution name: PascalCase for component, lowercase kebab-case for template, codemod, theme, and icon-set, letters, digits, _ and - for doc, or the literal agent-doc line.',
+        'Contribution name: PascalCase for component, lowercase kebab-case for template, codemod, and theme, letters, digits, _ and - for doc, or the literal agent-doc line.',
       required: true,
     },
     {
@@ -72,49 +71,18 @@ export const doc = {
       name: 'options.parent',
       type: 'string',
       description:
-        'Namespace of this package to place the doc in, as a guide in its `guides` slot; the namespace doc is written when missing. Only valid for doc, and not with options.replaces or options.extends.',
+        "Namespace of this package to place the doc in, as a guide in its `guides` slot; the namespace doc is written when missing. Only valid for doc, and not with options.replaces or options.extends.",
     },
     {
       name: 'options.to',
       type: 'string',
-      description:
-        'Exact target semver (e.g. 1.2.0). Required for codemod and only valid there.',
+      description: 'Exact target semver (e.g. 1.2.0). Required for codemod and only valid there.',
     },
     {
       name: 'options.from',
       type: 'string',
       description:
-        'For theme: the slug of an existing theme to fork. For icon-set: a module whose every icon component the set wraps. Only valid for theme and icon-set.',
-    },
-    {
-      name: 'options.exclude',
-      type: 'string[] | string',
-      description:
-        'For icon-set with from: export names of the library that are not icons; a string is split on commas.',
-    },
-    {
-      name: 'options.set',
-      type: 'string',
-      description:
-        'For icon-definition: the icon set to add it to, when the package ships several.',
-    },
-    {
-      name: 'options.description',
-      type: 'string',
-      description:
-        'For icon-definition: one sentence on what an icon with this definition is for.',
-    },
-    {
-      name: 'options.words',
-      type: 'string[] | string',
-      description:
-        'For icon-definition: words people search for; a string is split on commas.',
-    },
-    {
-      name: 'options.icon',
-      type: 'string',
-      description:
-        "For icon-definition: an icon id to map it to in the set's `map`.",
+        'Slug of an existing theme to fork as the starting point. Only valid for theme.',
     },
   ],
   returns: [
@@ -142,8 +110,6 @@ export const doc = {
     'integrationAddCodemod',
     'integrationAddAgentDoc',
     'integrationAddTheme',
-    'integrationAddIconSet',
-    'integrationAddIconDefinition',
     'integrationPackCheck',
     'validateIntegration',
   ],

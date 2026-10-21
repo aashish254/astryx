@@ -156,7 +156,7 @@ function unparsedModule(set, packageDir, packageName) {
     if (failure) {
       return issueError(
         ICON_MODULE_INVALID,
-        `Icon set "${set.name}": ${path.relative(packageDir, failure.file).split(path.sep).join('/')} does not parse (${failure.message}), so its exports cannot be read. Fix the file; for the generated icons module, delete the broken lines and run \`astryx icon add\` again.`,
+        `Icon set "${set.name}": ${path.relative(packageDir, failure.file).split(path.sep).join('/')} does not parse (${failure.message}), so its exports cannot be read. Fix the file; for the generated icons module, delete the broken lines and run \`astryx experimental icon add\` again.`,
       );
     }
   }
@@ -194,7 +194,7 @@ function checkContract(set, packageName, pkg) {
       issues.push(
         issueError(
           ICON_MODULE_NOT_PUBLIC,
-          `${label}: ${what} is read from "${module}", which is not ${packageName} or one of its package.json "exports" subpaths. Every icon is a named export of the set's own package; re-export it there (\`astryx icon add\` does this).`,
+          `${label}: ${what} is read from "${module}", which is not ${packageName} or one of its package.json "exports" subpaths. Every icon is a named export of the set's own package; re-export it there (\`astryx experimental icon add\` does this).`,
         ),
       );
     }
@@ -250,7 +250,7 @@ function checkContract(set, packageName, pkg) {
         issues.push(
           issueError(
             ICON_GENERATED_TYPES_MISMATCH,
-            `${label}: ${typesRel} ${actual == null ? 'is missing' : 'does not match its generated module'}. Run \`astryx icon map\` or \`astryx icon add\` to rewrite it, or restore it from the generated module's exports.`,
+            `${label}: ${typesRel} ${actual == null ? 'is missing' : 'does not match its generated module'}. Run \`astryx experimental icon map\` or \`astryx experimental icon add\` to rewrite it, or restore it from the generated module's exports.`,
           ),
         );
       }
@@ -259,7 +259,7 @@ function checkContract(set, packageName, pkg) {
       issues.push(
         issueError(
           ICON_EXPORT_MISSING,
-          `${label}: its generated icons module "${set.data.generated}" does not exist. Run \`astryx icon add\` for each icon, or remove "generated".`,
+          `${label}: its generated icons module "${set.data.generated}" does not exist. Run \`astryx experimental icon add\` for each icon, or remove "generated".`,
         ),
       );
     }
@@ -316,7 +316,7 @@ function checkDefinitions(set) {
     if (mapped.has(doc.name)) continue;
     const suggestion = suggestIcon(set, doc);
     const hint = suggestion
-      ? ` Suggested: astryx icon map ${doc.name} ${suggestion.icon}.`
+      ? ` Suggested: astryx experimental icon map ${doc.name} ${suggestion.icon}.`
       : '';
     const message = doc.builtIn
       ? `${label} maps no icon to the built-in icon definition "${doc.name}" (${doc.description} Words: ${doc.words.join(', ')}.). Every set maps every built-in definition: add it to "map" in ${set.name}.icons.json with the id of the icon that draws it.${hint}`
@@ -345,7 +345,7 @@ function checkDefinitions(set) {
       const suggestion = suggestIcon(set, doc);
       const issue = issueWarning(
         ICON_DEFINITION_UNUSED,
-        `${label} declares the icon definition "${doc.name}", but "map" names no icon for it. Add it to "map" with the id of the icon that draws it, or remove definitions/${doc.name}.doc.mjs.${suggestion ? ` Suggested: astryx icon map ${doc.name} ${suggestion.icon}.` : ''}`,
+        `${label} declares the icon definition "${doc.name}", but "map" names no icon for it. Add it to "map" with the id of the icon that draws it, or remove definitions/${doc.name}.doc.mjs.${suggestion ? ` Suggested: astryx experimental icon map ${doc.name} ${suggestion.icon}.` : ''}`,
       );
       issues.push(suggestion ? {...issue, suggestion} : issue);
     }
@@ -437,7 +437,7 @@ function checkExports(set, packageDir, packageName) {
       issues.push(
         issueError(
           ICON_NOT_COMPONENT,
-          `${label}: ${what} names export "${name}", which is a value, not a component. Export a React component, or add it with \`astryx icon add\` and declare an "adapter" that turns it into one.`,
+          `${label}: ${what} names export "${name}", which is a value, not a component. Export a React component, or add it with \`astryx experimental icon add\` and declare an "adapter" that turns it into one.`,
         ),
       );
     }

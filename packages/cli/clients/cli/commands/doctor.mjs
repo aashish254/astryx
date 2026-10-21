@@ -109,8 +109,9 @@ function issueBlocks(issues, seen) {
 
 /**
  * The issues not printed yet, recording them as printed. `integration
- * check` runs several checks that each report the package-wide issues (an
- * icon set's, say); each is printed once, under the first check.
+ * check` runs several checks that each report an experimental icon set's
+ * package-wide issues; each is printed once, under the first check. Every
+ * other issue prints under each check that reports it, as it always has.
  * @template {{code: string, message: string}} T
  * @param {T[]} issues
  * @param {Set<string> | undefined} seen
@@ -118,10 +119,13 @@ function issueBlocks(issues, seen) {
  */
 function unseen(issues, seen) {
   if (!seen) return issues;
+  const once = (/** @type {T} */ issue) => /icon/u.test(issue.code);
   const fresh = issues.filter(
-    issue => !seen.has(`${issue.code}\0${issue.message}`),
+    issue => !once(issue) || !seen.has(`${issue.code}\0${issue.message}`),
   );
-  for (const issue of issues) seen.add(`${issue.code}\0${issue.message}`);
+  for (const issue of issues) {
+    if (once(issue)) seen.add(`${issue.code}\0${issue.message}`);
+  }
   return fresh;
 }
 

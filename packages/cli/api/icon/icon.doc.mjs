@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file FunctionDoc for `icon()` / `astryx icon` (AST-084 FR6, FR7).
+ * @file FunctionDoc for `icon()` / `astryx experimental icon` (AST-084 FR6, FR7).
  * @position packages/cli/api/icon — function documentation
  */
 
@@ -11,11 +11,12 @@ export const doc = {
   kind: 'api',
   name: 'icon',
   namespace: 'cli/api',
+  stability: 'experimental',
   displayName: 'icon()',
   summary:
     'Find an icon by meaning in the installed icon sets, read one icon, or list the sets.',
   description:
-    "Reads every installed icon set's data file, never the icon modules. With words it ranks icons by meaning: an icon definition the set's `map` names the icon for, then exact matches on its id or words, then a word that starts with the query, then partial matches; ties keep the project's set first, then integration load order, then id order. With `<set>/<id>` it reads one icon with every variant's import line. With `list` it lists the installed sets, how many icon definitions each one's `map` covers (built-in and all of Astryx's) and its own definitions, and any set withdrawn and why.",
+    "Reads every installed icon set's data file, never the icon modules. With words it ranks icons by meaning: an icon definition the set's `map` names the icon for, then exact matches on its id or words, then a word that starts with the query, then partial matches; ties keep the project's set first, then integration load order, then id order. With `<set>/<id>` it reads one icon with every variant's import line. With `list` it lists the installed sets, how many icon definitions each one's `map` covers (built-in and all of Astryx's) and its own definitions, and any set withdrawn and why. Experimental: it may change or be removed in a patch release.",
   importPath: '@astryxdesign/cli/api',
   signature:
     'icon(query?: string, options?: IconOptions): Promise<IconSearchResponse | IconDetailResponse | IconListResponse>',
@@ -85,6 +86,6 @@ export const doc = {
     {label: 'One icon', code: "await icon('outline/trash');"},
     {label: 'Installed sets', code: 'await icon(undefined, {list: true});'},
   ],
-  command: 'icon',
+  command: 'experimental icon',
   related: ['search', 'template'],
 };

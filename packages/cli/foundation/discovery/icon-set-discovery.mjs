@@ -4,7 +4,7 @@
  * @file Icon-set discovery (AST-084 FR1–FR3, FR5, FR9, FR10): the one seam
  * every icon surface reads installed icon sets through.
  *
- * An integration's `iconSets` root holds one lower-kebab directory per set.
+ * An integration's `experimental.iconSets` root holds one lower-kebab directory per set.
  * Each set has a statically read `<name>.doc.mjs` IconSetDoc and a
  * `<name>.icons.json` data file. Discovery never executes the descriptor, the
  * data file, or the icon module. A set whose descriptor or data is invalid,
@@ -79,10 +79,10 @@ export const NOTICE_FILE_RE = /^(?:licen[cs]e|notice|copying)(?:[.-].*)?$/iu;
  * @typedef {object} IconSetChoice
  * @property {'selected' | 'none' | 'ambiguous' | 'missing'} status
  *   `selected`: one set is the project's; `none`: no set is installed;
- *   `ambiguous`: two or more are installed and `iconSet` names none of them
- *   uniquely; `missing`: `iconSet` names a set that is not installed
+ *   `ambiguous`: two or more are installed and `experimental.iconSet` names none of them
+ *   uniquely; `missing`: `experimental.iconSet` names a set that is not installed
  * @property {DiscoveredIconSet} [set] the project's set, when selected
- * @property {string} [configured] the `iconSet` config value, when set
+ * @property {string} [configured] the `experimental.iconSet` config value, when set
  * @property {string} reason one sentence saying why
  */
 
@@ -201,7 +201,7 @@ function readIconSet(root, name, owner) {
   for (const [name, id] of Object.entries(data.map ?? {})) {
     if (astryx.has(name) || declared.has(name)) continue;
     throw new Error(
-      `${label} data file is invalid: map "${name}" (icon "${id}") is not an icon definition. Declare it in definitions/${name}.doc.mjs, or use an Astryx icon definition (astryx docs icon-definitions).`,
+      `${label} data file is invalid: map "${name}" (icon "${id}") is not an icon definition. Declare it in definitions/${name}.doc.mjs, or use an Astryx icon definition (astryx docs cli/experimental/icon-definitions).`,
     );
   }
 
@@ -365,11 +365,11 @@ export function discoverIntegrationIconSets(integration, {projectDir}) {
 }
 
 /**
- * Pick the project's icon set (FR10): the set `iconSet` names, as
+ * Pick the project's icon set (FR10): the set `experimental.iconSet` names, as
  * `"<set>"` or `"<package>/<set>"`; otherwise the only installed set;
  * otherwise none.
  * @param {DiscoveredIconSet[]} sets installed sets, in integration load order
- * @param {string | undefined} configured the `iconSet` config value
+ * @param {string | undefined} configured the `experimental.iconSet` config value
  * @returns {IconSetChoice}
  */
 export function chooseProjectIconSet(sets, configured) {
@@ -384,20 +384,20 @@ export function chooseProjectIconSet(sets, configured) {
         status: 'selected',
         set: byName[0],
         configured,
-        reason: `iconSet names "${configured}".`,
+        reason: `experimental.iconSet names "${configured}".`,
       };
     }
     if (byName.length > 1) {
       return {
         status: 'ambiguous',
         configured,
-        reason: `iconSet "${configured}" names a set in ${byName.map(set => set.package).join(' and ')}; write it as "<package>/<set>".`,
+        reason: `experimental.iconSet "${configured}" names a set in ${byName.map(set => set.package).join(' and ')}; write it as "<package>/<set>".`,
       };
     }
     return {
       status: 'missing',
       configured,
-      reason: `iconSet names "${configured}", but no installed set has that name${sets.length > 0 ? ` (installed: ${sets.map(iconSetKey).join(', ')})` : ''}.`,
+      reason: `experimental.iconSet names "${configured}", but no installed set has that name${sets.length > 0 ? ` (installed: ${sets.map(iconSetKey).join(', ')})` : ''}.`,
     };
   }
   if (sets.length === 1) {
@@ -412,7 +412,7 @@ export function chooseProjectIconSet(sets, configured) {
   }
   return {
     status: 'ambiguous',
-    reason: `${sets.length} icon sets are installed (${sets.map(iconSetKey).join(', ')}) and astryx.config sets no iconSet.`,
+    reason: `${sets.length} icon sets are installed (${sets.map(iconSetKey).join(', ')}) and astryx.config sets no experimental.iconSet.`,
   };
 }
 

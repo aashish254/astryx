@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-/** @file FunctionDoc for `iconMap()` / `astryx icon map` (AST-084 FR3). */
+/** @file FunctionDoc for `iconMap()` / `astryx experimental icon map` (AST-084 FR3). */
 
 /** @type {import('@astryxdesign/cli/authoring').FunctionDoc} */
 export const doc = {
@@ -8,11 +8,12 @@ export const doc = {
   kind: 'api',
   name: 'iconMap',
   namespace: 'cli/api',
+  stability: 'experimental',
   displayName: 'iconMap()',
   summary:
     'Register which icon of the set being authored draws an icon definition.',
   description:
-    "Run inside an icon-set package. Sets `map[definition] = icon` in the set's data file, or removes the entry. The definition must be Astryx's or one the set declares, and the icon an id in the file. The file is written in one fixed shape, `map` keys sorted. `integration check` suggests these commands for definitions the set has a fitting icon for.",
+    "Run inside an icon-set package. Sets `map[definition] = icon` in the set's data file, or removes the entry. The definition must be Astryx's or one the set declares, and the icon an id in the file. The file is written in one fixed shape, `map` keys sorted. `integration check` suggests these commands for definitions the set has a fitting icon for. Experimental: it may change or be removed in a patch release.",
   importPath: '@astryxdesign/cli/api',
   signature:
     'iconMap(definition: string, icon?: string, options?: IconMapOptions): Promise<IconMapResponse>',
@@ -70,6 +71,6 @@ export const doc = {
       code: "await iconMap('delete', undefined, {remove: true});",
     },
   ],
-  command: 'icon map',
-  related: ['iconAdd', 'integrationAddIconDefinition', 'validateIntegration'],
+  command: 'experimental icon map',
+  related: ['iconAdd', 'iconNewDefinition', 'validateIntegration'],
 };

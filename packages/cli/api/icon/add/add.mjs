@@ -20,7 +20,7 @@
  * Running it again with the same arguments changes nothing.
  *
  * @output the `icon.add` or `icon.definitionMatches` envelope
- * @position api/icon/add — dispatched by the `icon add` command
+ * @position api/icon/add — dispatched by the `experimental icon add` command
  */
 
 import * as path from 'node:path';
@@ -59,6 +59,9 @@ const MATCH_LIMIT = 10;
 /**
  * Register one icon in the set being authored, or list the definitions that
  * fit it.
+ * Experimental (spec:AST-017 FR27): may change or be removed in a patch
+ * release.
+ * @experimental
  * @param {string} exportName the export the set exposes the icon as
  * @param {import('../icon.type.mjs').IconAddOptions} options
  * @returns {Promise<import('../icon.type.mjs').IconAddResponse | import('../icon.type.mjs').IconDefinitionMatchesResponse>}
@@ -371,7 +374,7 @@ function definitionMatches(set, exportName, from, id) {
       }
     }
   }
-  const base = `astryx icon add ${exportName} --from ${from}`;
+  const base = `astryx experimental icon add ${exportName} --from ${from}`;
   const matches = all
     .filter(({doc}) => best.has(doc.name))
     .map(({doc, source}) => {

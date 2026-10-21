@@ -121,21 +121,27 @@ export async function loadAuthoringSelfDocs(
  * @returns {string[][]}
  */
 function fieldRows(fields) {
-  return fields.flatMap(field => [
-    [
-      String(field.name),
-      String(field.type ?? ''),
-      field.required ? 'yes' : 'no',
-      [
-        field.description,
-        field.default != null ? `Default: ${field.default}.` : null,
-        field.example != null ? `Example: ${field.example}.` : null,
-      ]
-        .filter(Boolean)
-        .join(' '),
-    ],
-    ...fieldRows(field.fields ?? []),
-  ]);
+  // An experimental field is documented on its feature's experimental route,
+  // never in the stable schema's table (spec:AST-017 FR27).
+  return fields.flatMap(field =>
+    field.stability === 'experimental'
+      ? []
+      : [
+          [
+            String(field.name),
+            String(field.type ?? ''),
+            field.required ? 'yes' : 'no',
+            [
+              field.description,
+              field.default != null ? `Default: ${field.default}.` : null,
+              field.example != null ? `Example: ${field.example}.` : null,
+            ]
+              .filter(Boolean)
+              .join(' '),
+          ],
+          ...fieldRows(field.fields ?? []),
+        ],
+  );
 }
 
 /**

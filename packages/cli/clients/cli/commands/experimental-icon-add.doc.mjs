@@ -1,16 +1,17 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-/** @file CommandDoc for `astryx icon add`. */
+/** @file CommandDoc for `astryx experimental icon add`. */
 
 /** @type {import('@astryxdesign/cli/authoring').CommandDoc} */
 export const doc = {
   type: 'command',
-  name: 'icon add',
-  displayName: 'astryx icon add',
+  name: 'experimental icon add',
+  displayName: 'astryx experimental icon add',
   namespace: 'cli/commands',
+  stability: 'experimental',
   summary: 'Register one icon you chose from a library in your icon set',
   description:
-    "Run inside an icon-set package. You pick the export; the CLI proves it is a component of --from, read without running it, and never searches the library. Without a definition it lists the icon definitions that fit and the command for each. With --definition it adds the icon and maps the definition to it; --new-definition first adds your set's own definition.",
+    "Run inside an icon-set package. You pick the export; the CLI proves it is a component of --from, read without running it, and never searches the library. Without a definition it lists the icon definitions that fit and the command for each. With --definition it adds the icon and maps the definition to it; --new-definition first adds your set's own definition. Experimental: it may change or be removed in a patch release.",
   fn: 'iconAdd',
   args: [{name: 'export', param: 'exportName', required: true}],
   options: [
@@ -78,19 +79,19 @@ export const doc = {
   examples: [
     {
       label: 'Which definitions fit',
-      cli: 'astryx icon add Bin --from @acme/glyph-library',
+      cli: 'astryx experimental icon add Bin --from @acme/glyph-library',
     },
     {
       label: 'Add and map',
-      cli: 'astryx icon add Bin --from @acme/glyph-library --definition delete',
+      cli: 'astryx experimental icon add Bin --from @acme/glyph-library --definition delete',
     },
     {
       label: 'Add your own definition',
-      cli: "astryx icon add RotateCw --from @acme/glyph-library --new-definition rotate --description 'Rotate an image or shape.' --words turn,spin",
+      cli: "astryx experimental icon add RotateCw --from @acme/glyph-library --new-definition rotate --description 'Rotate an image or shape.' --words turn,spin",
     },
     {
       label: 'Add a solid variant',
-      cli: 'astryx icon add Bin --from @acme/glyph-library/solid --id bin --appearance solid',
+      cli: 'astryx experimental icon add Bin --from @acme/glyph-library/solid --id bin --appearance solid',
     },
   ],
   exitCodes: [
@@ -103,5 +104,5 @@ export const doc = {
       when: 'the export is missing or is data, the definition is unknown, the id is taken, or a variant value is outside axes',
     },
   ],
-  related: ['icon map', 'integration add', 'integration check'],
+  related: ['experimental icon map', 'integration add', 'integration check'],
 };

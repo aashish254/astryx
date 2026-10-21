@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-/** @file FunctionDoc for `iconAdd()` / `astryx icon add` (AST-084 FR3). */
+/** @file FunctionDoc for `iconAdd()` / `astryx experimental icon add` (AST-084 FR3). */
 
 /** @type {import('@astryxdesign/cli/authoring').FunctionDoc} */
 export const doc = {
@@ -8,11 +8,12 @@ export const doc = {
   kind: 'api',
   name: 'iconAdd',
   namespace: 'cli/api',
+  stability: 'experimental',
   displayName: 'iconAdd()',
   summary:
     'Register one icon you chose from a library in the set being authored.',
   description:
-    "Run inside an icon-set package. The caller picks the export; the CLI never searches the library. It proves the export is a runtime component of `from` (a package, a package subpath, or a relative path this package exports), read without running it. With no definition it answers the icon definitions that fit the export, Astryx's and the set's own, and writes nothing. With `definition` it adds the icon (id from its name, `module` the source unless the set's own module already exports it, words from its name and the definition) and maps the definition to it. With `newDefinition` it first writes the set's own definition file. Variant values add the export as a variant of an existing icon. Running it again changes nothing.",
+    "Run inside an icon-set package. The caller picks the export; the CLI never searches the library. It proves the export is a runtime component of `from` (a package, a package subpath, or a relative path this package exports), read without running it. With no definition it answers the icon definitions that fit the export, Astryx's and the set's own, and writes nothing. With `definition` it adds the icon (id from its name, `module` the source unless the set's own module already exports it, words from its name and the definition) and maps the definition to it. With `newDefinition` it first writes the set's own definition file. Variant values add the export as a variant of an existing icon. Running it again changes nothing. Experimental: it may change or be removed in a patch release.",
   importPath: '@astryxdesign/cli/api',
   signature:
     'iconAdd(exportName: string, options: IconAddOptions): Promise<IconAddResponse | IconDefinitionMatchesResponse>',
@@ -126,6 +127,6 @@ export const doc = {
       code: "await iconAdd('Bin', {from: '@acme/glyph-library', definition: 'delete'});",
     },
   ],
-  command: 'icon add',
-  related: ['iconMap', 'integrationAddIconDefinition', 'validateIntegration'],
+  command: 'experimental icon add',
+  related: ['iconMap', 'iconNewDefinition', 'validateIntegration'],
 };

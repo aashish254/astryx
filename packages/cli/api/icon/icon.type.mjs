@@ -58,7 +58,7 @@
  */
 
 /**
- * `astryx --json icon <words>`.
+ * `astryx --json experimental icon <words>`.
  * @typedef {object} IconSearchResponse
  * @property {'icon.search'} type
  * @property {object} data
@@ -68,7 +68,7 @@
  */
 
 /**
- * `astryx --json icon <set>/<id>`.
+ * `astryx --json experimental icon <set>/<id>`.
  * @typedef {object} IconDetailResponse
  * @property {'icon.detail'} type
  * @property {string} package - The integration package that ships the set.
@@ -107,7 +107,7 @@
  */
 
 /**
- * `astryx --json icon --list`.
+ * `astryx --json experimental icon --list`.
  * @typedef {object} IconListResponse
  * @property {'icon.list'} type
  * @property {object} data
@@ -119,15 +119,15 @@
  */
 
 /**
- * `astryx --json icon use <set>`.
+ * `astryx --json experimental icon use <set>`.
  * @typedef {object} IconUseResponse
  * @property {'icon.use'} type
  * @property {object} data
- * @property {string} data.iconSet - The value written to `iconSet`.
+ * @property {string} data.iconSet - The value written to `experimental.iconSet`.
  * @property {string} data.set - The set it names, as `<package>/<set>`.
  * @property {string} data.config - The config file, relative to the project.
  * @property {boolean} data.created - Whether the config file was created.
- * @property {string | null} data.previous - The `iconSet` it replaced.
+ * @property {string | null} data.previous - The `experimental.iconSet` value it replaced.
  * @property {boolean} data.changed - Whether anything was written.
  */
 
@@ -140,7 +140,7 @@
  */
 
 /**
- * `astryx --json icon map <definition> <icon>`.
+ * `astryx --json experimental icon map <definition> <icon>`.
  * @typedef {object} IconMapResponse
  * @property {'icon.map'} type
  * @property {object} data
@@ -172,7 +172,7 @@
  */
 
 /**
- * `astryx --json icon add <Export> --from <module> --definition <name>`.
+ * `astryx --json experimental icon add <Export> --from <module> --definition <name>`.
  * @typedef {object} IconAddResponse
  * @property {'icon.add'} type
  * @property {object} data
@@ -195,11 +195,11 @@
  * @property {'astryx' | 'set'} source - Astryx's definition, or the set's own.
  * @property {number} score
  * @property {string} reason
- * @property {string} command - The `icon add` command that maps the icon to it.
+ * @property {string} command - The `experimental icon add` command that maps the icon to it.
  */
 
 /**
- * `astryx --json icon add <Export> --from <module>` with no definition.
+ * `astryx --json experimental icon add <Export> --from <module>` with no definition.
  * @typedef {object} IconDefinitionMatchesResponse
  * @property {'icon.definitionMatches'} type
  * @property {object} data
@@ -218,5 +218,56 @@
  * @property {string} [set] - Keep one set, by name or `<package>/<set>`.
  * @property {number} [limit] - Max matches (default 10).
  */
+
+/**
+ * Options for `iconNewSet()`.
+ * @typedef {object} IconNewSetOptions
+ * @property {string} [cwd] - A directory inside the integration package.
+ * @property {boolean} [dryRun] - Return the receipt without writing.
+ * @property {string} [from] - A module whose every icon component the set wraps: a package, a package subpath, or a ./ path in the package.
+ * @property {string[] | string} [exclude] - With `from`: export names that are not icons; a string is split on commas.
+ */
+
+/**
+ * Options for `iconNewDefinition()`.
+ * @typedef {object} IconNewDefinitionOptions
+ * @property {string} [cwd] - A directory inside the icon-set package.
+ * @property {boolean} [dryRun] - Return the receipt without writing.
+ * @property {string} [set] - The set, when the package ships several.
+ * @property {string} [description] - What an icon with this definition is for.
+ * @property {string[] | string} [words] - Words people search for; a string is split on commas.
+ * @property {string} [icon] - An icon id to map the definition to.
+ */
+
+/**
+ * What `iconNewSet()` and `iconNewDefinition()` wrote.
+ * @typedef {object} IconNewData
+ * @property {'icon-set' | 'icon-definition'} kind
+ * @property {string} name
+ * @property {{path: string, created: boolean} | null} root - The manifest's `experimental.iconSets` root, when the call declared or used it.
+ * @property {string} manifest - The manifest file, relative to the package.
+ * @property {string[]} files - Files written, relative to the package.
+ * @property {boolean} written
+ * @property {boolean} dryRun
+ * @property {string} [from]
+ * @property {number} [icons] - With `from`: how many icons it wrote.
+ * @property {string[]} [notes] - What the author does next.
+ */
+
+/**
+ * `astryx --json experimental icon new-set <name>`.
+ * @typedef {object} IconNewSetResponse
+ * @property {'icon.newSet'} type
+ * @property {IconNewData} data
+ */
+
+/**
+ * `astryx --json experimental icon new-definition <name>`.
+ * @typedef {object} IconNewDefinitionResponse
+ * @property {'icon.newDefinition'} type
+ * @property {IconNewData} data
+ */
+
+/** @typedef {IconNewSetResponse | IconNewDefinitionResponse} IconNewResponse */
 
 export {};

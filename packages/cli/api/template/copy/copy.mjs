@@ -133,7 +133,7 @@ export function templateCopy(
       notes,
       missingPackages: missing,
       installCommand,
-      icons,
+      ...(icons ? {icons} : {}),
     },
   };
 }

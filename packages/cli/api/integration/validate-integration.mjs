@@ -318,7 +318,7 @@ async function validateAtPackageDir(
     codemods: resolveRoot(manifest.codemods),
     docs: resolveRoot(manifest.docs),
     themes: resolveRoot(manifest.themes),
-    iconSets: resolveRoot(manifest.iconSets),
+    iconSets: resolveRoot(manifest.experimental?.iconSets),
     issuesUrl: manifest.issuesUrl,
     agentDocs: manifest.agentDocs,
     __agentDocsError: agentDocsError,
@@ -482,9 +482,17 @@ export async function validateIntegration(pkg, options = {}) {
       validated: result.found,
       name: result.found ? (result.name ?? null) : null,
       version: result.found ? (result.version ?? null) : null,
-      issues: result.reason === 'no_package_json'
-        ? [{code: 'no_package', severity: 'error', message: 'No package.json found. Run this command inside a package directory.'}]
-        : result.issues,
+      issues:
+        result.reason === 'no_package_json'
+          ? [
+              {
+                code: 'no_package',
+                severity: 'error',
+                message:
+                  'No package.json found. Run this command inside a package directory.',
+              },
+            ]
+          : result.issues,
       ...(docTypes ? {docTypes} : {}),
     },
   };

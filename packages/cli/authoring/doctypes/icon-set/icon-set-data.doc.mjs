@@ -12,8 +12,9 @@ export const doc = {
   name: 'icon-set-data',
   displayName: 'IconSetData',
   namespace: 'authoring',
+  stability: 'experimental',
   description:
-    "An icon set's data file: which icons exist, the export that draws each one, the words a person might search for, and which icon draws each icon definition (`map`). `astryx icon`, `astryx search`, template icon mapping, and the checks read this file and nothing else.",
+    "Experimental: may change or be removed in a patch release. An icon set's data file: which icons exist, the export that draws each one, the words a person might search for, and which icon draws each icon definition (`map`). `astryx experimental icon`, `astryx search`, template icon mapping, and the checks read this file and nothing else.",
   appliesTo: '<iconSetsRoot>/<name>/<name>.icons.json',
   fields: [
     {
@@ -40,7 +41,7 @@ export const doc = {
       name: 'generated',
       type: 'string',
       description:
-        "The module `astryx icon add` writes, as a `./` path from the package root: one export per icon, a re-export of a library component or the adapter applied to a library export, and `themeIcons`, the theme map, from the built-in entries of `map`. The CLI writes its declaration file beside it. The package's entry re-exports it.",
+        "The module `astryx experimental icon add` writes, as a `./` path from the package root: one export per icon, a re-export of a library component or the adapter applied to a library export, and `themeIcons`, the theme map, from the built-in entries of `map`. The CLI writes its declaration file beside it. The package's entry re-exports it.",
       example: "'./icon-sets/outline/outline.generated.js'",
     },
     {
@@ -73,7 +74,7 @@ export const doc = {
       name: 'map',
       type: 'Record<string, string>',
       description:
-        "Which of this set's icons draws each icon definition: definition name to icon `id`. Keys are Astryx's definitions (`astryx docs icon-definitions`) or ones the set declares in its `definitions` folder, one file per definition. One icon may draw several definitions; each definition maps to one icon. Every built-in definition must be mapped.",
+        "Which of this set's icons draws each icon definition: definition name to icon `id`. Keys are Astryx's definitions (`astryx docs cli/experimental/icon-definitions`) or ones the set declares in its `definitions` folder, one file per definition. One icon may draw several definitions; each definition maps to one icon. Every built-in definition must be mapped.",
       example: '{"close": "x", "delete": "trash", "remove": "trash"}',
     },
     {
@@ -160,7 +161,7 @@ export const doc = {
     },
     {
       type: 'prose',
-      text: 'Write it with the CLI: `astryx icon add` registers one icon and its `map` entry, `astryx icon map` changes an entry, and `astryx integration add icon-set --from` wraps a whole library.',
+      text: 'Write it with the CLI: `astryx experimental icon add` registers one icon and its `map` entry, `astryx experimental icon map` changes an entry, and `astryx experimental icon new-set --from` wraps a whole library.',
     },
   ],
 };

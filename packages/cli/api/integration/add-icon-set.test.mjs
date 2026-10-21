@@ -3,7 +3,7 @@
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {integrationAdd, integrationAddIconSet} from './add-contribution.mjs';
+import {integrationAdd, iconNewSet} from './add-contribution.mjs';
 import {discoverIconSetDirectory} from '../../foundation/discovery/icon-set-discovery.mjs';
 
 /** @type {string} */
@@ -43,13 +43,13 @@ afterEach(() => {
   fs.rmSync(tmpDir, {recursive: true, force: true});
 });
 
-describe('integrationAdd icon-set', () => {
+describe('iconNewSet (experimental icon new-set)', () => {
   it('writes a typed descriptor and a starter data file, declares the root, and adds it to files', async () => {
     setup({license: 'MIT'});
-    const result = await integrationAdd('icon-set', 'outline', {cwd: tmpDir});
+    const result = await iconNewSet('outline', {cwd: tmpDir});
 
     expect(result).toEqual({
-      type: 'integration.add',
+      type: 'icon.newSet',
       data: {
         kind: 'icon-set',
         name: 'outline',
@@ -117,10 +117,11 @@ describe('integrationAdd icon-set', () => {
 
   it('creates the manifest on first add and never creates a files field', async () => {
     setup({manifest: null, files: null});
-    const result = await integrationAddIconSet('brand-glyphs', {cwd: tmpDir});
+    const result = await iconNewSet('brand-glyphs', {cwd: tmpDir});
     expect(result.data.root).toEqual({path: './icon-sets', created: true});
     expect(result.data.files).toContain('astryx.integration.mjs');
-    expect(read('astryx.integration.mjs')).toContain('iconSets');
+    expect(read('astryx.integration.mjs')).toContain('experimental: {');
+    expect(read('astryx.integration.mjs')).toContain("iconSets: './icon-sets'");
     expect(JSON.parse(read('package.json')).files).toBeUndefined();
     // No package license: the descriptor says so instead of guessing one.
     expect(read('icon-sets/brand-glyphs/brand-glyphs.doc.mjs')).toContain(
@@ -129,8 +130,10 @@ describe('integrationAdd icon-set', () => {
   });
 
   it('uses an existing custom root and does not redeclare it', async () => {
-    setup({manifest: "export default {iconSets: './glyphs'};\n"});
-    const result = await integrationAddIconSet('outline', {cwd: tmpDir});
+    setup({
+      manifest: "export default {experimental: {iconSets: './glyphs'}};\n",
+    });
+    const result = await iconNewSet('outline', {cwd: tmpDir});
     expect(result.data.root).toEqual({path: './glyphs', created: false});
     expect(result.data.files).not.toContain('astryx.integration.mjs');
     expect(
@@ -141,7 +144,7 @@ describe('integrationAdd icon-set', () => {
   it('dry run predicts the real write without changing files', async () => {
     setup();
     const before = read('astryx.integration.mjs');
-    const plan = await integrationAddIconSet('outline', {
+    const plan = await iconNewSet('outline', {
       cwd: tmpDir,
       dryRun: true,
     });
@@ -150,18 +153,18 @@ describe('integrationAdd icon-set', () => {
     expect(fs.existsSync(path.join(tmpDir, 'icon-sets'))).toBe(false);
     expect(read('astryx.integration.mjs')).toBe(before);
 
-    const real = await integrationAddIconSet('outline', {cwd: tmpDir});
+    const real = await iconNewSet('outline', {cwd: tmpDir});
     expect(real.data.files).toEqual(plan.data.files);
     expect(real.data.root).toEqual(plan.data.root);
   });
 
   it('refuses to overwrite an existing descriptor or data file', async () => {
     setup();
-    await integrationAddIconSet('outline', {cwd: tmpDir});
+    await iconNewSet('outline', {cwd: tmpDir});
     const doc = read('icon-sets/outline/outline.doc.mjs');
-    await expect(
-      integrationAddIconSet('outline', {cwd: tmpDir}),
-    ).rejects.toMatchObject({code: 'ERR_FILE_EXISTS'});
+    await expect(iconNewSet('outline', {cwd: tmpDir})).rejects.toMatchObject({
+      code: 'ERR_FILE_EXISTS',
+    });
     expect(read('icon-sets/outline/outline.doc.mjs')).toBe(doc);
 
     fs.mkdirSync(path.join(tmpDir, 'icon-sets/solid'));
@@ -169,9 +172,9 @@ describe('integrationAdd icon-set', () => {
       path.join(tmpDir, 'icon-sets/solid/solid.icons.json'),
       '{}',
     );
-    await expect(
-      integrationAddIconSet('solid', {cwd: tmpDir}),
-    ).rejects.toMatchObject({code: 'ERR_FILE_EXISTS'});
+    await expect(iconNewSet('solid', {cwd: tmpDir})).rejects.toMatchObject({
+      code: 'ERR_FILE_EXISTS',
+    });
     expect(
       fs.existsSync(path.join(tmpDir, 'icon-sets/solid/solid.doc.mjs')),
     ).toBe(false);
@@ -182,16 +185,16 @@ describe('integrationAdd icon-set', () => {
     // verify; an invalid neighbour does not block the write.
     setup();
     fs.mkdirSync(path.join(tmpDir, 'icon-sets/broken'), {recursive: true});
-    const ok = await integrationAddIconSet('outline', {cwd: tmpDir});
+    const ok = await iconNewSet('outline', {cwd: tmpDir});
     expect(ok.data.written).toBe(true);
 
     // A root that resolves to a file cannot hold a set: nothing is left behind.
-    setup({manifest: "export default {iconSets: './taken'};\n"});
+    setup({
+      manifest: "export default {experimental: {iconSets: './taken'}};\n",
+    });
     fs.writeFileSync(path.join(tmpDir, 'taken'), 'not a directory');
     const pkgBefore = read('package.json');
-    await expect(
-      integrationAddIconSet('outline', {cwd: tmpDir}),
-    ).rejects.toBeTruthy();
+    await expect(iconNewSet('outline', {cwd: tmpDir})).rejects.toBeTruthy();
     expect(read('package.json')).toBe(pkgBefore);
     expect(read('taken')).toBe('not a directory');
   });
@@ -199,24 +202,62 @@ describe('integrationAdd icon-set', () => {
   it('rejects a name that is not lower-kebab, a root outside the package, and an unnamed package', async () => {
     setup();
     for (const bad of ['Outline', '../x', 'a_b', '']) {
-      await expect(
-        integrationAddIconSet(bad, {cwd: tmpDir}),
-      ).rejects.toMatchObject({code: 'ERR_INVALID_ARGUMENT'});
+      await expect(iconNewSet(bad, {cwd: tmpDir})).rejects.toMatchObject({
+        code: 'ERR_INVALID_ARGUMENT',
+      });
     }
-    setup({manifest: "export default {iconSets: '../outside'};\n"});
-    await expect(
-      integrationAddIconSet('outline', {cwd: tmpDir}),
-    ).rejects.toMatchObject({code: 'ERR_PATH_TRAVERSAL'});
+    setup({
+      manifest: "export default {experimental: {iconSets: '../outside'}};\n",
+    });
+    await expect(iconNewSet('outline', {cwd: tmpDir})).rejects.toMatchObject({
+      code: 'ERR_PATH_TRAVERSAL',
+    });
     setup({name: null});
-    await expect(
-      integrationAddIconSet('outline', {cwd: tmpDir}),
-    ).rejects.toMatchObject({code: 'ERR_INVALID_ARGUMENT'});
+    await expect(iconNewSet('outline', {cwd: tmpDir})).rejects.toMatchObject({
+      code: 'ERR_INVALID_ARGUMENT',
+    });
   });
 
   it('refuses an option of another kind', async () => {
     setup();
     await expect(
-      integrationAdd('icon-set', 'outline', {cwd: tmpDir, to: '1.0.0'}),
+      iconNewSet('outline', {
+        cwd: tmpDir,
+        .../** @type {any} */ ({to: '1.0.0'}),
+      }),
     ).rejects.toMatchObject({code: 'ERR_INVALID_ARGUMENT'});
+  });
+
+  it('is not an integrationAdd kind: the stable command gains no experimental kind', async () => {
+    setup();
+    for (const kind of ['icon-set', 'icon-definition']) {
+      await expect(
+        integrationAdd(/** @type {any} */ (kind), 'outline', {cwd: tmpDir}),
+      ).rejects.toMatchObject({
+        code: 'ERR_INVALID_ARGUMENT',
+        message: expect.stringContaining('Unknown contribution kind'),
+      });
+    }
+  });
+
+  it('nests the root in an existing experimental object', async () => {
+    setup({
+      manifest: "export default {themes: './themes', experimental: {}};\n",
+    });
+    await iconNewSet('outline', {cwd: tmpDir});
+    const manifest = read('astryx.integration.mjs');
+    expect(manifest).toContain("themes: './themes'");
+    expect(manifest.match(/experimental:/g)).toHaveLength(1);
+    expect(manifest).toContain("iconSets: './icon-sets'");
+  });
+});
+
+describe('experimental icon authoring API', () => {
+  it('exports iconNewSet and iconNewDefinition, and no integrationAdd icon kind', async () => {
+    const api = await import('../index.mjs');
+    expect(api.iconNewSet).toBeTypeOf('function');
+    expect(api.iconNewDefinition).toBeTypeOf('function');
+    expect(api).not.toHaveProperty('integrationAddIconSet');
+    expect(api).not.toHaveProperty('integrationAddIconDefinition');
   });
 });

@@ -3,6 +3,9 @@
 /**
  * @file Write one string field of a project's astryx.config.
  *
+ * The field is a top-level key or a dotted path into nested object literals
+ * (`experimental.iconSet`); a missing object on the path is created.
+ *
  * Edits the default-exported object literal in place (comments and other
  * fields kept), or creates `astryx.config.mjs` when the project has no
  * config. A config whose default export is not a static object literal is
@@ -10,14 +13,17 @@
  *
  * @input A project directory, a field name, and its string value
  * @output The config file written and the value it replaced
- * @position packages/cli/foundation/config — read by `astryx icon use`
+ * @position packages/cli/foundation/config — read by `astryx experimental icon use`
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import jscodeshift from 'jscodeshift';
-import {findManifestObject} from '../integrations/manifest-writer.mjs';
+import {
+  findManifestObject,
+  unwrapManifestExpression,
+} from '../integrations/manifest-writer.mjs';
 import {CONFIG_BASENAMES} from './project.mjs';
 
 /** @param {any} property @param {string} name */
@@ -39,33 +45,60 @@ function propertyNamed(property, name) {
 /**
  * Set `key` to `value` in the project's astryx.config.
  * @param {string} projectDir
- * @param {string} key
+ * @param {string} key a top-level key, or a dotted path (`experimental.iconSet`)
  * @param {string} value
  * @returns {{file: string, created: boolean, previous: string | null, changed: boolean}}
  */
 export function setConfigString(projectDir, key, value) {
+  const keys = key.split('.');
+  const leaf = /** @type {string} */ (keys[keys.length - 1]);
   const existing = CONFIG_BASENAMES.map(name =>
     path.join(projectDir, name),
   ).find(file => fs.existsSync(file));
   if (!existing) {
     const file = path.join(projectDir, 'astryx.config.mjs');
+    const quoted = `'${value.replace(/\\/gu, '\\\\').replace(/'/gu, "\\'")}'`;
+    // Each key on the path opens one nested object: `experimental: {`.
+    const open = keys
+      .slice(0, -1)
+      .map((each, depth) => `${'  '.repeat(depth + 1)}${each}: {\n`)
+      .join('');
+    const close = keys
+      .slice(0, -1)
+      .map((_, depth) => `${'  '.repeat(depth + 1)}},\n`)
+      .reverse()
+      .join('');
     writeAtomically(
       file,
-      `export default {\n  ${key}: ${JSON.stringify(value).replace(/^"|"$/gu, "'")},\n};\n`,
+      `export default {\n${open}${'  '.repeat(keys.length)}${leaf}: ${quoted},\n${close}};\n`,
     );
     return {file, created: true, previous: null, changed: true};
   }
   const source = fs.readFileSync(existing, 'utf-8');
   const j = jscodeshift.withParser('tsx');
   const ast = j(source);
-  const object = findManifestObject(j, ast);
-  if (!object) {
-    throw new Error(
+  let object = findManifestObject(j, ast);
+  const refuse = () =>
+    new Error(
       `Could not update ${path.basename(existing)} safely: its default export is not a static object literal. Set "${key}: '${value}'" in it yourself.`,
     );
+  if (!object) throw refuse();
+  for (const each of keys.slice(0, -1)) {
+    const holder = object.properties.find((/** @type {any} */ property) =>
+      propertyNamed(property, each),
+    );
+    if (!holder) {
+      const created = j.objectExpression([]);
+      object.properties.push(j.objectProperty(j.identifier(each), created));
+      object = created;
+      continue;
+    }
+    const nested = unwrapManifestExpression(holder.value);
+    if (!j.ObjectExpression.check(nested)) throw refuse();
+    object = nested;
   }
   const property = object.properties.find((/** @type {any} */ each) =>
-    propertyNamed(each, key),
+    propertyNamed(each, leaf),
   );
   /** @type {string | null} */
   let previous = null;
@@ -81,7 +114,7 @@ export function setConfigString(projectDir, key, value) {
     property.value = j.stringLiteral(value);
   } else {
     object.properties.push(
-      j.objectProperty(j.identifier(key), j.stringLiteral(value)),
+      j.objectProperty(j.identifier(leaf), j.stringLiteral(value)),
     );
   }
   let next = ast.toSource({quote: 'single', reuseWhitespace: true});

@@ -28,6 +28,9 @@
  *   words: ['trash', 'bin', 'discard'],
  * };
  * ```
+ *
+ * @experimental Icon definitions may change or be removed in a patch release
+ * (spec:AST-017 FR27).
  */
 export interface IconDefinitionDoc {
   /** Doc-kind discriminant. */

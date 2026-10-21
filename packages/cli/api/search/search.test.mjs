@@ -82,10 +82,8 @@ describe('search leaf — per-domain result fields', () => {
     // description, a prose mention below every name and keyword hit, so read
     // the whole result list.
     const r = await search('theme', {cwd, limit: 400});
-    // Icons answer only from an installed icon set, and the repository has
-    // none; search.icon.test.mjs covers the icon domain.
     expect(new Set(r.data.results.map(res => res.domain))).toEqual(
-      new Set(SEARCH_DOMAINS.filter(domain => domain !== 'icon')),
+      new Set(SEARCH_DOMAINS),
     );
     for (const res of r.data.results) {
       expect(typeof res.command).toBe('string');

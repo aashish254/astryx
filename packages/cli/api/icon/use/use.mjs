@@ -2,10 +2,10 @@
 
 /**
  * @file `icon.use` leaf (AST-084 FR10): choose the project's icon set by
- * writing `iconSet` in astryx.config.
+ * writing `experimental.iconSet` in astryx.config.
  *
  * @output the `icon.use` envelope
- * @position api/icon/use — dispatched by the `icon use` command
+ * @position api/icon/use — dispatched by the `experimental icon use` command
  */
 
 import * as path from 'node:path';
@@ -16,6 +16,9 @@ import {closest, setsNamed} from '../_records.mjs';
 
 /**
  * Make an installed set the project's icon set.
+ * Experimental (spec:AST-017 FR27): may change or be removed in a patch
+ * release.
+ * @experimental
  * @param {string} selector a set name, or `<package>/<set>`
  * @param {{cwd?: string}} [options]
  * @returns {Promise<import('../icon.type.mjs').IconUseResponse>}
@@ -24,7 +27,12 @@ export async function iconUse(selector, {cwd = process.cwd()} = {}) {
   if (typeof selector !== 'string' || selector.trim() === '') {
     throw new AstryxError(
       'Name the icon set to use',
-      [{name: 'astryx icon --list', reason: 'list the installed sets'}],
+      [
+        {
+          name: 'astryx experimental icon --list',
+          reason: 'list the installed sets',
+        },
+      ],
       ERROR_CODES.ERR_MISSING_ARGUMENT,
     );
   }
@@ -53,7 +61,7 @@ export async function iconUse(selector, {cwd = process.cwd()} = {}) {
   }
   let written;
   try {
-    written = setConfigString(projectDir, 'iconSet', selector);
+    written = setConfigString(projectDir, 'experimental.iconSet', selector);
   } catch (error) {
     throw new AstryxError(
       error instanceof Error ? error.message : String(error),

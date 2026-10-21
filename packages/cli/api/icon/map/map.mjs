@@ -5,7 +5,7 @@
  * authored draws one icon definition, or remove that entry.
  *
  * @output the `icon.map` envelope
- * @position api/icon/map — dispatched by the `icon map` command
+ * @position api/icon/map — dispatched by the `experimental icon map` command
  */
 
 import * as path from 'node:path';
@@ -22,6 +22,9 @@ import {
 
 /**
  * Set `map[definition] = icon` in the set's data file, or remove the entry.
+ * Experimental (spec:AST-017 FR27): may change or be removed in a patch
+ * release.
+ * @experimental
  * @param {string} definition
  * @param {string | undefined} icon an icon id in the set; omit with `remove`
  * @param {import('../icon.type.mjs').IconMapOptions} [options]
@@ -35,7 +38,7 @@ export function iconMap(definition, icon, options = {}) {
         'Name the icon definition to map',
         [
           {
-            name: 'astryx docs icon-definitions',
+            name: 'astryx docs cli/experimental/icon-definitions',
             reason: 'every icon definition',
           },
         ],
@@ -63,7 +66,7 @@ export function iconMap(definition, icon, options = {}) {
               name => ({name, reason: 'a known icon definition'}),
             ),
             {
-              name: `astryx integration add icon-definition ${definition} --set ${set.name}`,
+              name: `astryx experimental icon new-definition ${definition} --set ${set.name}`,
               reason: 'add it as your own definition',
             },
           ],

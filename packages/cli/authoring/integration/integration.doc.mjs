@@ -62,11 +62,21 @@ export const doc = {
       example: "'./themes'",
     },
     {
-      name: 'iconSets',
-      type: 'string',
+      name: 'experimental',
+      type: '{ iconSets?: string }',
+      stability: 'experimental',
       description:
-        "The folder that holds your icon sets, relative to package.json, with one folder per set. Each set folder has a matching `<name>.doc.mjs` IconSetDoc and a `<name>.icons.json` data file. Installed sets answer `astryx icon` and `astryx search`, and copied templates use the project set's icons.",
-      example: "'./icon-sets'",
+        'Experimental contribution roots: they may change or be removed in a patch release.',
+      fields: [
+        {
+          name: 'experimental.iconSets',
+          type: 'string',
+          stability: 'experimental',
+          description:
+            "Experimental: may change or be removed in a patch release. The folder that holds your icon sets, relative to package.json, with one folder per set. Each set folder has a matching `<name>.doc.mjs` IconSetDoc and a `<name>.icons.json` data file. Installed sets answer `astryx experimental icon` and, in a project that has a set, `astryx search`; copied templates use the project set's icons.",
+          example: "'./icon-sets'",
+        },
+      ],
     },
     {
       name: 'agentDocs',

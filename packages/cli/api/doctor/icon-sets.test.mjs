@@ -27,8 +27,9 @@ async function iconCheckOf(options) {
 }
 
 describe('icon-sets check', () => {
-  it('a project with no icon sets passes', async () => {
-    expect(await iconCheckOf({packages: []})).toMatchObject({status: 'pass'});
+  it('a project with no icon set installed or configured has no check', async () => {
+    // Icon sets are experimental (spec:AST-017 FR27): the report is unchanged.
+    expect(await iconCheckOf({packages: []})).toBeUndefined();
   });
 
   it('one installed set passes', async () => {
@@ -37,14 +38,16 @@ describe('icon-sets check', () => {
     expect(check?.message).toMatch(/only installed icon set/);
   });
 
-  it('two sets without iconSet warn', async () => {
+  it('two sets without experimental.iconSet warn', async () => {
     const check = await iconCheckOf({packages: [{}, {name: '@acme/lines'}]});
     expect(check).toMatchObject({status: 'warn'});
     expect(check?.fix).toMatch(/iconSet/);
   });
 
-  it('iconSet naming a set that is not installed fails', async () => {
-    expect(await iconCheckOf({config: {iconSet: 'nope'}})).toMatchObject({
+  it('experimental.iconSet naming a set that is not installed fails', async () => {
+    expect(
+      await iconCheckOf({config: {experimental: {iconSet: 'nope'}}}),
+    ).toMatchObject({
       status: 'fail',
     });
   });
@@ -55,10 +58,10 @@ describe('icon-sets check', () => {
     expect(check?.message).toMatch(/not valid JSON/);
   });
 
-  it('skips with info when the project could not be read', () => {
+  it('has no check when the project could not be read', () => {
     const check = checkIconSets(
       /** @type {any} */ ({cwd: tmp, iconSets: null, projectError: 'boom'}),
     );
-    expect(check.status).toBe('info');
+    expect(check).toBeNull();
   });
 });

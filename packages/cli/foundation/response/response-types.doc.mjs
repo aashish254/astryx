@@ -108,41 +108,61 @@ export const doc = {
         "One post's metadata plus the feed URL and the post's full plaintext body.",
     },
 
-    // icon (installed icon sets, AST-084)
+    // experimental icon (installed icon sets, AST-084): experimental values,
+    // documented under `astryx docs cli/experimental`, not in this table.
     {
       value: 'icon.search',
+      stability: 'experimental',
       description:
         'The echoed query, `matchCount` (every match, before `limit`), and matches: icons from the installed icon sets ranked by meaning, each {set, id, package, module, export, import, words, definitions, variants, reason, score}.',
     },
     {
       value: 'icon.detail',
+      stability: 'experimental',
       description:
         "One icon's fields, as a match names them, with every variant's import line. The envelope names the set's package.",
     },
     {
       value: 'icon.list',
+      stability: 'experimental',
       description:
         "The project's icon-set state (status, projectSet, reason), each installed set with its package, license, icon count, default variant, axes, and the icon definitions its `map` covers (built-in, all of Astryx's, and its own), and each withdrawn set with its reason.",
     },
     {
       value: 'icon.use',
+      stability: 'experimental',
       description:
-        'The `iconSet` written to astryx.config, the set it names as `<package>/<set>`, the config file, whether it was created, the value it replaced, and whether anything changed.',
+        'The `experimental.iconSet` written to astryx.config, the set it names as `<package>/<set>`, the config file, whether it was created, the value it replaced, and whether anything changed.',
     },
     {
       value: 'icon.map',
+      stability: 'experimental',
       description:
         'One `map` entry of the icon set being authored: the set, its package, the data file, the definition, the icon id now mapped (null after --remove), the id it replaced, and whether the file changed.',
     },
     {
       value: 'icon.add',
+      stability: 'experimental',
       description:
         "One icon registered in the icon set being authored: the set, its package, the icon {id, export, module}, the variant values when it was added as a variant, the definition mapped to it, the definition file written when it added the set's own, the files written, and whether anything changed.",
     },
     {
       value: 'icon.definitionMatches',
+      stability: 'experimental',
       description:
         "The icon definitions that fit an export, before it is added: the export, its source module, the id it would get, at most 10 matches {name, description, source (astryx or set), score, reason, command}, and the command that adds the set's own definition when none fits.",
+    },
+    {
+      value: 'icon.newSet',
+      stability: 'experimental',
+      description:
+        "An icon set started in the integration package: the set's name, the manifest's `experimental.iconSets` root (and whether it was declared now), the manifest file, the files written, whether they were written or only planned, and with --from how many icons it wrapped and what to do next.",
+    },
+    {
+      value: 'icon.newDefinition',
+      stability: 'experimental',
+      description:
+        "An icon set's own icon definition: its name, the manifest file, the files written (the definition and, with --icon, the data file), and whether they were written or only planned.",
     },
 
     // discover (external / integration packages)
@@ -176,7 +196,7 @@ export const doc = {
     {
       value: 'search',
       description:
-        'The echoed query, `matchCount` (total matches, before `limit`), and results, a ranked SearchResultEntry[] bounded by `limit`: each {domain, name, package, score, reason, description, command} (package is the npm package that owns the result), plus import (components, hooks, and the import line for an icon), title, parent (the command that opens the level above), and, for a hit on one section, section (docs), or displayName and kind (templates).',
+        'The echoed query, `matchCount` (total matches, before `limit`), and results, a ranked SearchResultEntry[] bounded by `limit`: each {domain, name, package, score, reason, description, command} (package is the npm package that owns the result), plus import (components, hooks), title, parent (the command that opens the level above), and, for a hit on one section, section (docs), or displayName and kind (templates).',
     },
 
     // build

@@ -249,7 +249,7 @@ describe('doctor integration — command', () => {
     );
     fs.writeFileSync(
       path.join(tmpDir, 'astryx.integration.mjs'),
-      "export default {iconSets: './icon-sets'};\n",
+      "export default {experimental: {iconSets: './icon-sets'}};\n",
     );
     const dir = path.join(tmpDir, 'icon-sets', 'outline');
     fs.mkdirSync(dir, {recursive: true});

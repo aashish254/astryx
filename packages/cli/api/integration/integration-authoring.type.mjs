@@ -5,7 +5,7 @@
  */
 
 /**
- * @typedef {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'|'icon-set'|'icon-definition'} IntegrationAddKind
+ * @typedef {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'} IntegrationAddKind
  */
 
 /**
@@ -40,24 +40,6 @@
 /**
  * @typedef {IntegrationAddBaseOptions & {
  *   from?: string,
- *   exclude?: string[] | string,
- * }} IntegrationAddIconSetOptions
- * `from`: a module whose every icon component the set wraps: a package, a
- * package subpath, or a ./ path in the package. `exclude`: export names of
- * that module that are not icons; a string is split on commas.
- */
-
-/**
- * @typedef {IntegrationAddBaseOptions & {
- *   set?: string,
- *   description?: string,
- *   words?: string[] | string,
- *   icon?: string,
- * }} IntegrationAddIconDefinitionOptions
- */
-/**
- * @typedef {IntegrationAddBaseOptions & {
- *   from?: string,
  * }} IntegrationAddThemeOptions
  */
 
@@ -74,11 +56,6 @@
  * @property {string} [parent]
  * @property {string} [to]
  * @property {string} [from]
- * @property {string} [set]
- * @property {string} [description]
- * @property {string[] | string} [words]
- * @property {string} [icon]
- * @property {string[] | string} [exclude]
  */
 
 /**
@@ -94,7 +71,7 @@
 
 /**
  * @typedef {object} IntegrationAddData
- * @property {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'|'icon-set'|'icon-definition'} kind
+ * @property {'theme'|'component'|'doc'|'template'|'codemod'|'agent-doc'} kind
  * @property {string} name
  * @property {{path: string, created: boolean}|null} root
  * @property {string} manifest
@@ -102,8 +79,6 @@
  * @property {boolean} written
  * @property {boolean} dryRun
  * @property {string} [from]
- * @property {number} [icons] For icon-set with `from`: how many icons it wrote.
- * @property {string[]} [notes] What the author does next.
  */
 
 export {};

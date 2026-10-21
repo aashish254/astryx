@@ -4,15 +4,16 @@
 export const doc = {
   type: 'function',
   kind: 'api',
-  name: 'integrationAddIconSet',
+  name: 'iconNewSet',
   namespace: 'cli/api',
-  displayName: 'integrationAddIconSet()',
+  stability: 'experimental',
+  displayName: 'iconNewSet()',
   summary: 'Add an icon set to an integration package.',
   description:
-    "Creates an integration manifest when the package has none, writes the set directory with its strongly typed same-stem IconSetDoc and a starter data file (schemaVersion 1, module set to the package name, no icons and an empty map yet), and the set's generated module with its declaration file and an empty themeIcons theme map; with from, it wraps a library's icons into them. It declares the iconSets root on first use, and includes the manifest and root in package.json files when the package already uses an allowlist. Every path is confined to the package and existing files are never overwritten.",
+    "Creates an integration manifest when the package has none, writes the set directory with its strongly typed same-stem IconSetDoc and a starter data file (schemaVersion 1, module set to the package name, no icons and an empty map yet), and the set's generated module with its declaration file and an empty themeIcons theme map; with from, it wraps a library's icons into them. It declares the manifest's `experimental.iconSets` root on first use, and includes the manifest and root in package.json files when the package already uses an allowlist. Every path is confined to the package and existing files are never overwritten. Experimental: it may change or be removed in a patch release.",
   importPath: '@astryxdesign/cli/api',
   signature:
-    'integrationAddIconSet(name: string, options?: IntegrationAddIconSetOptions): Promise<IntegrationAddResponse>',
+    'iconNewSet(name: string, options?: IconNewSetOptions): Promise<IconNewSetResponse>',
   keywords: ['integration', 'add', 'icon', 'icon-set', 'author', 'scaffold'],
   params: [
     {
@@ -48,8 +49,9 @@ export const doc = {
   ],
   returns: [
     {
-      type: 'integration.add',
-      description: 'The shared typed authoring receipt.',
+      type: 'icon.newSet',
+      description:
+        'What it wrote: the manifest root, the files, and what to do next.',
     },
   ],
   throws: [
@@ -63,7 +65,7 @@ export const doc = {
     },
     {
       code: 'ERR_PATH_TRAVERSAL',
-      when: 'a declared iconSets root escapes the package',
+      when: 'a declared `experimental.iconSets` root escapes the package',
     },
     {
       code: 'ERR_INTEGRATION_ROOT_CONFLICT',
@@ -77,13 +79,13 @@ export const doc = {
   examples: [
     {
       label: 'Add an icon set',
-      code: "await integrationAddIconSet('outline');",
+      code: "await iconNewSet('outline');",
     },
     {
       label: 'Preview writes',
-      code: "await integrationAddIconSet('outline', {dryRun: true});",
+      code: "await iconNewSet('outline', {dryRun: true});",
     },
   ],
-  command: 'integration add icon-set',
-  related: ['integrationAdd', 'icon', 'validateIntegration'],
+  command: 'experimental icon new-set',
+  related: ['icon', 'validateIntegration'],
 };

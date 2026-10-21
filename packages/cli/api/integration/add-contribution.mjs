@@ -4,8 +4,7 @@
  * @file `integrationAdd(kind, name, options)` — generate one valid
  * contribution into an integration package.
  *
- * Dispatches component, doc, template, codemod, agent-doc, icon-set, and
- * icon-definition. Theme
+ * Dispatches component, doc, template, codemod, and agent-doc. Theme
  * delegates to the dedicated same-stem descriptor writer. Every root-based kind shares: first add creates the manifest; one shared
  * writer; never creates `files`/`exports`; atomic staged writes; no clobber;
  * dry-run receipt predicts real run; post-write verify through the real
@@ -84,6 +83,9 @@ const DEFAULT_ROOTS = {
   iconSets: './icon-sets',
 };
 
+/** Where an icon set's root is declared: an experimental manifest key. */
+const ICON_SETS_ROOT_KEY = 'experimental.iconSets';
+
 // ── Shared manifest / package plumbing ──────────────────────────────
 
 /**
@@ -148,13 +150,14 @@ async function loadCurrentManifest(manifestFile, manifestExists) {
 
 /**
  * Build and return the common receipt shape.
- * @param {import('./integration-authoring.type.mjs').IntegrationAddResponse['data']['kind']} kind
+ * @template {import('./integration-authoring.type.mjs').IntegrationAddData['kind'] | import('../icon/icon.type.mjs').IconNewData['kind']} K
+ * @param {K} kind
  * @param {string} name
  * @param {{path: string, created: boolean}|null} root
  * @param {string} manifestPath
  * @param {string[]} files
  * @param {boolean} dryRun
- * @returns {import('./integration-authoring.type.mjs').IntegrationAddResponse}
+ * @returns {{type: 'integration.add', data: Omit<import('./integration-authoring.type.mjs').IntegrationAddData, 'kind'> & {kind: K, icons?: number, notes?: string[]}}}
  */
 function receipt(kind, name, root, manifestPath, files, dryRun) {
   return {
@@ -1215,7 +1218,7 @@ function quoteJs(value) {
  * definition it still has to map.
  * @param {string} name  icon set name (kebab-case)
  * @param {{cwd?: string, dryRun?: boolean, from?: string, exclude?: string[] | string}} options
- * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
+ * @returns {Promise<{type: 'integration.add', data: import('../icon/icon.type.mjs').IconNewData}>}
  */
 async function addIconSet(name, options) {
   const {cwd = process.cwd(), dryRun = false, from} = options;
@@ -1263,11 +1266,13 @@ async function addIconSet(name, options) {
     );
   }
   const manifest = await loadCurrentManifest(manifestFile, manifestExists);
-  const rootPath = manifest.iconSets ?? DEFAULT_ROOTS.iconSets;
+  const rootPath = manifest.experimental?.iconSets ?? DEFAULT_ROOTS.iconSets;
   /** @type {string} */
   let root;
   try {
-    root = assertWithin(rootPath, packageDir, {label: 'iconSets root'});
+    root = assertWithin(rootPath, packageDir, {
+      label: 'experimental.iconSets root',
+    });
   } catch (error) {
     if (error instanceof PathSafetyError) {
       throw new AstryxError(
@@ -1280,7 +1285,7 @@ async function addIconSet(name, options) {
   }
 
   try {
-    await patchIntegrationRoot(packageDir, 'iconSets', rootPath, {
+    await patchIntegrationRoot(packageDir, ICON_SETS_ROOT_KEY, rootPath, {
       dryRun: true,
       createIfMissing: true,
     });
@@ -1340,7 +1345,7 @@ async function addIconSet(name, options) {
     const found = libraryIcons(source.file, {exclude});
     if (found.length === 0) {
       throw new AstryxError(
-        `"${from}" exports no icon components this command can read. If its icons are data (objects or SVG strings), run \`astryx integration add icon-set ${name}\`, declare an "adapter" in ${name}.icons.json, and run this command again; or add icons one at a time with \`astryx icon add <Export> --from ${from}\`.`,
+        `"${from}" exports no icon components this command can read. If its icons are data (objects or SVG strings), run \`astryx experimental icon new-set ${name}\`, declare an "adapter" in ${name}.icons.json, and run this command again; or add icons one at a time with \`astryx experimental icon add <Export> --from ${from}\`.`,
         undefined,
         ERROR_CODES.ERR_NOT_FOUND,
       );
@@ -1432,14 +1437,17 @@ async function addIconSet(name, options) {
   );
   const manifestPath = projectPath(path.relative(packageDir, manifestFile));
 
-  let rootReceipt = {path: rootPath, created: !manifest.iconSets};
+  let rootReceipt = {
+    path: rootPath,
+    created: !manifest.experimental?.iconSets,
+  };
   if (!dryRun) {
     let rollback = () => {};
     try {
       rollback = applyWrites(plans);
       rootReceipt = await patchIntegrationRoot(
         packageDir,
-        'iconSets',
+        ICON_SETS_ROOT_KEY,
         rootPath,
         {
           createIfMissing: true,
@@ -1447,10 +1455,13 @@ async function addIconSet(name, options) {
             const m = await loadManifestObject(manifestFile, 'verify', {
               fresh: true,
             });
-            if (!m.iconSets)
-              throw new Error('iconSets root not visible after writing.');
-            const setsRoot = assertWithin(m.iconSets, packageDir, {
-              label: 'iconSets root',
+            const declared = m.experimental?.iconSets;
+            if (!declared)
+              throw new Error(
+                'experimental.iconSets root not visible after writing.',
+              );
+            const setsRoot = assertWithin(declared, packageDir, {
+              label: 'experimental.iconSets root',
             });
             await assertContributionVisible(
               {name: owner, iconSets: setsRoot},
@@ -1648,7 +1659,7 @@ async function refreshIconSet(
  * map to Astryx's definition instead.
  * @param {string} name camelCase definition name
  * @param {{cwd?: string, dryRun?: boolean, set?: string, description?: string, words?: string[] | string, icon?: string}} options
- * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
+ * @returns {Promise<{type: 'integration.add', data: import('../icon/icon.type.mjs').IconNewData}>}
  */
 async function addIconDefinition(name, options) {
   const {
@@ -1775,19 +1786,31 @@ export function integrationAddAgentDoc(line, options = {}) {
 }
 
 /**
+ * Start an icon set in the local integration package: `astryx experimental
+ * icon new-set` (AST-084). Experimental (spec:AST-017 FR27).
+ * @experimental
  * @param {string} name
- * @param {import('./integration-authoring.type.mjs').IntegrationAddIconSetOptions} [options]
+ * @param {import('../icon/icon.type.mjs').IconNewSetOptions} [options]
+ * @returns {Promise<import('../icon/icon.type.mjs').IconNewSetResponse>}
  */
-export function integrationAddIconSet(name, options = {}) {
-  return addIconSet(name, options);
+export async function iconNewSet(name, options = {}) {
+  validateKindOptions('icon-set', options);
+  const {data} = await addIconSet(name, options);
+  return {type: 'icon.newSet', data};
 }
 
 /**
+ * Add an icon set's own icon definition: `astryx experimental icon
+ * new-definition` (AST-084). Experimental (spec:AST-017 FR27).
+ * @experimental
  * @param {string} name
- * @param {import('./integration-authoring.type.mjs').IntegrationAddIconDefinitionOptions} [options]
+ * @param {import('../icon/icon.type.mjs').IconNewDefinitionOptions} [options]
+ * @returns {Promise<import('../icon/icon.type.mjs').IconNewDefinitionResponse>}
  */
-export function integrationAddIconDefinition(name, options = {}) {
-  return addIconDefinition(name, options);
+export async function iconNewDefinition(name, options = {}) {
+  validateKindOptions('icon-definition', options);
+  const {data} = await addIconDefinition(name, options);
+  return {type: 'icon.newDefinition', data};
 }
 
 // ── Public dispatcher ───────────────────────────────────────────────
@@ -1799,6 +1822,10 @@ const KIND_OPTIONS = {
   codemod: new Set(['cwd', 'dryRun', 'to']),
   'agent-doc': new Set(['cwd', 'dryRun']),
   theme: new Set(['cwd', 'dryRun', 'from']),
+};
+
+/** The experimental icon authoring calls' options, refused the same way. */
+const ICON_KIND_OPTIONS = {
   'icon-set': new Set(['cwd', 'dryRun', 'from', 'exclude']),
   'icon-definition': new Set([
     'cwd',
@@ -1813,11 +1840,14 @@ const KIND_OPTIONS = {
 /**
  * Refuse options that belong to another contribution kind. Ignoring one is a
  * silent success: the command exits zero while not doing what the caller asked.
- * @param {keyof typeof KIND_OPTIONS} kind
+ * @param {keyof typeof KIND_OPTIONS | keyof typeof ICON_KIND_OPTIONS} kind
  * @param {Record<string, unknown>} options
  */
 function validateKindOptions(kind, options) {
-  const allowed = KIND_OPTIONS[kind];
+  const allowed =
+    kind === 'icon-set' || kind === 'icon-definition'
+      ? ICON_KIND_OPTIONS[kind]
+      : KIND_OPTIONS[kind];
   for (const [key, value] of Object.entries(options)) {
     if (value !== undefined && !allowed.has(key)) {
       throw new AstryxError(
@@ -1840,7 +1870,7 @@ function validateKindOptions(kind, options) {
 export async function integrationAdd(kind, name, options = {}) {
   if (!Object.prototype.hasOwnProperty.call(KIND_OPTIONS, kind)) {
     throw new AstryxError(
-      `Unknown contribution kind "${kind}". Choose component, doc, template, codemod, agent-doc, theme, icon-set, or icon-definition.`,
+      `Unknown contribution kind "${kind}". Choose component, doc, template, codemod, agent-doc, or theme.`,
       undefined,
       ERROR_CODES.ERR_INVALID_ARGUMENT,
     );
@@ -1871,14 +1901,5 @@ export async function integrationAdd(kind, name, options = {}) {
         dryRun: options.dryRun,
         from: options.from,
       });
-    case 'icon-set':
-      return integrationAddIconSet(name, {
-        cwd: options.cwd,
-        dryRun: options.dryRun,
-        from: options.from,
-        exclude: options.exclude,
-      });
-    case 'icon-definition':
-      return integrationAddIconDefinition(name, options);
   }
 }

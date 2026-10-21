@@ -220,7 +220,7 @@ describe('Project.iconSets', () => {
       fs.mkdirSync(tmp);
       const {state} = await iconSetsOf({
         packages: [{}, {name: '@acme/lines'}],
-        config: {iconSet},
+        config: {experimental: {iconSet}},
       });
       expect(state.choice.status).toBe('selected');
       expect(state.sets.map(set => set.name)).toEqual(['lines', 'glyphs']);
@@ -228,7 +228,9 @@ describe('Project.iconSets', () => {
   });
 
   it('iconSet naming a set that is not installed is missing', async () => {
-    const {state} = await iconSetsOf({config: {iconSet: 'nope'}});
+    const {state} = await iconSetsOf({
+      config: {experimental: {iconSet: 'nope'}},
+    });
     expect(state.choice.status).toBe('missing');
     expect(state.choice.reason).toMatch(/no installed set has that name/);
   });

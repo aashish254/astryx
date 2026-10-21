@@ -55,7 +55,7 @@ export function item(packages, packageName, itemName, options = {}) {
               iconCount: set.iconCount,
               ...(set.default ? {default: set.default} : {}),
               definitions: set.definitions,
-              command: `astryx icon <words> --set ${packageName}/${itemName}`,
+              command: `astryx experimental icon <words> --set ${packageName}/${itemName}`,
               installed: true,
             },
           };
@@ -93,7 +93,9 @@ export function item(packages, packageName, itemName, options = {}) {
       ...(found.iconCount != null ? {iconCount: found.iconCount} : {}),
       ...(found.definitions ? {definitions: found.definitions} : {}),
       ...(found.kind === 'icon-set' && pkg != null
-        ? {command: `astryx icon <words> --set ${packageName}/${found.name}`}
+        ? {
+            command: `astryx experimental icon <words> --set ${packageName}/${found.name}`,
+          }
         : {}),
       installed: pkg != null,
       ...(pkg == null && installedAs ? {installedAs} : {}),

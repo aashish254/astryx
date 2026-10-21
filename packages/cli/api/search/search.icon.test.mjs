@@ -56,7 +56,7 @@ describe('search: icon domain', () => {
       name: 'glyphs/trash',
       package: '@acme/glyphs',
       import: "import {TrashIcon} from '@acme/glyphs';",
-      command: 'astryx icon glyphs/trash',
+      command: 'astryx experimental icon glyphs/trash',
     });
   });
 

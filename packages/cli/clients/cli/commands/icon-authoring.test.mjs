@@ -1,9 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file Icon-set authoring commands end to end (AST-084): `integration add
- * icon-set --from`, `integration add icon-definition`, `icon add`, `icon
- * map`, and `icon use`, driving the real program over an icon-set package
+ * @file Icon-set authoring commands end to end (AST-084): `experimental icon
+ * new-set --from`, `experimental icon new-definition`, `experimental icon add`, `icon
+ * map`, and `experimental icon use`, driving the real program over an icon-set package
  * that wraps a small component library and an app that installs it.
  */
 
@@ -101,12 +101,12 @@ const dataOf = set =>
     ),
   );
 
-describe('integration add icon-set --from', () => {
+describe('experimental icon new-set --from', () => {
   it('wraps every component of a library once, names each <Name>Icon, pre-fills exact map hits, and says what to export', async () => {
     const {code, body} = await json([
-      'integration',
-      'add',
-      'icon-set',
+      'experimental',
+      'icon',
+      'new-set',
       'outline',
       '--from',
       '@acme/glyph-library',
@@ -136,9 +136,9 @@ describe('integration add icon-set --from', () => {
 
     // Running it again refreshes in place and keeps the map.
     const again = await json([
-      'integration',
-      'add',
-      'icon-set',
+      'experimental',
+      'icon',
+      'new-set',
       'outline',
       '--from',
       '@acme/glyph-library',
@@ -150,11 +150,12 @@ describe('integration add icon-set --from', () => {
 
 describe('icon add', () => {
   beforeEach(async () => {
-    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    await runCli(['experimental', 'icon', 'new-set', 'outline'], pkg);
   });
 
   it('lists the definitions that fit an export, and writes nothing', async () => {
     const {code, body} = await json([
+      'experimental',
       'icon',
       'add',
       'Bin',
@@ -167,13 +168,14 @@ describe('icon add', () => {
       name: 'delete',
       source: 'astryx',
       command:
-        'astryx icon add Bin --from @acme/glyph-library --definition delete',
+        'astryx experimental icon add Bin --from @acme/glyph-library --definition delete',
     });
     expect(dataOf('outline').icons).toEqual([]);
   });
 
   it('adds the icon as <Name>Icon through the generated module, maps it, and is idempotent', async () => {
     const args = [
+      'experimental',
       'icon',
       'add',
       'Bin',
@@ -202,6 +204,7 @@ describe('icon add', () => {
 
   it("adds the set's own definition with --new-definition, refusing one Astryx has", async () => {
     const added = await json([
+      'experimental',
       'icon',
       'add',
       'Cross',
@@ -240,6 +243,7 @@ describe('icon add', () => {
       ),
     ).toContain("words: ['strike', 'cross']");
     const refused = await json([
+      'experimental',
       'icon',
       'add',
       'Cross',
@@ -260,6 +264,7 @@ describe('icon add', () => {
 
   it('refuses an export the module lacks, with close names, and an unknown definition', async () => {
     const missing = await json([
+      'experimental',
       'icon',
       'add',
       'Bim',
@@ -273,6 +278,7 @@ describe('icon add', () => {
       missing.body.suggestions.map((/** @type {any} */ s) => s.name),
     ).toContain('Bin');
     const unknown = await json([
+      'experimental',
       'icon',
       'add',
       'Bin',
@@ -286,6 +292,7 @@ describe('icon add', () => {
 
   it('a default export, or a value through the declared adapter', async () => {
     const rocket = await json([
+      'experimental',
       'icon',
       'add',
       'Rocket',
@@ -297,6 +304,7 @@ describe('icon add', () => {
     ]);
     expect(rocket.code).toBe(0);
     const refused = await json([
+      'experimental',
       'icon',
       'add',
       'glyphData',
@@ -323,6 +331,7 @@ describe('icon add', () => {
       'export function adapt(data) { return () => null; }\n',
     );
     const adapted = await json([
+      'experimental',
       'icon',
       'add',
       'glyphData',
@@ -349,13 +358,13 @@ describe('icon add', () => {
   });
 });
 
-describe('icon map and integration add icon-definition', () => {
+describe('experimental icon map and new-definition', () => {
   beforeEach(async () => {
     await runCli(
       [
-        'integration',
-        'add',
-        'icon-set',
+        'experimental',
+        'icon',
+        'new-set',
         'outline',
         '--from',
         '@acme/glyph-library',
@@ -365,24 +374,48 @@ describe('icon map and integration add icon-definition', () => {
   });
 
   it('maps, remaps, and removes an entry; refuses an unknown definition or icon', async () => {
-    const mapped = await json(['icon', 'map', 'close', 'cross']);
+    const mapped = await json([
+      'experimental',
+      'icon',
+      'map',
+      'close',
+      'cross',
+    ]);
     expect(mapped.body.data).toMatchObject({
       definition: 'close',
       icon: 'cross',
       changed: true,
     });
     expect(dataOf('outline').map.close).toBe('cross');
-    const removed = await json(['icon', 'map', 'close', '--remove']);
+    const removed = await json([
+      'experimental',
+      'icon',
+      'map',
+      'close',
+      '--remove',
+    ]);
     expect(removed.body.data).toMatchObject({icon: null, previous: 'cross'});
     expect(dataOf('outline').map).not.toHaveProperty('close');
-    const unknown = await json(['icon', 'map', 'rotate', 'cross']);
+    const unknown = await json([
+      'experimental',
+      'icon',
+      'map',
+      'rotate',
+      'cross',
+    ]);
     expect(unknown.code).toBe(1);
     expect(unknown.body.suggestions).toContainEqual(
       expect.objectContaining({
-        name: 'astryx integration add icon-definition rotate --set outline',
+        name: 'astryx experimental icon new-definition rotate --set outline',
       }),
     );
-    const noIcon = await json(['icon', 'map', 'close', 'crosss']);
+    const noIcon = await json([
+      'experimental',
+      'icon',
+      'map',
+      'close',
+      'crosss',
+    ]);
     expect(noIcon.code).toBe(1);
     expect(noIcon.body.suggestions).toContainEqual(
       expect.objectContaining({name: 'cross'}),
@@ -391,9 +424,9 @@ describe('icon map and integration add icon-definition', () => {
 
   it("adds the set's own definition, mapped with --icon", async () => {
     const {code, body} = await json([
-      'integration',
-      'add',
-      'icon-definition',
+      'experimental',
+      'icon',
+      'new-definition',
       'crossOut',
       '--description',
       'Cross something out.',
@@ -409,9 +442,9 @@ describe('icon map and integration add icon-definition', () => {
     });
     expect(dataOf('outline').map.crossOut).toBe('cross');
     const again = await json([
-      'integration',
-      'add',
-      'icon-definition',
+      'experimental',
+      'icon',
+      'new-definition',
       'crossOut',
       '--description',
       'x',
@@ -423,10 +456,10 @@ describe('icon map and integration add icon-definition', () => {
   });
 });
 
-describe('icon use', () => {
-  it("writes the project's iconSet, creating astryx.config.mjs, and refuses a set that is not installed", async () => {
+describe('experimental icon use', () => {
+  it("writes the project's experimental.iconSet, creating astryx.config.mjs, and refuses a set that is not installed", async () => {
     const app = writeIconSetProject(tmp);
-    const used = await json(['icon', 'use', 'glyphs'], app);
+    const used = await json(['experimental', 'icon', 'use', 'glyphs'], app);
     expect(used.code).toBe(0);
     expect(used.body.data).toMatchObject({
       iconSet: 'glyphs',
@@ -436,14 +469,17 @@ describe('icon use', () => {
     });
     expect(
       fs.readFileSync(path.join(app, 'astryx.config.mjs'), 'utf-8'),
-    ).toContain("iconSet: 'glyphs'");
-    const again = await json(['icon', 'use', '@acme/glyphs/glyphs'], app);
+    ).toMatch(/experimental: \{\s*iconSet: 'glyphs',?\s*\}/);
+    const again = await json(
+      ['experimental', 'icon', 'use', '@acme/glyphs/glyphs'],
+      app,
+    );
     expect(again.body.data).toMatchObject({
       previous: 'glyphs',
       changed: true,
       created: false,
     });
-    const missing = await json(['icon', 'use', 'glyps'], app);
+    const missing = await json(['experimental', 'icon', 'use', 'glyps'], app);
     expect(missing.code).toBe(1);
     expect(missing.body.suggestions).toContainEqual(
       expect.objectContaining({name: 'glyphs'}),
@@ -500,21 +536,21 @@ describe('a library of icon data, through the adapter', () => {
 
   it('the bulk wrap finds nothing until the adapter is declared, then wraps every data export without the shared prefix', async () => {
     const before = await json([
-      'integration',
-      'add',
-      'icon-set',
+      'experimental',
+      'icon',
+      'new-set',
       'outline',
       '--from',
       '@acme/glyph-data',
     ]);
     expect(before.code).toBe(1);
     expect(before.body.error).toContain('adapter');
-    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    await runCli(['experimental', 'icon', 'new-set', 'outline'], pkg);
     declareAdapter();
     const wrapped = await json([
-      'integration',
-      'add',
-      'icon-set',
+      'experimental',
+      'icon',
+      'new-set',
       'outline',
       '--from',
       '@acme/glyph-data',
@@ -537,7 +573,7 @@ describe('a library of icon data, through the adapter', () => {
   });
 
   it('icon add appended twice writes the adapter import once, and the module still parses', async () => {
-    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    await runCli(['experimental', 'icon', 'new-set', 'outline'], pkg);
     declareAdapter();
     for (const [name, definition] of [
       ['glyphTrash', 'delete'],
@@ -545,6 +581,7 @@ describe('a library of icon data, through the adapter', () => {
       ['glyphX', 'close'],
     ]) {
       const added = await json([
+        'experimental',
         'icon',
         'add',
         name,
@@ -585,7 +622,7 @@ describe('a library of icon data, through the adapter', () => {
       'export declare const themeIcons: {readonly close: ReactElement};',
     );
     // icon map rewrites the theme map.
-    await json(['icon', 'map', 'close', 'trash']);
+    await json(['experimental', 'icon', 'map', 'close', 'trash']);
     expect(generated()).toContain('close: createElement(TrashIcon,');
     // Integration check reads it all: no parse error, no missing export, no
     // theme-map or types mismatch.
@@ -637,7 +674,7 @@ describe('the library prefix ignores constants', () => {
 
   /** Create the set with an adapter. */
   const setUp = async () => {
-    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    await runCli(['experimental', 'icon', 'new-set', 'outline'], pkg);
     const file = path.join(pkg, 'icon-sets', 'outline', 'outline.icons.json');
     const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
     data.adapter = {module: './src/adapt.js', export: 'adapt'};
@@ -647,9 +684,9 @@ describe('the library prefix ignores constants', () => {
     dataOf('outline').icons.map((/** @type {any} */ i) => i.export);
   const wrap = (/** @type {string[]} */ extra = []) =>
     json([
-      'integration',
-      'add',
-      'icon-set',
+      'experimental',
+      'icon',
+      'new-set',
       'outline',
       '--from',
       '@acme/glyph-data',
@@ -678,6 +715,7 @@ describe('the library prefix ignores constants', () => {
     // icon add reuses the icon the wrap already made for an export, even
     // though meta keeps its own prefix off.
     const added = await json([
+      'experimental',
       'icon',
       'add',
       'glyphTrash',
@@ -696,9 +734,9 @@ describe('the library prefix ignores constants', () => {
 
   it('--exclude needs --from', async () => {
     const res = await json([
-      'integration',
-      'add',
-      'icon-set',
+      'experimental',
+      'icon',
+      'new-set',
       'outline',
       '--exclude',
       'README',
@@ -735,8 +773,9 @@ describe('module resolution', () => {
       path.join(tmp, 'node_modules', '@acme', 'glyph-library'),
     );
     pkg = deep;
-    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    await runCli(['experimental', 'icon', 'new-set', 'outline'], pkg);
     const added = await json([
+      'experimental',
       'icon',
       'add',
       'Bin',

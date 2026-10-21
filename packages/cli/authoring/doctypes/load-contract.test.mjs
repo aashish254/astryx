@@ -16,6 +16,7 @@ import {describe, expect, it} from 'vitest';
 import {parseDoc} from './parse.mjs';
 import {AuthoredDocKindSchema} from './_schema.mjs';
 import {doc as graphFieldsDoc} from './base/graph-fields.doc.mjs';
+import {doc as iconDefinitionDoc} from './icon-definition/icon-definition.doc.mjs';
 import {problemsInTopic} from '../../foundation/discovery/docs-discovery.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -183,9 +184,15 @@ describe('unknown fields', () => {
     const named = (/** @type {string} */ text) =>
       [...text.matchAll(/`([a-z][a-z-]*)`/g)].map(match => match[1]).sort();
     expect(named(kept)).toEqual([...keeps].sort());
-    expect(named(refused).filter(kind => KINDS.includes(kind))).toEqual(
-      KINDS.filter(kind => !keeps.includes(kind)).sort(),
+    // The experimental icon-definition kind states its own policy in its
+    // schema doc, on its experimental route (spec:AST-017 FR27).
+    const stable = KINDS.filter(kind => kind !== 'icon-definition');
+    expect(named(refused).filter(kind => stable.includes(kind))).toEqual(
+      stable.filter(kind => !keeps.includes(kind)).sort(),
     );
+    expect(keeps).not.toContain('icon-definition');
+    const iconDefinitionNotes = JSON.stringify(iconDefinitionDoc.notes);
+    expect(iconDefinitionNotes).toContain('refuses a field it does not know');
   });
 
   it("are refused inside a section's reference block, which a section takes", () => {

@@ -108,13 +108,17 @@ export function registerSearch(program) {
       // ── Text output ──────────────────────────────────────────────
       const run = getCliInvocation();
       const {query: q, matchCount, results} = result.data;
-      // Outside an app an open search covers the docs, themes, and icons. Say
+      // Outside an app an open search covers the docs and themes alone. Say
       // so, so that list does not read as "Astryx has no such component".
+      // Icons are searched only where an experimental icon set is loaded.
+      const searched = results.some(each => each.domain === 'icon')
+        ? 'the docs, themes, and icons'
+        : 'the docs and themes';
       const note =
         !options.type && !findCoreDir(process.cwd())
           ? [
               text(
-                '@astryxdesign/core is not installed here, so only the docs, themes, and icons were searched.',
+                `@astryxdesign/core is not installed here, so only ${searched} were searched.`,
               ),
             ]
           : [];
@@ -205,7 +209,9 @@ function discoverHint(run, query, type) {
  * @param {string} value
  */
 function shellWord(value) {
-  return /^[\w@./:-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+  return /^[\w@./:-]+$/.test(value)
+    ? value
+    : `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 // Re-export the API for external consumers.

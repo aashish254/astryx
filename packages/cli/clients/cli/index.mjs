@@ -26,14 +26,19 @@ import {levenshteinDistance} from '../../foundation/text/string-utils.mjs';
 import {installJsonShim} from './lib/json-shim.mjs';
 import {addDocHelp, markReportsResult} from './lib/define-command.mjs';
 import {doc as manifestDoc} from './commands/manifest.doc.mjs';
-import {isAstryxInitialized, isAstryxPromptInReach} from '../../foundation/agent-docs/agent-docs.mjs';
+import {
+  isAstryxInitialized,
+  isAstryxPromptInReach,
+} from '../../foundation/agent-docs/agent-docs.mjs';
 import {CLI_ROOT} from '../../foundation/fs/paths.mjs';
 import * as debug from '../../foundation/debug/index.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Read version from package.json so it stays in sync
-const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf-8'));
+const pkg = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf-8'),
+);
 
 // Start the debug recorder before anything can exit. Allocation only — no
 // filesystem, no environment probe, no config — and it must run ahead of the
@@ -64,7 +69,13 @@ export function handleVersionJsonPreflight(argv = process.argv.slice(2)) {
   // reports the same shape Commander's own `--version` path does.
   debug.recordCommandResult(debug.NO_RESULT_SET);
   debug.setOutcome('ok', {exitCode: 0});
-  console.log(JSON.stringify({apiVersion: API_VERSION, type: 'version', data: {version: pkg.version}}, null, 2));
+  console.log(
+    JSON.stringify(
+      {apiVersion: API_VERSION, type: 'version', data: {version: pkg.version}},
+      null,
+      2,
+    ),
+  );
   process.exit(0);
 }
 
@@ -84,10 +95,12 @@ export const JSON_SUPPORTED = new Set([
   'blog',
   'discover',
   'search',
-  'icon',
-  'icon add',
-  'icon map',
-  'icon use',
+  'experimental icon',
+  'experimental icon add',
+  'experimental icon map',
+  'experimental icon use',
+  'experimental icon new-set',
+  'experimental icon new-definition',
   'build',
   'swizzle',
   'gap-report',
@@ -174,9 +187,8 @@ function fullCommandName(actionCommand, root) {
  */
 export async function loadProjectDebugHandler() {
   try {
-    const {findConfigPath, Project} = await import(
-      '../../foundation/config/project.mjs'
-    );
+    const {findConfigPath, Project} =
+      await import('../../foundation/config/project.mjs');
     const configPath = findConfigPath(process.cwd());
     if (!configPath) return;
     const text = fs.readFileSync(configPath, 'utf-8');
@@ -264,22 +276,60 @@ function captureInvocation(actionCommand, root) {
  */
 const commands = [
   {name: 'init', path: './commands/init.mjs', register: 'registerInit'},
-  {name: 'component', path: './commands/component/index.mjs', register: 'registerComponent'},
+  {
+    name: 'component',
+    path: './commands/component/index.mjs',
+    register: 'registerComponent',
+  },
   {name: 'docs', path: './commands/docs.mjs', register: 'registerDocs'},
   {name: 'blog', path: './commands/blog.mjs', register: 'registerBlog'},
-  {name: 'swizzle', path: './commands/swizzle.mjs', register: 'registerSwizzle'},
-  {name: 'gap-report', path: './commands/gap-report.mjs', register: 'registerGapReport'},
+  {
+    name: 'swizzle',
+    path: './commands/swizzle.mjs',
+    register: 'registerSwizzle',
+  },
+  {
+    name: 'gap-report',
+    path: './commands/gap-report.mjs',
+    register: 'registerGapReport',
+  },
   // agent-docs folded into init — functions still importable from agent-docs.mjs
-  {name: 'template', path: './commands/template.mjs', register: 'registerTemplate'},
-  {name: 'upgrade', path: './commands/upgrade.mjs', register: 'registerUpgrade'},
-  {name: 'theme', path: './commands/build-theme.mjs', register: 'registerTheme'},
-  {name: 'integration', path: './commands/integration.mjs', register: 'registerIntegration'},
+  {
+    name: 'template',
+    path: './commands/template.mjs',
+    register: 'registerTemplate',
+  },
+  {
+    name: 'upgrade',
+    path: './commands/upgrade.mjs',
+    register: 'registerUpgrade',
+  },
+  {
+    name: 'theme',
+    path: './commands/build-theme.mjs',
+    register: 'registerTheme',
+  },
+  {
+    name: 'integration',
+    path: './commands/integration.mjs',
+    register: 'registerIntegration',
+  },
   {name: 'hook', path: './commands/hook/index.mjs', register: 'registerHook'},
-  {name: 'discover', path: './commands/discover.mjs', register: 'registerDiscover'},
+  {
+    name: 'discover',
+    path: './commands/discover.mjs',
+    register: 'registerDiscover',
+  },
   {name: 'search', path: './commands/search.mjs', register: 'registerSearch'},
-  {name: 'icon', path: './commands/icon.mjs', register: 'registerIcon'},
   {name: 'build', path: './commands/build.mjs', register: 'registerBuild'},
   {name: 'doctor', path: './commands/doctor.mjs', register: 'registerDoctor'},
+  // Experimental commands (spec:AST-017 FR27): last, so every stable command
+  // keeps its place in help.
+  {
+    name: 'experimental',
+    path: './commands/experimental/index.mjs',
+    register: 'registerExperimental',
+  },
 ];
 
 const SETUP_NUDGE_EXEMPT = new Set(['init', 'agent-docs']);
@@ -301,7 +351,9 @@ function inOwnSourceCheckout(cwd) {
     checkout = parent;
   }
   const rel = path.relative(checkout, path.resolve(cwd));
-  return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+  return (
+    rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)
+  );
 }
 /** An integration package's manifest: the package is not an app to set up. */
 const INTEGRATION_MANIFEST_FILES = [
@@ -327,7 +379,7 @@ export async function createProgram() {
   // no-op so every item stays on one line — matching the rest of the CLI's
   // plain, unwrapped, width-independent output. Set before subcommands are
   // registered so they inherit it via copyInheritedSettings.
-  program.configureHelp({wrap: (str) => str});
+  program.configureHelp({wrap: str => str});
 
   // Document the text-output contract in --help so agents know how to parse/grep
   // it (and when to reach for --json instead). Kept in sync with the formatter
@@ -344,15 +396,24 @@ export async function createProgram() {
           [
             {
               block: 'Record',
-              shape: 'aligned "key: value" lines = one item; records separated by a blank line',
+              shape:
+                'aligned "key: value" lines = one item; records separated by a blank line',
             },
             {
               block: 'Section',
-              shape: 'a header line (no "key:"), optional one-line subtitle, then its records/list',
+              shape:
+                'a header line (no "key:"), optional one-line subtitle, then its records/list',
             },
-            {block: 'List', shape: '"- value" lines for a simple sequence of values'},
+            {
+              block: 'List',
+              shape: '"- value" lines for a simple sequence of values',
+            },
             {block: 'Text', shape: 'free-form prose / notes'},
-            {block: 'Code', shape: 'a verbatim block (source, skeleton, or doc), emitted exactly'},
+            {
+              block: 'Code',
+              shape:
+                'a verbatim block (source, skeleton, or doc), emitted exactly',
+            },
           ],
           {fields: ['block', 'shape']},
         ),
@@ -375,7 +436,10 @@ export async function createProgram() {
       '--zh',
       'Simplified Chinese for component reads and for docs topics that have a translation (English otherwise)',
     )
-    .option('--dense', 'Token-efficient dense text for component <Name> and docs <topic> reads')
+    .option(
+      '--dense',
+      'Token-efficient dense text for component <Name> and docs <topic> reads',
+    )
     .addOption(
       new Option(
         '--lang <locale>',
@@ -404,20 +468,30 @@ export async function createProgram() {
       if (extras.length > 0) {
         const unknown = String(extras[0]);
         const known = (program.commands || [])
-          .filter((c) => !(/** @type {any} */ (c)._hidden) && c.name() !== 'help')
-          .map((c) => c.name());
+          .filter(c => !(/** @type {any} */ (c)._hidden) && c.name() !== 'help')
+          .map(c => c.name());
         const close = known
-          .map((name) => ({name, distance: levenshteinDistance(unknown.toLowerCase(), name.toLowerCase())}))
-          .filter((s) => s.distance <= 3)
+          .map(name => ({
+            name,
+            distance: levenshteinDistance(
+              unknown.toLowerCase(),
+              name.toLowerCase(),
+            ),
+          }))
+          .filter(s => s.distance <= 3)
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 3)
-          .map((s) => ({name: s.name, reason: 'did you mean this?'}));
+          .map(s => ({name: s.name, reason: 'did you mean this?'}));
         // If we have close matches, surface those. Otherwise list all known commands
         // so callers (including AI agents) can see what's available.
-        const suggestions = close.length > 0
-          ? close
-          : known.map((name) => ({name, reason: 'available command'}));
-        cliError(`unknown command '${unknown}'`, {suggestions, code: ERROR_CODES.ERR_UNKNOWN_COMMAND});
+        const suggestions =
+          close.length > 0
+            ? close
+            : known.map(name => ({name, reason: 'available command'}));
+        cliError(`unknown command '${unknown}'`, {
+          suggestions,
+          code: ERROR_CODES.ERR_UNKNOWN_COMMAND,
+        });
         return;
       }
 
@@ -444,19 +518,25 @@ export async function createProgram() {
           jsonSupported: JSON_SUPPORTED,
           version: pkg.version,
         });
-        console.log(JSON.stringify({
-          apiVersion: API_VERSION,
-          type: 'help',
-          data: {
-            name: manifest.name,
-            version: manifest.version,
-            // Original flat list of command names (string[]) — kept for compat.
-            commands: manifest.commands.map((c) => c.name),
-            jsonSupported: manifest.jsonSupported,
-            // Enriched, self-describing surface (the full manifest payload).
-            manifest,
-          },
-        }, null, 2));
+        console.log(
+          JSON.stringify(
+            {
+              apiVersion: API_VERSION,
+              type: 'help',
+              data: {
+                name: manifest.name,
+                version: manifest.version,
+                // Original flat list of command names (string[]) — kept for compat.
+                commands: manifest.commands.map(c => c.name),
+                jsonSupported: manifest.jsonSupported,
+                // Enriched, self-describing surface (the full manifest payload).
+                manifest,
+              },
+            },
+            null,
+            2,
+          ),
+        );
         debug.recordCommandResult(
           debug.resultSet({
             count: manifest.commands.length,
@@ -523,11 +603,17 @@ export async function createProgram() {
       exitCode: 1,
       code: ERROR_CODES.ERR_INVALID_OPTION,
     });
-    console.log(JSON.stringify({
-      apiVersion: API_VERSION,
-      error: `JSON output is not supported for the '${fullName}' command`,
-      code: ERROR_CODES.ERR_INVALID_OPTION,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          apiVersion: API_VERSION,
+          error: `JSON output is not supported for the '${fullName}' command`,
+          code: ERROR_CODES.ERR_INVALID_OPTION,
+        },
+        null,
+        2,
+      ),
+    );
     process.exit(1);
   });
 
@@ -541,14 +627,20 @@ export async function createProgram() {
     if (!program.opts().json) return;
     if (process.__xdsJsonHandled) return;
     const fullName = fullCommandName(actionCommand, program);
-    console.log(JSON.stringify({
-      apiVersion: API_VERSION,
-      error: `Internal: '${fullName}' completed without emitting a JSON envelope`,
-      // `code` always appears on an error envelope so consumers can branch on
-      // it unconditionally. This belt-and-suspenders path is an internal
-      // condition, so it uses the generic ERR_UNKNOWN.
-      code: ERROR_CODES.ERR_UNKNOWN,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          apiVersion: API_VERSION,
+          error: `Internal: '${fullName}' completed without emitting a JSON envelope`,
+          // `code` always appears on an error envelope so consumers can branch on
+          // it unconditionally. This belt-and-suspenders path is an internal
+          // condition, so it uses the generic ERR_UNKNOWN.
+          code: ERROR_CODES.ERR_UNKNOWN,
+        },
+        null,
+        2,
+      ),
+    );
     process.exit(1);
   });
 
@@ -576,7 +668,12 @@ export async function createProgram() {
       const cwd = process.cwd();
       if (!fs.existsSync(path.join(cwd, 'package.json'))) return; // not a project
       // An integration package is not an app: `init` is not its next step.
-      if (INTEGRATION_MANIFEST_FILES.some(file => fs.existsSync(path.join(cwd, file)))) return;
+      if (
+        INTEGRATION_MANIFEST_FILES.some(file =>
+          fs.existsSync(path.join(cwd, file)),
+        )
+      )
+        return;
       if (inOwnSourceCheckout(cwd)) return; // developing Astryx itself, not an app
       if (isAstryxPromptInReach(cwd)) return; // already set up — stay quiet
       // Same wording as the core/cli postinstall nudges. #4151's getCliInvocation()
@@ -637,14 +734,22 @@ export async function createProgram() {
       );
       if (program.opts().json) {
         process.__xdsJsonHandled = true;
-        console.log(JSON.stringify({apiVersion: API_VERSION, type: 'manifest', data: manifest}, null, 2));
+        console.log(
+          JSON.stringify(
+            {apiVersion: API_VERSION, type: 'manifest', data: manifest},
+            null,
+            2,
+          ),
+        );
         return;
       }
       // Human-readable summary as greppable records (agents should use --json).
       // One record per command: name, whether it supports --json, and the
       // description. Field names are the manifest entry's own keys.
       emit(
-        section(`${manifest.name} v${manifest.version} (${manifest.commands.length} commands)`),
+        section(
+          `${manifest.name} v${manifest.version} (${manifest.commands.length} commands)`,
+        ),
         records(
           manifest.commands.map(c => ({
             name: c.name,
@@ -653,7 +758,9 @@ export async function createProgram() {
           })),
           {fields: ['name', 'json', 'description']},
         ),
-        text(`Run \`${getCliInvocation()} manifest --json\` for the full structured manifest.`),
+        text(
+          `Run \`${getCliInvocation()} manifest --json\` for the full structured manifest.`,
+        ),
       );
     });
   addDocHelp(manifestCommand, manifestDoc);
@@ -666,7 +773,8 @@ export async function createProgram() {
       // Prints the welcome box. Nothing is looked up.
       debug.recordCommandResult(debug.NO_RESULT_SET);
       const r = getCliInvocation();
-      const pad = (/** @type {string} */ s, /** @type {number} */ len) => s + ' '.repeat(Math.max(0, len - s.length));
+      const pad = (/** @type {string} */ s, /** @type {number} */ len) =>
+        s + ' '.repeat(Math.max(0, len - s.length));
       const W = 49; // inner width of the box
       const line = (/** @type {string} */ s) => `  │ ${pad(s, W)}│`;
       console.log(`

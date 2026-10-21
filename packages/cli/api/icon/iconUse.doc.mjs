@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-/** @file FunctionDoc for `iconUse()` / `astryx icon use` (AST-084 FR10). */
+/** @file FunctionDoc for `iconUse()` / `astryx experimental icon use` (AST-084 FR10). */
 
 /** @type {import('@astryxdesign/cli/authoring').FunctionDoc} */
 export const doc = {
@@ -8,14 +8,15 @@ export const doc = {
   kind: 'api',
   name: 'iconUse',
   namespace: 'cli/api',
+  stability: 'experimental',
   displayName: 'iconUse()',
   summary: "Choose the project's icon set.",
   description:
-    "Writes `iconSet` in the project's astryx.config (creating astryx.config.mjs when there is none), so templates and blocks the project copies use that set's icons. The set must be installed; a name two installed packages both ship is refused with each `<package>/<set>` form.",
+    "Writes `experimental.iconSet` in the project's astryx.config (creating astryx.config.mjs when there is none), so templates and blocks the project copies use that set's icons. The set must be installed; a name two installed packages both ship is refused with each `<package>/<set>` form. Experimental: it may change or be removed in a patch release.",
   importPath: '@astryxdesign/cli/api',
   signature:
     'iconUse(set: string, options?: {cwd?: string}): Promise<IconUseResponse>',
-  keywords: ['icon', 'icon set', 'use', 'iconSet', 'config'],
+  keywords: ['icon', 'icon set', 'use', 'experimental.iconSet', 'config'],
   params: [
     {
       name: 'set',
@@ -45,6 +46,6 @@ export const doc = {
     {code: 'ERR_WRITE_FAILED', when: 'the config cannot be updated safely'},
   ],
   examples: [{label: 'Use a set', code: "await iconUse('outline');"}],
-  command: 'icon use',
+  command: 'experimental icon use',
   related: ['icon', 'iconMap', 'iconAdd'],
 };

@@ -114,6 +114,7 @@ import {discoverTemplates, extractComponents} from '../template/template.mjs';
 import {templateLookupIds} from '../../foundation/discovery/template-adapter.mjs';
 import {listAvailableThemes} from '../theme/_adapter.mjs';
 import {loadIconSets} from '../icon/_adapter.mjs';
+import {loadAuthoringSelfDocs} from '../../foundation/discovery/authoring-self-docs.mjs';
 import {definitionsByIcon} from '../../foundation/discovery/icon-set-discovery.mjs';
 import {astryxDefinitionsByName} from '../../foundation/discovery/icon-definition-discovery.mjs';
 import {withDefinitionWords} from '../../foundation/discovery/icon-ranking.mjs';
@@ -546,20 +547,20 @@ const isTypo = (a, b, dist) =>
     TYPO_MIN_LENGTH[/** @type {1 | 2 | 3} */ (dist)];
 
 /** Valid domain filters for `--type`. */
-export const SEARCH_DOMAINS = [
-  'component',
-  'hook',
-  'doc',
-  'template',
-  'theme',
-  'icon',
-];
+export const SEARCH_DOMAINS = ['component', 'hook', 'doc', 'template', 'theme'];
+
+/**
+ * The experimental icon domain (AST-084, spec:AST-017 FR27). A search reads
+ * it, and `--type icon` is valid, only in a project with an icon set loaded,
+ * so search answers exactly as it always has everywhere else.
+ */
+const ICON_DOMAIN = 'icon';
 
 /**
  * The domains a search reads without @astryxdesign/core. An open search outside
  * an app covers these alone.
  */
-const CORELESS_DOMAINS = ['doc', 'theme', 'icon'];
+const CORELESS_DOMAINS = ['doc', 'theme', ICON_DOMAIN];
 
 /**
  * Filler words stripped from multi-word queries so natural-language phrasing
@@ -798,7 +799,7 @@ export function domainPriority(
     // An icon definition is a small doc named for one common word (`file`,
     // `user`): it leads only when the query is its name, so a word of a
     // longer query does not put it above the component the query is after.
-    if (topic.startsWith('icon-definitions/')) return 0;
+    if (topic.includes('icon-definitions/')) return 0;
     // A query of two or more words that is one of the doc's own declared
     // keywords, read as words whatever the plural, is the author naming the
     // doc for that phrase: `code review` on a guide that declares it. Only
@@ -1746,7 +1747,7 @@ async function gatherHooks(coreDir) {
  * @param {string} cwd
  * @returns {Promise<Candidate[]>}
  */
-async function gatherDocs(cwd) {
+async function gatherDocs(cwd, {experimental = false} = {}) {
   /** @type {Candidate[]} */
   const candidates = [];
   let catalog;
@@ -1762,6 +1763,15 @@ async function gatherDocs(cwd) {
     // `astryx doctor` reports a tree that fails to build; search still
     // indexes the topics.
   }
+  // Without an experimental opt-in, the experimental authoring schemas'
+  // sections of the `authoring` topic are not offered either.
+  const hidden = experimental
+    ? new Set()
+    : new Set(
+        (await loadAuthoringSelfDocs()).loaded
+          .filter(({doc}) => isExperimentalDoc(doc))
+          .map(({doc}) => doc.name),
+      );
   for (const entry of catalog.entries()) {
     // A topic whose name opens another doc (spec:AST-046 FR11) is not
     // offered: every hit's command must open the hit.
@@ -1773,7 +1783,17 @@ async function gatherDocs(cwd) {
       // A topic that cannot be loaded is reported by the commands that own
       // integration issues; search just cannot index it.
     }
-    const doc = lowered?.doc ?? null;
+    const read = lowered?.doc ?? null;
+    if (!experimental && isExperimentalDoc(read)) continue;
+    const doc =
+      read && hidden.size > 0 && Array.isArray(read.sections)
+        ? {
+            ...read,
+            sections: read.sections.filter(
+              (/** @type {any} */ section) => !hidden.has(section.id),
+            ),
+          }
+        : read;
     // A flat topic lives in the Unorganized level; its hits say so, and name
     // the package each section came from.
     const home = tree?.get(entry.name);
@@ -1812,6 +1832,7 @@ async function gatherDocs(cwd) {
   for (const node of tree.nodes.values()) {
     // A flat topic is indexed above, as a topic.
     if (node.ref?.flatTopic) continue;
+    if (!experimental && isExperimentalNode(tree, node)) continue;
     // A tree hit names where it lives: its ancestors' titles, then its own.
     const path = [...tree.ancestors(node).map(a => a.title), node.title];
     if (node.kind === 'generic') {
@@ -1874,6 +1895,26 @@ async function gatherDocs(cwd) {
     });
   }
   return candidates;
+}
+
+/**
+ * Is this doc an experimental surface's (spec:AST-017 FR21)?
+ * @param {any} doc
+ */
+function isExperimentalDoc(doc) {
+  return doc?.stability === 'experimental';
+}
+
+/**
+ * Does this tree node document an experimental surface: a typed doc marked
+ * experimental, or anything under an experimental namespace?
+ * @param {any} tree
+ * @param {any} node
+ */
+function isExperimentalNode(tree, node) {
+  return [...tree.ancestors(node), node].some((/** @type {any} */ each) =>
+    isExperimentalDoc(each.ref?.selfDoc),
+  );
 }
 
 /**
@@ -2142,16 +2183,10 @@ async function gatherThemes(cwd) {
  * FR8). An icon's name is `<set>/<id>`; its id, words, and filled shared icon
  * names are its keywords. It carries no prose, so a word only a set's
  * description holds never finds every icon in the set.
- * @param {string} cwd
- * @returns {Promise<Candidate[]>}
+ * @param {import('../../foundation/discovery/icon-set-discovery.mjs').DiscoveredIconSet[]} sets
+ * @returns {Candidate[]}
  */
-async function gatherIcons(cwd) {
-  let sets;
-  try {
-    ({sets} = await loadIconSets(cwd));
-  } catch {
-    return [];
-  }
+function gatherIcons(sets) {
   const astryx = astryxDefinitionsByName();
   return sets.flatMap(set => {
     const byIcon = definitionsByIcon(set.data);
@@ -2181,6 +2216,20 @@ async function gatherIcons(cwd) {
       };
     });
   });
+}
+
+/**
+ * The project's installed icon sets, or none when they cannot be read. A
+ * search reads the experimental icon domain only when there is one.
+ * @param {string} cwd
+ * @returns {Promise<import('../../foundation/discovery/icon-set-discovery.mjs').DiscoveredIconSet[]>}
+ */
+async function loadSearchIconSets(cwd) {
+  try {
+    return (await loadIconSets(cwd)).sets;
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -2251,7 +2300,7 @@ function toResult(c, score, reason, matchedTerms, queryTerms) {
         ...base,
         description: c._summary ?? '',
         import: c._import,
-        command: `astryx icon ${c.name}`,
+        command: `astryx experimental icon ${c.name}`,
       };
       break;
     default:
@@ -2293,10 +2342,14 @@ async function searchOnce(query, options) {
     );
   }
 
-  if (type && !SEARCH_DOMAINS.includes(type)) {
+  // The experimental icon domain exists only where an icon set is loaded.
+  const iconSets = await loadSearchIconSets(cwd);
+  const domains =
+    iconSets.length > 0 ? [...SEARCH_DOMAINS, ICON_DOMAIN] : SEARCH_DOMAINS;
+  if (type && !domains.includes(type)) {
     throw new AstryxError(
       `Unknown --type "${type}"`,
-      SEARCH_DOMAINS.map(d => ({name: d, reason: 'valid type'})),
+      domains.map(d => ({name: d, reason: 'valid type'})),
       ERROR_CODES.ERR_INVALID_ARGUMENT,
     );
   }
@@ -2331,17 +2384,19 @@ async function searchOnce(query, options) {
   // Gather candidates from each requested domain in parallel.
   /** @param {string} d */
   const wants = d =>
-    (!type && (coreDir != null || CORELESS_DOMAINS.includes(d))) || type === d;
+    domains.includes(d) &&
+    ((!type && (coreDir != null || CORELESS_DOMAINS.includes(d))) ||
+      type === d);
   const [components, hooks, docTopics, templates, themes, icons] =
     await Promise.all([
       wants('component')
         ? gatherComponents(/** @type {string} */ (coreDir), cwd)
         : [],
       wants('hook') ? gatherHooks(/** @type {string} */ (coreDir)) : [],
-      wants('doc') ? gatherDocs(cwd) : [],
+      wants('doc') ? gatherDocs(cwd, {experimental: iconSets.length > 0}) : [],
       wants('template') ? gatherTemplates(cwd) : [],
       wants('theme') ? gatherThemes(cwd) : [],
-      wants('icon') ? gatherIcons(cwd) : [],
+      wants(ICON_DOMAIN) ? gatherIcons(iconSets) : [],
     ]);
 
   const all = [

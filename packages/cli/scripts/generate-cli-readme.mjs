@@ -70,7 +70,8 @@ function replaceBlock(content, name, block) {
   const re = new RegExp(
     `${begin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
   );
-  if (!re.test(content)) throw new Error(`README markers for "${name}" not found`);
+  if (!re.test(content))
+    throw new Error(`README markers for "${name}" not found`);
   return content.replace(re, `${begin}\n\n${block}\n\n${end}`);
 }
 
@@ -81,21 +82,46 @@ async function build() {
     .map((/** @type {any} */ c) => [`\`${c.name}\``, c.description]);
 
   const errorCodes = await loadDoc('foundation/response/error-codes.doc.mjs');
-  const errorRows = errorCodes.members.map((/** @type {any} */ m) => [`\`${m.value}\``, m.description]);
+  const errorRows = errorCodes.members.map((/** @type {any} */ m) => [
+    `\`${m.value}\``,
+    m.description,
+  ]);
 
-  const responseTypes = await loadDoc('foundation/response/response-types.doc.mjs');
-  const rtRows = responseTypes.members.map((/** @type {any} */ m) => [`\`${m.value}\``, m.description]);
+  const responseTypes = await loadDoc(
+    'foundation/response/response-types.doc.mjs',
+  );
+  // Experimental response types are documented under `astryx docs
+  // cli/experimental`, not in the stable table (spec:AST-017 FR27).
+  const rtRows = responseTypes.members
+    .filter((/** @type {any} */ m) => m.stability !== 'experimental')
+    .map((/** @type {any} */ m) => [`\`${m.value}\``, m.description]);
 
   let content = fs.readFileSync(README, 'utf8');
-  content = replaceBlock(content, 'commands', table(['Command', 'Description'], commandRows));
-  content = replaceBlock(content, 'error-codes', table(['Code', 'Meaning'], errorRows));
-  content = replaceBlock(content, 'response-types', table(['Type', 'What `data` carries'], rtRows));
+  content = replaceBlock(
+    content,
+    'commands',
+    table(['Command', 'Description'], commandRows),
+  );
+  content = replaceBlock(
+    content,
+    'error-codes',
+    table(['Code', 'Meaning'], errorRows),
+  );
+  content = replaceBlock(
+    content,
+    'response-types',
+    table(['Type', 'What `data` carries'], rtRows),
+  );
 
   // Format through the repo's prettier config so the generated tables match what
   // the commit hook (lint-staged prettier over *.md) would produce; otherwise
   // `--check` would flag the file as drifted right after a commit reformats it.
   const config = (await prettier.resolveConfig(README)) ?? {};
-  return prettier.format(content, {...config, parser: 'markdown', filepath: README});
+  return prettier.format(content, {
+    ...config,
+    parser: 'markdown',
+    filepath: README,
+  });
 }
 
 async function main() {

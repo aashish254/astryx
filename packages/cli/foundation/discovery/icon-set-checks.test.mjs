@@ -427,7 +427,7 @@ describe('icon definitions (map)', () => {
     // `delete` names no icon, but one of its words is the trash icon's id.
     const del = other.find(issue => issue.message.includes('"delete"'));
     expect(del?.suggestion).toEqual({map: 'delete', icon: 'trash'});
-    expect(del?.message).toContain('astryx icon map delete trash');
+    expect(del?.message).toContain('astryx experimental icon map delete trash');
     const home = other.find(issue => issue.message.includes('"home"'));
     expect(home?.suggestion).toEqual({map: 'home', icon: 'home'});
     // Nothing in the set draws a calendar: no suggestion.

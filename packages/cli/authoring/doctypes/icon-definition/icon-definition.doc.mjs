@@ -11,8 +11,9 @@ export const doc = {
   name: 'icon-definition-doc',
   displayName: 'IconDefinitionDoc',
   namespace: 'authoring',
+  stability: 'experimental',
   description:
-    "One thing an icon can stand for, such as `close` or `delete`. Astryx ships one file per definition; an icon set adds its own in the same format. A set's data file `map` registers which of its icons draws each definition.",
+    "Experimental: may change or be removed in a patch release. One thing an icon can stand for, such as `close` or `delete`. Astryx ships one file per definition; an icon set adds its own in the same format. A set's data file `map` registers which of its icons draws each definition.",
   appliesTo: '<iconSetsRoot>/<set>/definitions/<name>.doc.mjs',
   fields: [
     {
@@ -67,7 +68,7 @@ export default {
   notes: [
     {
       type: 'prose',
-      text: "A set's own definitions sit in a `definitions` folder in the set's directory, one file per definition. Its `map` registers icons for them like for Astryx's. `astryx docs icon-definitions` lists every definition: Astryx's and those of each installed set.",
+      text: "A set's own definitions sit in a `definitions` folder in the set's directory, one file per definition. Its `map` registers icons for them like for Astryx's. `astryx docs cli/experimental/icon-definitions` lists every definition: Astryx's and those of each installed set. A definition file refuses a field it does not know.",
     },
     {
       type: 'prose',

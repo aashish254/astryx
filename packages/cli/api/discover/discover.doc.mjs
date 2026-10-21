@@ -49,7 +49,7 @@ export const doc = {
     },
     {
       name: 'options.type',
-      type: "'component' | 'template' | 'doc' | 'theme' | 'codemod' | 'agent-doc' | 'icon-set'",
+      type: "'component' | 'template' | 'doc' | 'theme' | 'codemod' | 'agent-doc'",
       description:
         'Only one kind: in the list, packages that add it; in a search, items of that kind.',
     },

@@ -28,17 +28,14 @@ afterEach(() => {
 const DEFINITIONS = {
   name: [
     'PascalCase for component',
-    'lowercase kebab-case for template, codemod, theme, and icon-set',
+    'lowercase kebab-case for template, codemod, and theme',
     'letters, digits, _ and - for doc',
     'literal guidance line for agent-doc',
   ],
   '--type <type>': ['page (default) or block', 'only valid for template'],
   '--replaces <topic>': ['only valid for doc', 'not with --extends'],
   '--extends <topic>': ['only valid for doc', 'not with --replaces'],
-  '--to <version>': [
-    'Exact semver',
-    'required for codemod and only valid there',
-  ],
+  '--to <version>': ['Exact semver', 'required for codemod and only valid there'],
 };
 
 describe('integration add control definitions', () => {
@@ -61,8 +58,7 @@ describe('integration add control definitions', () => {
       ?.subcommands?.find(command => command.name === 'integration add');
     /** @type {Record<string, string>} */
     const described = {};
-    for (const arg of add?.arguments ?? [])
-      described[arg.name] = arg.description;
+    for (const arg of add?.arguments ?? []) described[arg.name] = arg.description;
     for (const option of add?.options ?? []) {
       described[option.flag] = option.description;
     }
@@ -118,15 +114,7 @@ describe('integration add control definitions', () => {
     expect(JSON.parse(looseVersion.stdout).code).toBe('ERR_INVALID_ARGUMENT');
 
     const typeElsewhere = await runCli(
-      [
-        'integration',
-        'add',
-        'component',
-        'AcmeWidget',
-        '--type',
-        'page',
-        '--json',
-      ],
+      ['integration', 'add', 'component', 'AcmeWidget', '--type', 'page', '--json'],
       tmpDir,
     );
     expect(typeElsewhere.status).toBe(1);
@@ -138,10 +126,7 @@ describe('integration add control definitions', () => {
     );
     expect(page.status).toBe(0);
     expect(
-      fs.readFileSync(
-        path.join(tmpDir, 'templates', 'acme-page.doc.mjs'),
-        'utf-8',
-      ),
+      fs.readFileSync(path.join(tmpDir, 'templates', 'acme-page.doc.mjs'), 'utf-8'),
     ).toContain("type: 'page'");
   });
 });

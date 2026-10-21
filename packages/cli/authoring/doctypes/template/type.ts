@@ -54,7 +54,8 @@ export interface BaseTemplateDoc extends AuthoredDocGraphFields {
   /** The icon definition each icon the source imports draws, by the name it
    *  imports (`{TrashIcon: 'delete'}`). When the project has an icon set,
    *  each declared icon is replaced by the set's icon for that definition
-   *  (`astryx docs icon-definitions`). */
+   *  (`astryx docs cli/experimental/icon-definitions`).
+   *  @experimental May change or be removed in a patch release. */
   icons?: Record<string, string>;
 
   /** Whether this template is a scaffolding tool only (e.g. blank page).

@@ -4,15 +4,16 @@
 export const doc = {
   type: 'function',
   kind: 'api',
-  name: 'integrationAddIconDefinition',
+  name: 'iconNewDefinition',
   namespace: 'cli/api',
-  displayName: 'integrationAddIconDefinition()',
+  stability: 'experimental',
+  displayName: 'iconNewDefinition()',
   summary: "Add one of an icon set's own icon definitions.",
   description:
-    "Run inside an icon-set package. Writes `<set>/definitions/<name>.doc.mjs`, a strongly typed IconDefinitionDoc with the description and words, and, with `icon`, the set's `map` entry for it. A name Astryx already has is refused: map to Astryx's definition instead. The file is never overwritten, and a write that fails is undone.",
+    "Run inside an icon-set package. Writes `<set>/definitions/<name>.doc.mjs`, a strongly typed IconDefinitionDoc with the description and words, and, with `icon`, the set's `map` entry for it. A name Astryx already has is refused: map to Astryx's definition instead. The file is never overwritten, and a write that fails is undone. Experimental: it may change or be removed in a patch release.",
   importPath: '@astryxdesign/cli/api',
   signature:
-    'integrationAddIconDefinition(name: string, options?: IntegrationAddIconDefinitionOptions): Promise<IntegrationAddResponse>',
+    'iconNewDefinition(name: string, options?: IconNewDefinitionOptions): Promise<IconNewDefinitionResponse>',
   keywords: ['integration', 'add', 'icon definition', 'icon set', 'author'],
   params: [
     {
@@ -57,8 +58,9 @@ export const doc = {
   ],
   returns: [
     {
-      type: 'integration.add',
-      description: 'The shared typed authoring receipt.',
+      type: 'icon.newDefinition',
+      description:
+        'What it wrote: the manifest root, the files, and what to do next.',
     },
   ],
   throws: [
@@ -79,9 +81,9 @@ export const doc = {
   examples: [
     {
       label: 'Add and map a definition',
-      code: "await integrationAddIconDefinition('rotate', {description: 'Rotate an image or shape.', words: ['turn', 'spin'], icon: 'rotate-cw'});",
+      code: "await iconNewDefinition('rotate', {description: 'Rotate an image or shape.', words: ['turn', 'spin'], icon: 'rotate-cw'});",
     },
   ],
-  command: 'integration add',
-  related: ['integrationAddIconSet', 'iconMap', 'iconAdd'],
+  command: 'experimental icon new-definition',
+  related: ['iconNewSet', 'iconMap', 'iconAdd'],
 };

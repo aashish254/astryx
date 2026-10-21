@@ -6,7 +6,7 @@
  *
  * `writeIconSetProject` writes a consuming project that declares one or more
  * icon packages, each installed under node_modules with an integration
- * manifest whose `iconSets` root holds one set. The default package,
+ * manifest whose `experimental.iconSets` root holds one set. The default package,
  * `@acme/glyphs`, ships four hand-made SVG components (x, search, trash,
  * home) re-exported from per-icon files, a solid trash variant, a theme map,
  * and a license notice. Every part can be overridden to build a broken case.
@@ -181,7 +181,7 @@ export function writeIconPackage(dir, spec = {}) {
   );
   fs.writeFileSync(
     path.join(dir, 'astryx.integration.mjs'),
-    "export default {iconSets: './icon-sets'};\n",
+    "export default {experimental: {iconSets: './icon-sets'}};\n",
   );
   for (const [file, text] of Object.entries(spec.modules ?? glyphsModules())) {
     fs.mkdirSync(path.dirname(path.join(dir, file)), {recursive: true});

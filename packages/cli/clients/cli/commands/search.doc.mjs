@@ -13,13 +13,11 @@ export const doc = {
   name: 'search',
   displayName: 'astryx search',
   namespace: 'cli/commands',
-  summary:
-    'Search components, hooks, docs, templates, themes, and icons in one ranked list',
+  summary: 'Search components, hooks, docs, templates, and themes in one ranked list',
   description:
     'Terminal front-end to search(): prints one ranked, greppable list across ' +
     'every content domain, each row carrying a follow-up command to act on it. ' +
-    'Icons come from installed icon sets and rank below a component or doc of equal score. ' +
-    'Outside an app, where @astryxdesign/core is not installed, it searches the docs, themes, and icons.',
+    'Outside an app, where @astryxdesign/core is not installed, it searches the docs and themes.',
   fn: 'search',
   // Every word after `search` is the query: `astryx search dark mode` searches
   // for "dark mode", with no quotes needed.
@@ -28,8 +26,8 @@ export const doc = {
     {
       flag: '--type <domain>',
       param: 'options.type',
-      choices: ['component', 'hook', 'doc', 'template', 'theme', 'icon'],
-      description: 'Filter to one domain (component|hook|doc|template|theme|icon)',
+      choices: ['component', 'hook', 'doc', 'template', 'theme'],
+      description: 'Filter to one domain (component|hook|doc|template|theme)',
     },
     {
       flag: '--limit <n>',

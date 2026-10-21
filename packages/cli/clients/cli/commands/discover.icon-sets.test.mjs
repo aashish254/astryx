@@ -63,7 +63,7 @@ describe('discover icon sets', () => {
         iconCount: glyphsData().icons.length,
         default: {appearance: 'outline', size: 24},
         definitions: ['close', 'search'],
-        command: 'astryx icon <words> --set @acme/glyphs/glyphs',
+        command: 'astryx experimental icon <words> --set @acme/glyphs/glyphs',
         installed: true,
       },
     });
@@ -73,7 +73,7 @@ describe('discover icon sets', () => {
     expect(text.code).toBe(0);
     expect(text.stdout).toMatch(/kind: +icon-set/);
     expect(text.stdout).toContain(
-      'astryx icon <words> --set @acme/glyphs/glyphs',
+      'astryx experimental icon <words> --set @acme/glyphs/glyphs',
     );
   });
 

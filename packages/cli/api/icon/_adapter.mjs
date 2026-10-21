@@ -84,7 +84,7 @@ export async function loadIconSets(cwd) {
 }
 
 /**
- * The project directory and its installed icon sets, for `icon use`.
+ * The project directory and its installed icon sets, for `experimental icon use`.
  * @param {string} cwd
  */
 export async function loadIconProject(cwd) {

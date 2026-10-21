@@ -31,6 +31,9 @@ const REFERENCE_RE = /^[^\s/][^\s]*\/[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /**
  * Find icons by meaning, read one icon, or list the installed icon sets.
  *
+ * Experimental (spec:AST-017 FR27): may change or be removed in a patch
+ * release.
+ * @experimental
  * @param {string} [query] words to search for, or `<set>/<id>`
  * @param {import('./icon.type.mjs').IconOptions} [options]
  * @returns {Promise<import('./icon.type.mjs').IconSearchResponse | import('./icon.type.mjs').IconDetailResponse | import('./icon.type.mjs').IconListResponse>}
@@ -54,7 +57,12 @@ export async function icon(query, options = {}) {
     if (term) {
       throw new AstryxError(
         '--list takes no query',
-        [{name: 'astryx icon --list', reason: 'list the installed sets'}],
+        [
+          {
+            name: 'astryx experimental icon --list',
+            reason: 'list the installed sets',
+          },
+        ],
         ERROR_CODES.ERR_INVALID_ARGUMENT,
       );
     }
@@ -64,8 +72,14 @@ export async function icon(query, options = {}) {
     throw new AstryxError(
       'An icon query is required',
       [
-        {name: 'astryx icon delete', reason: 'find icons by meaning'},
-        {name: 'astryx icon --list', reason: 'list the installed sets'},
+        {
+          name: 'astryx experimental icon delete',
+          reason: 'find icons by meaning',
+        },
+        {
+          name: 'astryx experimental icon --list',
+          reason: 'list the installed sets',
+        },
       ],
       ERROR_CODES.ERR_MISSING_ARGUMENT,
     );

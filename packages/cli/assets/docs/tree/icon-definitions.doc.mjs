@@ -1,8 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file `astryx docs icon-definitions`: every icon definition, Astryx's and each
- * installed icon set's own.
+ * @file `astryx docs cli/experimental/icon-definitions`: every icon
+ * definition, Astryx's and each installed icon set's own. Experimental
+ * (spec:AST-017 FR27), with the icon sets that use them.
  *
  * It never lists its children: it adopts every icon definition doc from every
  * package, so a new definition file appears here with no edit to this file.
@@ -12,9 +13,11 @@
 export const docs = {
   type: 'namespace',
   name: 'icon-definitions',
+  placement: {parent: 'namespace:experimental', slot: 'guides', order: 20},
+  stability: 'experimental',
   title: 'Icon definitions',
   summary:
-    'Every icon definition: what an icon stands for, and the shared name icon sets map their icons to.',
+    'Experimental. Every icon definition: what an icon stands for, and the shared name icon sets map their icons to.',
   keywords: [
     'icon definition',
     'icon definitions',
@@ -38,7 +41,7 @@ export const docs = {
   blocks: [
     {
       type: 'prose',
-      text: "An icon definition is one thing an icon stands for, such as `close` or `delete`. Every icon set registers its icons against definitions in its data file's `map`, and templates are written against definitions, so a project that switches icon sets gets the same definition from the new set. Built-in definitions are the shared names Core renders; every set maps them. A set may add its own definitions; they are listed here with the package that ships them. `astryx icon <definition>` finds the icon each installed set draws for it.",
+      text: "An icon definition is one thing an icon stands for, such as `close` or `delete`. Every icon set registers its icons against definitions in its data file's `map`, and templates are written against definitions, so a project that switches icon sets gets the same definition from the new set. Built-in definitions are the shared names Core renders; every set maps them. A set may add its own definitions; they are listed here with the package that ships them. `astryx experimental icon <definition>` finds the icon each installed set draws for it. Icon definitions are experimental: they may change or be removed in a patch release.",
     },
   ],
 };

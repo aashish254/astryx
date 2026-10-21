@@ -1,25 +1,26 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file icon command — find an icon by meaning in the installed icon sets
- * (AST-084 FR6, FR7).
+ * @file `astryx experimental icon` — find an icon by meaning in the installed
+ * icon sets, and author a set (AST-084 FR6, FR7). Experimental (spec:AST-017
+ * FR27): it is registered only under the `experimental` group.
  *
  * The command surface comes from the colocated `icon.doc.mjs` CommandDoc via
  * `defineCommand`; this file parses flags, calls `icon()`, and renders.
  *
  * Usage:
- *   astryx icon delete              Ranked matches with import lines
- *   astryx icon outline/trash       One icon and every variant's import
- *   astryx icon --list              Installed sets and the names they fill
- *   astryx icon arrow --set outline --limit 3
+ *   astryx experimental icon delete              Ranked matches with import lines
+ *   astryx experimental icon outline/trash       One icon and every variant's import
+ *   astryx experimental icon --list              Installed sets and the names they fill
+ *   astryx experimental icon arrow --set outline --limit 3
  */
 
 import {
   formatCliCommand,
   getCliInvocation,
-} from '../../../foundation/env/package-manager.mjs';
-import {jsonOut} from '../../../foundation/response/json.mjs';
-import {resultSet} from '../../../foundation/debug/index.mjs';
+} from '../../../../foundation/env/package-manager.mjs';
+import {jsonOut} from '../../../../foundation/response/json.mjs';
+import {resultSet} from '../../../../foundation/debug/index.mjs';
 import {
   emit,
   section,
@@ -27,24 +28,32 @@ import {
   record,
   records,
   list,
-} from '../formatters/index.mjs';
-import {cliError} from '../lib/cli-error.mjs';
-import {defineCommand} from '../lib/define-command.mjs';
-import {icon as iconApi} from '../../../api/icon/icon.mjs';
-import {iconAdd} from '../../../api/icon/add/add.mjs';
-import {iconMap} from '../../../api/icon/map/map.mjs';
-import {iconUse} from '../../../api/icon/use/use.mjs';
-import {doc as iconCommand} from './icon.doc.mjs';
-import {doc as iconUseCommand} from './icon-use.doc.mjs';
-import {doc as iconMapCommand} from './icon-map.doc.mjs';
-import {doc as iconAddCommand} from './icon-add.doc.mjs';
-import {doc as iconFn} from '../../../api/icon/icon.doc.mjs';
-import {doc as iconUseFn} from '../../../api/icon/iconUse.doc.mjs';
-import {doc as iconMapFn} from '../../../api/icon/iconMap.doc.mjs';
-import {doc as iconAddFn} from '../../../api/icon/iconAdd.doc.mjs';
-import {NO_RESULT_SET} from '../../../foundation/debug/index.mjs';
+} from '../../formatters/index.mjs';
+import {cliError} from '../../lib/cli-error.mjs';
+import {defineCommand} from '../../lib/define-command.mjs';
+import {icon as iconApi} from '../../../../api/icon/icon.mjs';
+import {iconAdd} from '../../../../api/icon/add/add.mjs';
+import {iconMap} from '../../../../api/icon/map/map.mjs';
+import {iconUse} from '../../../../api/icon/use/use.mjs';
+import {
+  iconNewDefinition,
+  iconNewSet,
+} from '../../../../api/integration/add-contribution.mjs';
+import {doc as iconCommand} from '../experimental-icon.doc.mjs';
+import {doc as iconUseCommand} from '../experimental-icon-use.doc.mjs';
+import {doc as iconMapCommand} from '../experimental-icon-map.doc.mjs';
+import {doc as iconAddCommand} from '../experimental-icon-add.doc.mjs';
+import {doc as iconNewSetCommand} from '../experimental-icon-new-set.doc.mjs';
+import {doc as iconNewDefinitionCommand} from '../experimental-icon-new-definition.doc.mjs';
+import {doc as iconFn} from '../../../../api/icon/icon.doc.mjs';
+import {doc as iconUseFn} from '../../../../api/icon/iconUse.doc.mjs';
+import {doc as iconMapFn} from '../../../../api/icon/iconMap.doc.mjs';
+import {doc as iconAddFn} from '../../../../api/icon/iconAdd.doc.mjs';
+import {doc as iconNewSetFn} from '../../../../api/icon/iconNewSet.doc.mjs';
+import {doc as iconNewDefinitionFn} from '../../../../api/icon/iconNewDefinition.doc.mjs';
+import {NO_RESULT_SET} from '../../../../foundation/debug/index.mjs';
 
-/** @typedef {import('../../../api/icon/icon.type.mjs').IconVariantEntry} IconVariantEntry */
+/** @typedef {import('../../../../api/icon/icon.type.mjs').IconVariantEntry} IconVariantEntry */
 
 /**
  * A variant's axis values, as one short label: `solid 20 2`.
@@ -68,7 +77,9 @@ const axisValuesText = value =>
 const axesText = value => {
   if (value == null) return '';
   const axes =
-    /** @type {import('../../../api/icon/icon.type.mjs').IconAxes} */ (value);
+    /** @type {import('../../../../api/icon/icon.type.mjs').IconAxes} */ (
+      value
+    );
   const parts = [];
   if (axes.appearances) parts.push(`appearances ${axes.appearances.join('/')}`);
   if (axes.sizes) parts.push(`sizes ${axes.sizes.join('/')}`);
@@ -83,11 +94,7 @@ const axesText = value => {
 };
 
 /**
- * @param {import('commander').Command} program
- */
-
-/**
- * The variant axes `icon add` takes, as numbers where they are numeric.
+ * The variant axes `experimental icon add` takes, as numbers where they are numeric.
  * @param {Record<string, unknown>} options
  */
 function axisOptions(options) {
@@ -97,8 +104,13 @@ function axisOptions(options) {
   return {appearance, size, weight};
 }
 
-export function registerIcon(program) {
-  const iconCli = defineCommand(program, iconCommand, {
+/**
+ * Register `icon` and its subcommands under the `experimental` group.
+ * @param {import('commander').Command} group the `experimental` command
+ * @param {import('commander').Command} program the root program
+ */
+export function registerExperimentalIcon(group, program) {
+  const iconCli = defineCommand(group, iconCommand, {
     fn: iconFn,
     action: async (
       /** @type {string[] | string | undefined} */ words,
@@ -120,7 +132,7 @@ export function registerIcon(program) {
         });
       } catch (e) {
         const err =
-          /** @type {import('../../../api/error.mjs').AstryxError} */ (e);
+          /** @type {import('../../../../api/error.mjs').AstryxError} */ (e);
         return cliError(err.message, {
           suggestions: err.suggestions,
           code: err.code,
@@ -153,7 +165,7 @@ export function registerIcon(program) {
         if (matches.length === 0) {
           emit(
             text(`No icons match "${q}".`),
-            text(`See the installed sets: ${run} icon --list`),
+            text(`See the installed sets: ${run} experimental icon --list`),
           );
           return answered;
         }
@@ -185,7 +197,9 @@ export function registerIcon(program) {
               ],
             },
           ),
-          text(`Read one with its variants: ${run} icon <set>/<id>`),
+          text(
+            `Read one with its variants: ${run} experimental icon <set>/<id>`,
+          ),
         );
         return answered;
       }
@@ -221,7 +235,7 @@ export function registerIcon(program) {
               ]
             : []),
           text(
-            `More icons: ${formatCliCommand(`astryx icon ${rest.words[0]}`)}`,
+            `More icons: ${formatCliCommand(`astryx experimental icon ${rest.words[0]}`)}`,
           ),
         );
         return answered;
@@ -272,7 +286,7 @@ export function registerIcon(program) {
               ),
             ]
           : []),
-        text(`Find one: ${run} icon <words>`),
+        text(`Find one: ${run} experimental icon <words>`),
       );
       return answered;
     },
@@ -288,9 +302,8 @@ export function registerIcon(program) {
     try {
       result = await call();
     } catch (e) {
-      const err = /** @type {import('../../../api/error.mjs').AstryxError} */ (
-        e
-      );
+      const err =
+        /** @type {import('../../../../api/error.mjs').AstryxError} */ (e);
       return cliError(err.message, {
         suggestions: err.suggestions ?? [],
         code: err.code,
@@ -310,8 +323,8 @@ export function registerIcon(program) {
           emit(
             text(
               data.changed
-                ? `[ok] iconSet is now "${data.iconSet}" (${data.set}) in ${data.config}${data.created ? ', created' : ''}.`
-                : `[ok] iconSet already names "${data.iconSet}" in ${data.config}.`,
+                ? `[ok] experimental.iconSet is now "${data.iconSet}" (${data.set}) in ${data.config}${data.created ? ', created' : ''}.`
+                : `[ok] experimental.iconSet already names "${data.iconSet}" in ${data.config}.`,
             ),
             ...(data.previous && data.changed
               ? [text(`It was "${data.previous}".`)]
@@ -409,7 +422,9 @@ export function registerIcon(program) {
                     ),
                   ]
                 : []),
-              text(`All icon definitions: ${cli} docs icon-definitions`),
+              text(
+                `All icon definitions: ${cli} docs cli/experimental/icon-definitions`,
+              ),
             );
             return;
           }
@@ -426,4 +441,74 @@ export function registerIcon(program) {
         },
       ),
   });
+
+  /**
+   * Print a new-set or new-definition receipt: what it wrote and where.
+   * @param {string} what `icon set` or `icon definition`
+   */
+  const printNew =
+    (/** @type {string} */ what) =>
+    (
+      /** @type {import('../../../../api/icon/icon.type.mjs').IconNewResponse} */ {
+        data,
+      },
+    ) => {
+      const {root, manifest, files, written, dryRun} = data;
+      const state = dryRun ? 'plan' : written ? 'ok' : 'unchanged';
+      emit(
+        section(
+          dryRun
+            ? `New ${what} plan`
+            : written
+              ? `New ${what} added`
+              : `New ${what} unchanged`,
+        ),
+        text(`[${state}] ${data.name}`),
+        text(
+          root != null
+            ? `${root.created ? 'Declare' : 'Use'} experimental.iconSets root ${root.path} in ${manifest}.`
+            : `Update ${manifest}.`,
+        ),
+        ...(files.length > 0 ? [list(files)] : []),
+        ...(data.notes ?? []).map(note => text(`[next] ${note}`)),
+      );
+    };
+
+  defineCommand(iconCli, iconNewSetCommand, {
+    fn: iconNewSetFn,
+    action: (
+      /** @type {string} */ name,
+      /** @type {{dryRun?: boolean, from?: string, exclude?: string}} */ options,
+    ) =>
+      run(
+        () =>
+          iconNewSet(name, {
+            cwd: process.cwd(),
+            dryRun: options.dryRun,
+            from: options.from,
+            exclude: options.exclude,
+          }),
+        printNew('icon set'),
+      ),
+  }).allowExcessArguments(false);
+
+  defineCommand(iconCli, iconNewDefinitionCommand, {
+    fn: iconNewDefinitionFn,
+    action: (
+      /** @type {string} */ name,
+      /** @type {{dryRun?: boolean, set?: string, description?: string, words?: string, icon?: string}} */ options,
+    ) =>
+      run(
+        () =>
+          iconNewDefinition(name, {
+            cwd: process.cwd(),
+            dryRun: options.dryRun,
+            set: options.set,
+            description: options.description,
+            words: options.words,
+            icon: options.icon,
+          }),
+        printNew('icon definition'),
+      ),
+  }).allowExcessArguments(false);
 }

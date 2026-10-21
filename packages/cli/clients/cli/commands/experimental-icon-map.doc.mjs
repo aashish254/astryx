@@ -1,16 +1,17 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-/** @file CommandDoc for `astryx icon map`. */
+/** @file CommandDoc for `astryx experimental icon map`. */
 
 /** @type {import('@astryxdesign/cli/authoring').CommandDoc} */
 export const doc = {
   type: 'command',
-  name: 'icon map',
-  displayName: 'astryx icon map',
+  name: 'experimental icon map',
+  displayName: 'astryx experimental icon map',
   namespace: 'cli/commands',
+  stability: 'experimental',
   summary: 'Register which icon of your set draws an icon definition',
   description:
-    "Run inside an icon-set package. Sets `map[<definition>] = <icon>` in the set's data file; `integration check` prints these commands for definitions your set already has a fitting icon for.",
+    "Run inside an icon-set package. Sets `map[<definition>] = <icon>` in the set's data file; `integration check` prints these commands for definitions your set already has a fitting icon for. Experimental: it may change or be removed in a patch release.",
   fn: 'iconMap',
   args: [
     {name: 'definition', param: 'definition', required: true},
@@ -29,8 +30,14 @@ export const doc = {
     },
   ],
   examples: [
-    {label: 'Map a definition', cli: 'astryx icon map delete trash'},
-    {label: 'Remove an entry', cli: 'astryx icon map delete --remove'},
+    {
+      label: 'Map a definition',
+      cli: 'astryx experimental icon map delete trash',
+    },
+    {
+      label: 'Remove an entry',
+      cli: 'astryx experimental icon map delete --remove',
+    },
   ],
   exitCodes: [
     {code: 0, when: 'the entry is written, removed, or already as asked'},
@@ -39,5 +46,5 @@ export const doc = {
       when: 'the definition is unknown, the set has no such icon, or no set is found',
     },
   ],
-  related: ['icon add', 'integration add', 'integration check'],
+  related: ['experimental icon add', 'integration add', 'integration check'],
 };

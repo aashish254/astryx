@@ -9,7 +9,7 @@ import {
   integrationAddCodemod,
   integrationAddComponent,
   integrationAddDoc,
-  integrationAddIconSet,
+  iconNewSet,
   integrationAddTemplate,
 } from './add-contribution.mjs';
 import {validateLocalIntegration} from './validate-integration.mjs';
@@ -862,7 +862,7 @@ describe('typed descriptor conformance', () => {
     await integrationAdd('doc', 'my-guide', {cwd: tmpDir});
     await integrationAdd('template', 'my-page', {cwd: tmpDir});
     await integrationAdd('theme', 'ocean', {cwd: tmpDir});
-    await integrationAdd('icon-set', 'outline', {cwd: tmpDir});
+    await iconNewSet('outline', {cwd: tmpDir});
 
     // Codemod and agent-doc keep their released formats for compatibility;
     // no new kind may copy those exceptions.
@@ -903,7 +903,7 @@ describe('public per-kind APIs', () => {
         to: '1.0.0',
       }),
       integrationAddAgentDoc('Use MyWidget.', {cwd: tmpDir, dryRun: true}),
-      integrationAddIconSet('outline', {cwd: tmpDir, dryRun: true}),
+      iconNewSet('outline', {cwd: tmpDir, dryRun: true}),
     ]);
 
     expect(results.map(result => result.data.kind)).toEqual([
@@ -941,9 +941,7 @@ describe('public dispatcher', () => {
     setup();
     await expect(
       integrationAdd(/** @type {any} */ ('plugin'), 'thing', {cwd: tmpDir}),
-    ).rejects.toThrow(
-      /component, doc, template, codemod, agent-doc, theme, icon-set, or icon-definition/,
-    );
+    ).rejects.toThrow(/component, doc, template, codemod, agent-doc, or theme/);
   });
 });
 
@@ -955,7 +953,7 @@ describe('dry-run receipts match the real write', () => {
     'declared roots and an exports map': {
       pkg: {files: ['dist'], exports: {'.': './dist/index.js'}},
       manifest:
-        "export default {\n  components: './components',\n  docs: './docs',\n  templates: './templates',\n  codemods: './codemods',\n  themes: './themes',\n  iconSets: './icon-sets',\n};\n",
+        "export default {\n  components: './components',\n  docs: './docs',\n  templates: './templates',\n  codemods: './codemods',\n  themes: './themes',\n  experimental: {iconSets: './icon-sets'},\n};\n",
     },
   };
   /** @type {Array<[any, string, Record<string, unknown>]>} */
@@ -1004,17 +1002,15 @@ describe('dry-run receipts match the real write', () => {
         }
         const before = snapshot();
 
-        const plan = await integrationAdd(kind, name, {
-          cwd: tmpDir,
-          dryRun: true,
-          ...options,
-        });
+        // An icon set is experimental: its own call, not an integrationAdd kind.
+        const add = (/** @type {Record<string, unknown>} */ more) =>
+          kind === 'icon-set'
+            ? iconNewSet(name, {cwd: tmpDir, ...options, ...more})
+            : integrationAdd(kind, name, {cwd: tmpDir, ...options, ...more});
+        const plan = await add({dryRun: true});
         expect(snapshot()).toEqual(before);
 
-        const written = await integrationAdd(kind, name, {
-          cwd: tmpDir,
-          ...options,
-        });
+        const written = await add({});
         const after = snapshot();
         const changed = Object.keys(after)
           .filter(file => after[file] !== before[file])

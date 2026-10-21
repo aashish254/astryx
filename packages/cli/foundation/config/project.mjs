@@ -874,7 +874,10 @@ export class Project {
           });
         }
       }
-      const choice = chooseProjectIconSet(sets, this.#config.iconSet);
+      const choice = chooseProjectIconSet(
+        sets,
+        this.#config.experimental?.iconSet,
+      );
       return {sets: orderIconSets(sets, choice), withdrawn, choice};
     });
   }

@@ -4,10 +4,10 @@
  * @file Icon-set contribution descriptor and data-file types (AST-084).
  *
  * An icon set is one integration item: a lower-kebab directory under the
- * manifest's `iconSets` root holding a strongly typed `<name>.doc.mjs`
+ * manifest's `experimental.iconSets` root holding a strongly typed `<name>.doc.mjs`
  * descriptor and one `<name>.icons.json` data file. The descriptor holds what
  * a person writes about the set; the data file says what every icon means.
- * Every icon surface (search, `astryx icon`, template icon mapping, the theme
+ * Every icon surface (search, `astryx experimental icon`, template icon mapping, the theme
  * map check, Doctor) reads the data file and nothing else.
  *
  * @input metadata authored beside one icon set
@@ -30,6 +30,9 @@
  *   license: 'MIT',
  * };
  * ```
+ *
+ * @experimental Icon sets may change or be removed in a patch release
+ * (spec:AST-017 FR27).
  */
 export interface IconSetDoc {
   /** Doc-kind discriminant. */
@@ -124,7 +127,10 @@ export interface IconSetAdapter {
   export: string;
 }
 
-/** The `<name>.icons.json` data file of one icon set. */
+/**
+ * The `<name>.icons.json` data file of one icon set.
+ * @experimental May change or be removed in a patch release.
+ */
 export interface IconSetData {
   /** Data-file format version. */
   schemaVersion: 1;
@@ -140,13 +146,13 @@ export interface IconSetData {
   themeMap?: string;
   /**
    * Which of this set's icons draws each icon definition, by definition name:
-   * Astryx's (`astryx docs icon-definitions`) or one the set declares in its
+   * Astryx's (`astryx docs cli/experimental/icon-definitions`) or one the set declares in its
    * `definitions` folder. One icon may draw several definitions; each
    * definition maps to one icon.
    */
   map?: Record<string, string>;
   /**
-   * The module `astryx icon add` writes, from the package root, such as
+   * The module `astryx experimental icon add` writes, from the package root, such as
    * `./src/icons.generated.js`: one export per registered icon, a re-export
    * of a library component or an adapted export. The set's `module` exports
    * it, so every icon entry reads from the set's own module.

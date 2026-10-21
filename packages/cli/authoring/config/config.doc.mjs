@@ -14,7 +14,7 @@ export const doc = {
   namespace: 'authoring',
   description:
     'The optional astryx.config.* file at your project root. Declares which ' +
-    'integrations to load, where to route issue links, the project icon set, post-codemod hooks, local ' +
+    'integrations to load, where to route issue links, post-codemod hooks, local ' +
     'debug-log and gap-report handlers, a discover source, and experimental ' +
     'layout components. All optional; {} is valid.',
   appliesTo: 'astryx.config.{ts,mjs,js}',
@@ -32,13 +32,6 @@ export const doc = {
       description:
         "Where reports about Core go: `astryx gap-report` routes a Core report here when no handler is loaded, gapReport handlers receive it as `report.target.issuesUrl`, and `astryx swizzle` prints it as the feedback link for a Core component. A report or swizzle for an integration's component uses that integration's own issuesUrl, never this one. An absolute URL; a value that is not a URL makes the config invalid.",
       default: "'https://github.com/facebook/astryx/issues/new'",
-    },
-    {
-      name: 'iconSet',
-      type: 'string',
-      description:
-        "The project's icon set, by set name or as `<package>/<set>`. Copied templates use its icons, and its icons win ties in `astryx icon`. Without it, the only installed set is the project's set; with two or more installed and none named, the project has no icon set and `astryx doctor` warns.",
-      example: "'@acme/outline-icons/outline'",
     },
     {
       name: 'hooks',
@@ -75,13 +68,21 @@ export const doc = {
       description:
         'Tell `astryx discover` which integrations this project could add: an async function that returns a catalog. An integration can provide one too, as a `discover` named export from its manifest. Discover calls every source, yours first, and one that fails never hides the others. Discover only reads; your package manager installs.',
       example:
-        "async ({signal, package: name, version}) => fetchCatalog({signal, name, version})",
+        'async ({signal, package: name, version}) => fetchCatalog({signal, name, version})',
     },
     {
       name: 'experimental',
       type: '{ xle?: { components?: Record<string, XleComponent> } }',
       description: 'Unstable features; may change without a breaking bump.',
       fields: [
+        {
+          name: 'experimental.iconSet',
+          type: 'string',
+          stability: 'experimental',
+          description:
+            "Experimental: may change or be removed in a patch release. The project's icon set, by set name or as `<package>/<set>`. Copied templates use its icons, and its icons win ties in `astryx experimental icon`. Without it, the only installed set is the project's set; with two or more installed and none named, the project has no icon set and `astryx doctor` warns.",
+          example: "'@acme/outline-icons/outline'",
+        },
         {
           name: 'experimental.xle.components',
           type: 'Record<string, XleComponent>',

@@ -65,7 +65,7 @@ describe('template icon mapping', () => {
     expect(written).toBe(shown.data.source);
   });
 
-  it('two sets and no iconSet: source unchanged, status ambiguous', async () => {
+  it('two sets and no experimental.iconSet: source unchanged, status ambiguous', async () => {
     const cwd = writeIconSetProject(tmp, {
       packages: [{}, {name: '@acme/lines'}],
     });
@@ -79,5 +79,32 @@ describe('template icon mapping', () => {
     expect(data.source).toMatch(/\bXMarkIcon\b/);
     const text = await runCli(['template', TEMPLATE], cwd);
     expect(text.stderr).toContain('icons: unchanged (ambiguous)');
+  });
+
+  it('no set installed or configured: no report, and the output it always had', async () => {
+    // Icon sets are experimental (spec:AST-017 FR27): nothing changes.
+    const cwd = writeIconSetProject(path.join(tmp, 'none'), {packages: []});
+    const res = await runCli(['template', TEMPLATE, '--json'], cwd);
+    const data = JSON.parse(res.stdout).data;
+    expect(data).not.toHaveProperty('icons');
+    expect(data.source).toMatch(/\bXMarkIcon\b/);
+    const text = await runCli(['template', TEMPLATE], cwd);
+    expect(text.stderr).not.toContain('icons:');
+    const copied = await runCli(['template', TEMPLATE, 'out', '--json'], cwd);
+    expect(JSON.parse(copied.stdout).data).not.toHaveProperty('icons');
+    const copiedText = await runCli(['template', TEMPLATE, 'out2'], cwd);
+    expect(`${copiedText.stdout}${copiedText.stderr}`).not.toContain('icons:');
+  });
+
+  it('a configured set that is not installed reports why nothing was mapped', async () => {
+    const cwd = writeIconSetProject(path.join(tmp, 'missing'), {
+      packages: [],
+      config: {experimental: {iconSet: 'nope'}},
+    });
+    const res = await runCli(['template', TEMPLATE, '--json'], cwd);
+    expect(JSON.parse(res.stdout).data.icons).toMatchObject({
+      status: 'missing',
+      mapped: [],
+    });
   });
 });

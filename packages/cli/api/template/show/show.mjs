@@ -56,7 +56,7 @@ export function templateShow(match, {iconSets = NO_ICON_SETS} = {}) {
       components: extractComponents(match.filePath),
       source,
       demoMediaReplaced,
-      icons,
+      ...(icons ? {icons} : {}),
     },
   };
 }

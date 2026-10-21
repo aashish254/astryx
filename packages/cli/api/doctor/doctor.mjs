@@ -23,10 +23,20 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import {MIN_NODE_VERSION, isNodeVersionSupported} from '../../foundation/env/node-version.mjs';
+import {
+  MIN_NODE_VERSION,
+  isNodeVersionSupported,
+} from '../../foundation/env/node-version.mjs';
 import {AGENT_DOC_PATHS} from '../../foundation/agent-docs/agent-doc-state.mjs';
-import {CLI_ROOT, findCoreDir, findInstalledPackage} from '../../foundation/fs/paths.mjs';
-import {explainPackageManager, getCliInvocation} from '../../foundation/env/package-manager.mjs';
+import {
+  CLI_ROOT,
+  findCoreDir,
+  findInstalledPackage,
+} from '../../foundation/fs/paths.mjs';
+import {
+  explainPackageManager,
+  getCliInvocation,
+} from '../../foundation/env/package-manager.mjs';
 import {
   findConfigPath,
   Project,
@@ -50,7 +60,11 @@ import {
 } from '../docs/_adapter.mjs';
 import {typedEdges} from '../docs/node/node.mjs';
 import {detailView, indexView} from '../../foundation/doc-compiler/lenses.mjs';
-import {semverCompare, isValidSemver, satisfiesRange} from '../../foundation/env/semver.mjs';
+import {
+  semverCompare,
+  isValidSemver,
+  satisfiesRange,
+} from '../../foundation/env/semver.mjs';
 import {checkAppThemes, checkThemes} from './theme-checks.mjs';
 
 /**
@@ -91,7 +105,7 @@ import {checkAppThemes, checkThemes} from './theme-checks.mjs';
  *   Combined project-level integration issues, including cross-package template replacement warnings.
  * @property {Error|null} [configError] - Error thrown while resolving the config
  *   path (e.g. multiple config files present), surfaced by checkConfig as a FAIL.
- * @property {{sets: Array<{name: string, package: string}>, withdrawn: Array<{name: string, package: string, reason: string}>, choice: {status: 'selected'|'none'|'ambiguous'|'missing', reason: string}}|null} [iconSets]
+ * @property {{sets: Array<{name: string, package: string}>, withdrawn: Array<{name: string, package: string, reason: string}>, choice: {status: 'selected'|'none'|'ambiguous'|'missing', reason: string, configured?: string}}|null} [iconSets]
  *   The project's icon sets (AST-084 FR15), or null when they could not be read.
  * @property {string|null} [projectError] - Why the CLI could not load the
  *   project from its config, when it could not. Checks that need the loaded
@@ -221,7 +235,9 @@ export function checkCoreInstalled(ctx) {
       : '@astryxdesign/core could not be resolved from this project.',
     ...(found
       ? {}
-      : {fix: 'Install the design system: `npm install @astryxdesign/core` (or yarn/pnpm/bun).'}),
+      : {
+          fix: 'Install the design system: `npm install @astryxdesign/core` (or yarn/pnpm/bun).',
+        }),
   };
 }
 
@@ -240,7 +256,8 @@ export function checkVersionAlignment(ctx) {
       id: 'version-alignment',
       label: '@astryxdesign/core <-> @astryxdesign/cli alignment',
       status: 'info',
-      message: 'Skipped — could not read both @astryxdesign/core and @astryxdesign/cli versions.',
+      message:
+        'Skipped — could not read both @astryxdesign/core and @astryxdesign/cli versions.',
     };
   }
 
@@ -315,7 +332,10 @@ export async function checkConfig(ctx) {
     const {pathToFileURL} = await import('node:url');
     const mod = await import(pathToFileURL(ctx.configPath).href);
     const config = mod.default;
-    if (config !== undefined && (typeof config !== 'object' || config === null)) {
+    if (
+      config !== undefined &&
+      (typeof config !== 'object' || config === null)
+    ) {
       return {
         id: 'config',
         label: 'astryx.config.mjs',
@@ -367,9 +387,13 @@ export async function checkConfig(ctx) {
 function describeNoImplicit(integrations) {
   const own = integrations.filter(integration => integration.__local);
   const configured = integrations.length - own.length;
-  const ownNames = own.map(integration => integration.name ?? 'this package').join(', ');
-  if (own.length === 0) return 'None — every loaded integration is named in astryx.config.';
-  if (configured === 0) return `None — the only loaded integration is this package's own manifest (${ownNames}).`;
+  const ownNames = own
+    .map(integration => integration.name ?? 'this package')
+    .join(', ');
+  if (own.length === 0)
+    return 'None — every loaded integration is named in astryx.config.';
+  if (configured === 0)
+    return `None — the only loaded integration is this package's own manifest (${ownNames}).`;
   return `None — every loaded integration is named in astryx.config or is this package's own manifest (${ownNames}).`;
 }
 
@@ -405,7 +429,10 @@ export function checkImplicitIntegrations(ctx) {
       id,
       label,
       status: 'info',
-      message: skippedBecause(ctx, 'the project configuration could not be read'),
+      message: skippedBecause(
+        ctx,
+        'the project configuration could not be read',
+      ),
     };
   }
 
@@ -420,7 +447,9 @@ export function checkImplicitIntegrations(ctx) {
     // A record that carries `__loadError` (the package's own manifest, or a
     // configured one, that failed to load) loaded nothing, so it is not named
     // as loaded beside the line reporting that it could not be loaded.
-    const loaded = ctx.integrations.filter(integration => !integration.__loadError);
+    const loaded = ctx.integrations.filter(
+      integration => !integration.__loadError,
+    );
     return {
       id,
       label,
@@ -446,9 +475,14 @@ export function checkImplicitIntegrations(ctx) {
         : '';
     // A declared root counts only when it exists: the manifest's keys are a
     // claim, and `integration-issues` reports the ones that are not true.
-    const declared = ['components', 'templates', 'themes', 'docs', 'codemods', 'iconSets'].filter(
-      root => integration[/** @type {'components'} */ (root)],
-    );
+    const declared = [
+      'components',
+      'templates',
+      'themes',
+      'docs',
+      'codemods',
+      'iconSets',
+    ].filter(root => integration[/** @type {'components'} */ (root)]);
     const missing = declared.filter(root => {
       const dir = integration[/** @type {'components'} */ (root)];
       if (typeof dir !== 'string') return false;
@@ -456,12 +490,16 @@ export function checkImplicitIntegrations(ctx) {
         typeof integration.__packageDir === 'string'
           ? integration.__packageDir
           : (ctx.cwd ?? process.cwd());
-      return !fs.existsSync(path.isAbsolute(dir) ? dir : path.resolve(base, dir));
+      return !fs.existsSync(
+        path.isAbsolute(dir) ? dir : path.resolve(base, dir),
+      );
     });
     const roots = declared.filter(root => !missing.includes(root));
     const contributes = roots.length > 0 ? roots.join(', ') : 'nothing';
     const absent =
-      missing.length > 0 ? ` (declared ${missing.join(', ')} missing on disk)` : '';
+      missing.length > 0
+        ? ` (declared ${missing.join(', ')} missing on disk)`
+        : '';
     return `${integration.name}${version}${alias} from ${integration.__dependencyField}, contributing ${contributes}${absent}`;
   });
 
@@ -533,7 +571,10 @@ export function checkConfiguredIntegrations(ctx) {
       id,
       label,
       status: 'info',
-      message: skippedBecause(ctx, 'the project configuration could not be read'),
+      message: skippedBecause(
+        ctx,
+        'the project configuration could not be read',
+      ),
     };
   }
   // What counts as configured is what astryx.config names, read from the
@@ -619,8 +660,10 @@ export function checkAgentDocs(ctx) {
     try {
       const content = fs.readFileSync(abs, 'utf-8');
       return (
-        (content.includes('<!-- ASTRYX:START -->') || content.includes('<!-- XDS:START -->')) &&
-        (content.includes('<!-- ASTRYX:END -->') || content.includes('<!-- XDS:END -->'))
+        (content.includes('<!-- ASTRYX:START -->') ||
+          content.includes('<!-- XDS:START -->')) &&
+        (content.includes('<!-- ASTRYX:END -->') ||
+          content.includes('<!-- XDS:END -->'))
       );
     } catch {
       return false;
@@ -705,8 +748,12 @@ export function checkPeerDeps(ctx) {
     // Pin the required range for anything wrong so the hint fixes it even when a
     // stale consumer range would otherwise resolve an incompatible version.
     // Quote targets containing shell metacharacters (e.g. `react@>=19.0.0`).
-    const quote = (/** @type {string} */ s) => (/[<>|() ]/.test(s) ? `'${s}'` : s);
-    const targets = [...missing, ...mismatched.map(m => `${m.name}@${m.want}`)].map(quote);
+    const quote = (/** @type {string} */ s) =>
+      /[<>|() ]/.test(s) ? `'${s}'` : s;
+    const targets = [
+      ...missing,
+      ...mismatched.map(m => `${m.name}@${m.want}`),
+    ].map(quote);
     return {
       id: 'peer-deps',
       label: '@astryxdesign/core peer dependencies',
@@ -779,33 +826,31 @@ export function checkIntegrationIssues(ctx) {
 }
 
 /**
- * The project's icon sets (AST-084 FR15). Fails when `iconSet` names a set
+ * The project's icon sets (AST-084 FR15). Fails when `experimental.iconSet` names a set
  * that is not installed; warns when two or more sets are installed and none
  * is the project's, and for each installed set that was withdrawn, with why.
- * A project with no icon sets passes.
+ * Icon sets are experimental (spec:AST-017 FR27): a project that has none
+ * installed, found, or configured gets no check at all, so its report is
+ * unchanged.
  * @param {DoctorContext} ctx
- * @returns {DoctorCheck}
+ * @returns {DoctorCheck | null}
  */
 export function checkIconSets(ctx) {
   const state = ctx.iconSets;
   const id = 'icon-sets';
   const label = 'Icon sets';
-  if (state == null) {
-    return {
-      id,
-      label,
-      status: 'info',
-      message: skippedBecause(ctx, 'the project icon sets could not be read'),
-    };
-  }
+  if (state == null) return null;
   const {sets, withdrawn, choice} = state;
+  if (sets.length === 0 && withdrawn.length === 0 && !choice.configured) {
+    return null;
+  }
   if (choice.status === 'missing') {
     return {
       id,
       label,
       status: 'fail',
       message: choice.reason,
-      fix: 'Install the package that ships the set, or set iconSet in astryx.config to an installed set (`astryx icon --list` names them).',
+      fix: 'Install the package that ships the set, or set experimental.iconSet in astryx.config to an installed set (`astryx experimental icon --list` names them).',
     };
   }
   /** @type {string[]} */
@@ -820,12 +865,9 @@ export function checkIconSets(ctx) {
       message: problems.join(' | '),
       fix:
         choice.status === 'ambiguous'
-          ? 'Set iconSet in astryx.config to "<package>/<set>" so templates use one set.'
+          ? 'Set experimental.iconSet in astryx.config to "<package>/<set>" so templates use one set.'
           : 'Run `astryx integration check` in the package that ships the set, or install its module.',
     };
-  }
-  if (sets.length === 0) {
-    return {id, label, status: 'pass', message: 'No icon sets are installed.'};
   }
   return {
     id,
@@ -914,7 +956,10 @@ export function checkProviderIdentity(ctx) {
       id,
       label,
       status: 'info',
-      message: skippedBecause(ctx, 'the project configuration could not be read'),
+      message: skippedBecause(
+        ctx,
+        'the project configuration could not be read',
+      ),
     };
   }
 
@@ -1146,7 +1191,7 @@ export async function checkAuthoringDocs(_ctx, options = {}) {
 
 /** How the CLI-docs audit's problems are fixed. */
 const CLI_DOCS_FIX =
-  "Set `namespace` on each CLI doc to the one that reads it: cli/commands for a command, cli/api for an API function or the output schema, error codes, and response types, and authoring for a file an author writes (and list it in AUTHORING_SELF_DOCS).";
+  'Set `namespace` on each CLI doc to the one that reads it: cli/commands for a command, cli/api for an API function or the output schema, error codes, and response types, and authoring for a file an author writes (and list it in AUTHORING_SELF_DOCS).';
 
 /** How the docs-tree check's problems are fixed. */
 const DOCS_TREE_FIX =
@@ -1226,8 +1271,7 @@ export async function checkDocsTree(_ctx, options = {}) {
   const id = 'docs-tree';
   const label = 'Docs tree';
   try {
-    const catalog =
-      /** @type {any} */ (_ctx)?.docsCatalog ?? builtinCatalog();
+    const catalog = /** @type {any} */ (_ctx)?.docsCatalog ?? builtinCatalog();
     const tree = options.tree ?? (await projectTree(catalog, {fresh: true}));
     const problems = tree.diagnostics
       .filter(d => d.severity === 'error')
@@ -1242,7 +1286,9 @@ export async function checkDocsTree(_ctx, options = {}) {
       );
       for (const {source, doc} of (await loadCliSelfDocs()).loaded) {
         if (CLI_DOC_NAMESPACES[doc.namespace]?.reader !== 'tree') continue;
-        if (!placed.has(`@astryxdesign/cli\u0000${doc.type}\u0000${doc.name}`)) {
+        if (
+          !placed.has(`@astryxdesign/cli\u0000${doc.type}\u0000${doc.name}`)
+        ) {
           problems.push(
             `${source} has namespace "${doc.namespace}", but no docs-tree namespace adopts it`,
           );
@@ -1305,7 +1351,9 @@ export async function checkDocsProgressiveDisclosure(ctx) {
   /** @type {string[]} */
   const problems = [];
   if (ctx.docsCatalogError) {
-    problems.push(`The docs catalog could not be built: ${ctx.docsCatalogError}`);
+    problems.push(
+      `The docs catalog could not be built: ${ctx.docsCatalogError}`,
+    );
   }
   for (const issue of ctx.docsCatalogIssues ?? []) {
     problems.push(`${issue.package ?? 'a contributed doc'}: ${issue.message}`);
@@ -1364,7 +1412,8 @@ export async function checkDocsProgressiveDisclosure(ctx) {
 /**
  * Ordered list of synchronous check functions. Append here to add a check.
  * (checkConfig is async and is awaited separately by {@link runChecks}.)
- * @type {Array<(ctx: DoctorContext) => DoctorCheck>}
+ * A check that returns null does not apply to the project and is left out.
+ * @type {Array<(ctx: DoctorContext) => DoctorCheck | null>}
  */
 export const SYNC_CHECKS = [
   checkNodeVersion,
@@ -1551,7 +1600,8 @@ export async function runChecks(options = {}) {
   // Run the theme checks and config check after the environment checks. The
   // released `themes` check keeps its place, ahead of the app-theme checks.
   for (const fn of SYNC_CHECKS) {
-    checks.push(fn(ctx));
+    const check = fn(ctx);
+    if (check) checks.push(check);
     if (fn === checkVersionAlignment) {
       const appThemeChecks = await checkAppThemes(cwd);
       checks.push(checkThemes(cwd, appThemeChecks), ...appThemeChecks);

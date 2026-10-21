@@ -308,9 +308,15 @@ export const NO_ICON_SETS = Object.freeze({
  * @param {{sets: DiscoveredIconSet[], choice: IconSetChoice}} iconSets
  * @param {Record<string, string>} [declared] the template's `icons`: the
  *   icon definition each imported icon draws, by its imported name
- * @returns {{source: string, icons: TemplateIconsReport}}
+ * @returns {{source: string, icons: TemplateIconsReport | undefined}} `icons`
+ *   is undefined, and the source unchanged, when no icon set is installed and
+ *   none is configured: icon sets are experimental (spec:AST-017 FR27), so a
+ *   project that does not use them gets exactly the output it always has.
  */
 export function mapTemplateIcons(source, {sets, choice}, declared = {}) {
+  if (sets.length === 0 && choice.configured == null) {
+    return {source, icons: undefined};
+  }
   const target = choice.set ?? null;
   /** @type {TemplateIconsReport} */
   const icons = {
