@@ -12,8 +12,9 @@
  * request runs, with nothing in the output naming the cause.
  *
  * A plain `fetch` starts the same build and keeps polling it, so the page's own
- * asset URLs are requested here first and reported by URL when one of them
- * still does not serve.
+ * asset URLs are requested here first, and the ones that still do not serve are
+ * reported by URL with what the CDN answered — a status alone cannot tell an
+ * unbuilt version apart from a path that does not exist in it.
  */
 
 /** True for an answer that means the asset is there: 2xx, or a redirect to it. */
@@ -91,17 +92,106 @@ export function pageAssetUrls(html) {
 }
 
 /**
- * What a failed request actually was. `undici` puts the socket-level reason on
- * `error.cause.code` (`UND_ERR_CONNECT_TIMEOUT`, `EAI_AGAIN`, …) behind a plain
- * `TypeError`, so the name alone sends a contributor to a generic error.
+ * What a failed request actually was. `undici` reports every transport failure
+ * as `TypeError: fetch failed` and puts the real reason one level down on
+ * `error.cause` — as a `code` (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`,
+ * `ENOTFOUND`, …) or, when the request never reached a socket, as a message like
+ * `bad port`. The wrapper name alone sends a contributor to a generic error.
  *
  * @param {unknown} error
  * @returns {string}
  */
 function requestFailureLabel(error) {
   const name = error instanceof Error ? error.name : String(error);
-  const code = error?.cause?.code;
-  return code ? `${name} (${code})` : name;
+  const cause = error?.cause;
+  if (!cause) return name;
+  const detail = cause.code ?? cause.message;
+  return detail ? `${name} (${String(detail).trim()})` : name;
+}
+
+/**
+ * How far into an error document the probe reads. A CDN refusal is one short
+ * sentence, so this is well past what it says, while still bounding what a
+ * server that answers with a full page can cost a failing asset check.
+ */
+const ERROR_BODY_MAX_CHARS = 400;
+
+/**
+ * The shape `primeCdnAssets` reads out of whatever answered its request.
+ *
+ * @typedef {{status: number, body?: unknown, text?: () => Promise<string>}} ResponseLike
+ */
+
+/**
+ * The start of an error document, read without pulling the whole body.
+ *
+ * @param {ResponseLike} response
+ * @returns {Promise<string|null>} null when it carries nothing readable
+ */
+async function readErrorBody(response) {
+  const stream = response?.body;
+  if (typeof stream?.getReader !== 'function') {
+    return typeof response?.text === 'function' ? await response.text() : null;
+  }
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  try {
+    while (text.length < ERROR_BODY_MAX_CHARS) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, {stream: true});
+    }
+  } finally {
+    // Nothing wants the rest of the document, and an abandoned body keeps the
+    // connection open past the round that read it.
+    await reader.cancel().catch(() => {});
+  }
+  return text;
+}
+
+/**
+ * What the CDN said, as one line: markup removed, whitespace collapsed, the
+ * first remaining line kept and bounded.
+ *
+ * @param {string|null} body
+ * @returns {string|null} null when the document says nothing readable
+ */
+function describeErrorBody(body) {
+  if (!body) return null;
+  const withoutMarkup = body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[^>]*>/g, ' ');
+  for (const line of withoutMarkup.split(/\r?\n/)) {
+    const summary = line.replace(/\s+/g, ' ').trim();
+    if (summary === '') continue;
+    return summary.length > ERROR_BODY_MAX_CHARS
+      ? `${summary.slice(0, ERROR_BODY_MAX_CHARS - 1).trimEnd()}…`
+      : summary;
+  }
+  return null;
+}
+
+/**
+ * Why an answered request still did not serve the asset.
+ *
+ * Every refusal these CDNs make is a `404` with a sentence that names the thing
+ * it could not find, so the status on its own reports three different failures
+ * as one string. The document is a bonus on top of the status though: a body
+ * that will not read must never cost the report of the status that did answer.
+ *
+ * @param {ResponseLike} response
+ * @returns {Promise<string>}
+ */
+async function nonServableReason(response) {
+  const status = `HTTP ${response?.status}`;
+  let said;
+  try {
+    said = describeErrorBody(await readErrorBody(response));
+  } catch {
+    return status;
+  }
+  return said === null ? status : `${status} — ${said}`;
 }
 
 /**
@@ -113,7 +203,7 @@ function requestFailureLabel(error) {
  *
  * @param {string[]} urls
  * @param {object} [options]
- * @param {(url: string, init: object) => Promise<{status: number}>} [options.fetchImpl]
+ * @param {(url: string, init: object) => Promise<ResponseLike>} [options.fetchImpl]
  * @param {number} [options.deadlineMs] total budget for every retry round
  * @param {number} [options.retryDelayMs] pause between rounds
  * @param {number} [options.probeTimeoutMs] per-request timeout, so a hanging CDN cannot spend the budget
@@ -149,7 +239,7 @@ export async function primeCdnAssets(
           });
           reason = isServable(response.status)
             ? null
-            : `HTTP ${response.status}`;
+            : await nonServableReason(response);
         } catch (error) {
           reason = requestFailureLabel(error);
         }
