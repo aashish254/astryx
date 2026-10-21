@@ -261,6 +261,20 @@ function popoverFixture() {
     affects_families: [],
     affects_consumer_docs: ['useEntryAnimation'],
   });
+  write(root, 'apps/sandbox/src/app/(fullscreen)/pages/perf/benchmark.test.ts');
+  writeRecord(root, 'packages/core/src/Markdown/Markdown.spec.md', {
+    kind: 'component',
+    id: 'component:Markdown',
+    review_triggers: ['behavior'],
+    verified_by: [
+      'apps/sandbox/src/app/(fullscreen)/pages/perf/benchmark.test.ts',
+      'browser check of the rendered page',
+    ],
+    families: [],
+    architecture: [],
+    system_specs: ['spec:AST-017/FR3'],
+    modules: [],
+  });
   write(root, 'packages/core/src/TabList/TabList.tsx');
   writeRecord(root, 'packages/core/src/TabList/TabList.spec.md', {
     kind: 'component',
@@ -287,7 +301,7 @@ function popoverFixture() {
   write(
     root,
     'packages/core/src/utils/plainDate.ts',
-    '// Resolves wall time per AST-013 and docs/architecture/layer-runtime.md.\n// Day boundaries follow AST-017/DEC-1. Not AST-0130 or XAST-020.\n',
+    '// Resolves wall time per AST-013 and docs/architecture/layer-runtime.md.\n// Day boundaries follow AST-017/DEC-1 and AST-020/FR15. Not AST-0130 or XAST-020.\n',
   );
   return root;
 }
@@ -459,13 +473,13 @@ describe('resolveSpecsForFile', () => {
           'packages/core/src/Markdown/plugins/headingLinks.ts',
         ).records,
       ),
-    ).toEqual(['module:Markdown/headingLinks']);
+    ).toEqual(['component:Markdown', 'module:Markdown/headingLinks']);
     expect(
       ids(
         resolveSpecsForFile(index, 'packages/core/src/Markdown/Markdown.tsx')
           .records,
       ),
-    ).toEqual([]);
+    ).toEqual(['component:Markdown']);
   });
 
   it('places a module record beside the same-stem verified_by evidence outside its root', () => {
@@ -496,6 +510,40 @@ describe('resolveSpecsForFile', () => {
     expect(ids(result.records)).not.toContain('spec:AST-014');
   });
 
+  it('matches declared paths with route-group segments, and skips prose entries', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const result = resolveSpecsForFile(
+      index,
+      'apps/sandbox/src/app/(fullscreen)/pages/perf/benchmark.test.ts',
+    );
+    expect(result.records[0]).toMatchObject({
+      id: 'component:Markdown',
+      routes: [
+        {
+          via: 'verified_by',
+          detail:
+            'apps/sandbox/src/app/(fullscreen)/pages/perf/benchmark.test.ts',
+        },
+      ],
+    });
+  });
+
+  it('lists a claim-scoped reference as that claim, not the whole record', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const result = resolveSpecsForFile(
+      index,
+      'packages/core/src/Markdown/Markdown.tsx',
+    );
+    expect(ids(result.records)).toEqual(['component:Markdown']);
+    expect(result.decisions).toEqual([
+      expect.objectContaining({
+        id: 'spec:AST-017/FR3',
+        decision: 'FR3',
+        routes: [{via: 'inherited:system_specs', detail: 'component:Markdown'}],
+      }),
+    ]);
+  });
+
   it('ignores spec numbers inside record paths', () => {
     const index = loadKnowledgeIndex(popoverFixture());
     const result = resolveSpecsForFile(index, 'scripts/fixture-heavy.test.mjs');
@@ -518,7 +566,9 @@ describe('resolveSpecsForFile', () => {
     ).toEqual([['spec:AST-013', 'mentioned', 'AST-013']]);
     expect(result.decisions.map(decision => decision.id)).toEqual([
       'spec:AST-017/DEC-1',
+      'spec:AST-020/FR15',
     ]);
+    expect(ids(result.records)).not.toContain('spec:AST-020');
   });
 
   it('reports a path no record reaches instead of guessing', () => {
@@ -582,6 +632,7 @@ describe('coverage audits', () => {
     expect(ids(findUnreachedRecords(index, files))).toEqual([
       'architecture:container-padding',
       'component:ChatComposerDrawer',
+      'component:Markdown',
       'component:TabList',
       'family:data-display',
       'module:Dialog/DialogBody',

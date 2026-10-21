@@ -68,17 +68,25 @@ function asList(value) {
   return [];
 }
 
+// A reference may name one claim of its target: `spec:AST-NNN/FR3`,
+// `architecture:x/INV6`, `spec:AST-NNN/DEC-2`.
+const CLAIM_SUFFIX = /\/([A-Z][A-Z0-9]*-?[0-9]+[a-z]?)$/;
+
 function referenceTarget(reference) {
-  return reference.replace(/\/DEC-[0-9]+$/, '');
+  return reference.replace(CLAIM_SUFFIX, '');
 }
 
 function referenceDecision(reference) {
-  return /\/(DEC-[0-9]+)$/.exec(reference)?.[1] ?? null;
+  return CLAIM_SUFFIX.exec(reference)?.[1] ?? null;
 }
 
+// Path fields mix repository paths with prose and commands; only the prose
+// and commands contain whitespace. Route groups such as `(fullscreen)` are
+// ordinary path segments.
 function looksLikePath(entry) {
   return (
-    /^[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@*-]*)*$/.test(entry) &&
+    typeof entry === 'string' &&
+    /^\S+$/.test(entry) &&
     (entry.includes('/') || /\.[A-Za-z0-9]+$/.test(entry))
   );
 }
@@ -357,12 +365,12 @@ function mentionedMatches(index, filePath) {
   const content = bytes.toString('utf8');
   const cited = new Map();
   for (const match of content.matchAll(
-    /(?<![/\\\w-])AST-([0-9]{3})(?:\/(DEC-[0-9]+))?\b/g,
+    /(?<![/\\\w-])AST-([0-9]{3})(?:\/([A-Z][A-Z0-9]*-?[0-9]+[a-z]?))?\b/g,
   )) {
     const id = `spec:AST-${match[1]}`;
-    const decisions = cited.get(id) ?? new Set();
-    decisions.add(match[2] ?? null);
-    cited.set(id, decisions);
+    const claims = cited.get(id) ?? new Set();
+    claims.add(match[2] ?? null);
+    cited.set(id, claims);
   }
   const matches = [];
   for (const record of index.records) {
@@ -455,7 +463,7 @@ function addDecision(decisions, record, decision, route) {
 /**
  * Close the visible directly matched set over inherited references, then
  * collect the system specs that decided a governing record. A reference scoped
- * to one decision (`spec:AST-NNN/DEC-N`) lists that decision, never the whole
+ * to one claim or decision (`spec:AST-NNN/FR3`) lists that claim, never the whole
  * record. Only visible records are followed, so a draft never steers the
  * result unless drafts were asked for.
  */
@@ -525,7 +533,7 @@ function closeOverReferences(index, direct, visible) {
  * `records` lists every record linked to the path, with each route that
  * reached it. `decidingSpecs` lists the system specs that decided one of those
  * records without being linked to the path themselves. `decisions` lists the
- * single decisions (`spec:AST-NNN/DEC-N`) a linked record or the file cites.
+ * single claims or decisions (`spec:AST-NNN/FR3`) a linked record or the file cites.
  * Records come from the working tree: on a pull-request branch that includes
  * the branch's proposed records, so the result is not review authority.
  * `globalClaims` lists the trigger-routed global baseline claims, exactly as
@@ -689,7 +697,9 @@ function formatResult(result) {
     lines.push(`      via ${routes}`);
   }
   if (result.decisions.length > 0) {
-    lines.push('  Single decisions cited by the file or a record above:');
+    lines.push(
+      '  Single claims or decisions cited by the file or a record above:',
+    );
     for (const decision of result.decisions) {
       const routes = decision.routes
         .map(route => `${route.via} ${route.detail}`)

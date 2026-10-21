@@ -122,8 +122,8 @@ path: the record's own placement, `applies_to` and `verified_by` entries, family
 and design membership, `affects_consumer_docs` ids, system-spec numbers the file
 cites in its text (not inside a record path), and the references those records
 inherit. Only visible records are followed, so a draft never adds a link unless
-`--include-draft` is passed. A reference scoped to one decision
-(`spec:AST-NNN/DEC-N`) lists that decision, not the whole record. The specs that
+`--include-draft` is passed. A reference scoped to one claim or
+decision (`spec:AST-NNN/FR3`) lists that claim, not the whole record. The specs that
 decided a linked record are listed separately, as are the global claims the
 matched component and module triggers route (the same selection as
 `review-global-baselines.mjs`). A path with no linked record is reported as
