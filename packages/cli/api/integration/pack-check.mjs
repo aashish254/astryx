@@ -74,6 +74,7 @@ import {
   collectIdentities,
   compareIdentities,
 } from '../../foundation/integrations/contribution-inventory.mjs';
+import {formatCliCommand} from '../../foundation/env/package-manager.mjs';
 
 /**
  * @typedef {import('../../foundation/integrations/issue').AstryxIntegrationIssue} Issue
@@ -628,7 +629,7 @@ async function validateIncompleteThemeExports(
             output.kind === 'module'
               ? 'theme_module_stale'
               : 'theme_stylesheet_stale',
-            `Theme "${localTheme.slug}" ${output.kind} does not match ${sourceRelative}. This incomplete export remains packable, but run \`astryx theme build ${sourceRelative}\` before adding its matching export.`,
+            `Theme "${localTheme.slug}" ${output.kind} does not match ${sourceRelative}. This incomplete export remains packable, but run \`${formatCliCommand(`theme build ${sourceRelative}`, packageDir)}\` before adding its matching export.`,
           ),
         );
       }
@@ -647,7 +648,7 @@ async function validateIncompleteThemeExports(
     issues.push(
       error(
         'theme_build_failed',
-        `Theme "${localTheme.slug}" could not be rebuilt from ${sourceRelative}: ${err instanceof Error ? err.message : String(err)} Run \`astryx theme build ${sourceRelative}\` before packing.`,
+        `Theme "${localTheme.slug}" could not be rebuilt from ${sourceRelative}: ${err instanceof Error ? err.message : String(err)} Run \`${formatCliCommand(`theme build ${sourceRelative}`, packageDir)}\` before packing.`,
       ),
     );
   } finally {
@@ -970,7 +971,7 @@ async function validatePackedThemeExports(
       issues.push(
         warning(
           'theme_exports_missing',
-          `Theme "${localTheme.slug}" has no declared built exports. The package remains source-compatible. To make it importable, run \`astryx theme build ${sourceRelative}\` and export "./themes/${localTheme.slug}" plus "./themes/${localTheme.slug}.css" from package.json; \`astryx integration add theme ${localTheme.slug}\` creates those exports for a new theme.`,
+          `Theme "${localTheme.slug}" has no declared built exports. The package remains source-compatible. To make it importable, run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` and export "./themes/${localTheme.slug}" plus "./themes/${localTheme.slug}.css" from package.json; \`${formatCliCommand(`integration add theme ${localTheme.slug}`, localIntegration.__packageDir)}\` creates those exports for a new theme.`,
         ),
       );
       continue;
@@ -1010,7 +1011,7 @@ async function validatePackedThemeExports(
           err instanceof ThemeImportError
             ? 'theme_import_unresolvable'
             : 'theme_import_invalid',
-          `${message} Run \`astryx theme build ${sourceRelative}\` before packing.`,
+          `${message} Run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` before packing.`,
         ),
       );
       continue;
@@ -1031,7 +1032,7 @@ async function validatePackedThemeExports(
         issues.push(
           error(
             'theme_build_failed',
-            `Theme "${localTheme.slug}" did not produce a complete build. Run \`astryx theme build ${sourceRelative}\` before packing.`,
+            `Theme "${localTheme.slug}" did not produce a complete build. Run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` before packing.`,
           ),
         );
         continue;
@@ -1102,9 +1103,9 @@ async function validatePackedThemeExports(
             error(
               output.staleCode,
               localWrapper && !localWrapper.ok && !localWrapper.rebuild
-                ? `Theme "${localTheme.slug}" module is not the module \`astryx theme build ${sourceRelative}\` writes and does not only wrap it: ${localWrapper.reason}. A module that wraps the built module may only import the theme's own stylesheet and font stylesheet for their side effects and re-export from the built module either everything or only its theme, as ${localTheme.exportName}.`
+                ? `Theme "${localTheme.slug}" module is not the module \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` writes and does not only wrap it: ${localWrapper.reason}. A module that wraps the built module may only import the theme's own stylesheet and font stylesheet for their side effects and re-export from the built module either everything or only its theme, as ${localTheme.exportName}.`
                 : localWrapper && !localWrapper.ok
-                  ? `Theme "${localTheme.slug}" module re-exports ${localWrapper.reason}, which does not match ${sourceRelative}. Run \`astryx theme build ${sourceRelative}\` before packing.`
+                  ? `Theme "${localTheme.slug}" module re-exports ${localWrapper.reason}, which does not match ${sourceRelative}. Run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` before packing.`
                   : (renamedOutputMessage(
                       localTheme,
                       output.kind,
@@ -1113,7 +1114,7 @@ async function validatePackedThemeExports(
                       builtName,
                       localIntegration.__packageDir,
                     ) ??
-                    `Theme "${localTheme.slug}" ${output.kind} does not match ${sourceRelative}. Run \`astryx theme build ${sourceRelative}\` before packing.`),
+                    `Theme "${localTheme.slug}" ${output.kind} does not match ${sourceRelative}. Run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` before packing.`),
             ),
           );
         }
@@ -1145,7 +1146,7 @@ async function validatePackedThemeExports(
       issues.push(
         error(
           'theme_build_failed',
-          `Theme "${localTheme.slug}" could not be rebuilt from ${sourceRelative}: ${err instanceof Error ? err.message : String(err)} Run \`astryx theme build ${sourceRelative}\` before packing.`,
+          `Theme "${localTheme.slug}" could not be rebuilt from ${sourceRelative}: ${err instanceof Error ? err.message : String(err)} Run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` before packing.`,
         ),
       );
     } finally {
@@ -1685,7 +1686,7 @@ function renamedOutputMessage(
   const built = rel(
     path.join(path.dirname(source), `${builtName}${extension}`),
   );
-  return `Theme "${theme.slug}" ${kind} is ${rel(exported)}, but ${path.basename(source)} calls defineTheme with name: '${builtName}', so \`astryx theme build\` writes ${built} instead and rebuilding never updates ${path.basename(exported)}. Fix: point the package export that serves it at ${built} after building, or set name: '${theme.slug}' in ${path.basename(source)} and rebuild.`;
+  return `Theme "${theme.slug}" ${kind} is ${rel(exported)}, but ${path.basename(source)} calls defineTheme with name: '${builtName}', so \`${formatCliCommand('theme build', packageDir)}\` writes ${built} instead and rebuilding never updates ${path.basename(exported)}. Fix: point the package export that serves it at ${built} after building, or set name: '${theme.slug}' in ${path.basename(source)} and rebuild.`;
 }
 
 /**
