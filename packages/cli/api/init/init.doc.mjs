@@ -22,7 +22,8 @@ export const doc = {
     'package.json that declares an @astryxdesign package, else the nearest package.json, ' +
     'searching no higher than the repository root): to AGENTS.md, ' +
     "to the project's Claude Code file (CLAUDE.md, else .claude/CLAUDE.md; when CLAUDE.md " +
-    'exists, a block in .claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md), and as a ' +
+    'exists, a block in .claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md, in which case a ' +
+    '.claude/CLAUDE.md the project commits keeps a copy), and as a ' +
     'one-line import of AGENTS.md in GEMINI.md unless GEMINI.md already imports it. ' +
     'In the home folder, or in a settings folder in it outside a project, it writes none: every ' +
     'folder of the home folder whose name starts with a dot is a settings folder, and such a folder itself never ' +
@@ -61,7 +62,8 @@ export const doc = {
       description:
         'Agent preset: claude, cursor, codex, hermes, muse, all. `all` writes every existing agent doc except GEMINI.md, ' +
         'which keeps its one-line import of AGENTS.md. With claude and all, when CLAUDE.md gets the block, a block in ' +
-        '.claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md. Used only when the agents feature runs.',
+        '.claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md, in which case a .claude/CLAUDE.md the ' +
+        'project commits gets a copy too. Used only when the agents feature runs.',
     },
     {
       name: 'options.agentDocsPath',

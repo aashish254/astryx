@@ -1679,37 +1679,30 @@ export function installAgentDocs(
     // block goes in CLAUDE.md, .claude/CLAUDE.md gets none, and a block there
     // is removed.
     const claudeRoot = inject.includes(CLAUDE_MD);
-    // While root CLAUDE.md is ignored, .claude/CLAUDE.md keeps its copy, and
-    // `all` writes it there too.
+    // While root CLAUDE.md is ignored, a committed .claude/CLAUDE.md holds a
+    // copy too, with `claude` and `all` alike (INV31), first run included.
     const keepDirCopy = claudeRoot && claudeDirKeepsCopy(targetDir);
-    const injectAll =
-      claudeRoot && !(keepDirCopy && agent === 'all')
-        ? inject.filter(p => p !== CLAUDE_DIR_MD)
-        : inject;
+    const injectAll = !claudeRoot
+      ? inject
+      : keepDirCopy
+        ? [...new Set([...inject, CLAUDE_DIR_MD])].filter(p =>
+            p !== CLAUDE_DIR_MD || fs.existsSync(path.join(targetDir, CLAUDE_DIR_MD)),
+          )
+        : inject.filter(p => p !== CLAUDE_DIR_MD);
     const dirHasBlock = hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD));
     const strip = claudeRoot && !keepDirCopy && dirHasBlock ? [CLAUDE_DIR_MD] : [];
-    // A kept copy the preset does not write in full (`claude`) is refreshed
-    // where it is, so it never stays on an older release.
-    const refresh =
-      keepDirCopy && dirHasBlock && !injectAll.includes(CLAUDE_DIR_MD) ? [CLAUDE_DIR_MD] : [];
     // A path that escapes the project refuses the run, as in 0.7.0; below the
     // project root, where 0.7.1 wrote nothing, it is skipped and reported.
     const escaping = refuseEscapes
       ? new Set()
-      : skipEscaping(targetDir, [...injectAll, ...create, ...strip, ...refresh], onSkipped);
+      : skipEscaping(targetDir, [...injectAll, ...create, ...strip], onSkipped);
     const injectHere = injectAll.filter(p => !escaping.has(p));
-    const refreshHere = refresh.filter(p => !escaping.has(p));
     const createHere = create.filter(p => !escaping.has(p));
     const stripHere = escaping.has(CLAUDE_MD) ? [] : strip.filter(p => !escaping.has(p));
-    assertTargetsWithin(targetDir, [...injectHere, ...createHere, ...stripHere, ...refreshHere]);
+    assertTargetsWithin(targetDir, [...injectHere, ...createHere, ...stripHere]);
     for (const p of injectHere) {
       injectXdsBlock(path.join(targetDir, p), compressedIndex);
       written.push(p);
-    }
-    for (const p of refreshHere) {
-      if (injectXdsBlock(path.join(targetDir, p), compressedIndex, {onlyReplace: true})) {
-        written.push(p);
-      }
     }
     for (const p of createHere) {
       const filePath = path.join(targetDir, p);

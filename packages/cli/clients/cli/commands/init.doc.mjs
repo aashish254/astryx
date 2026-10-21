@@ -19,7 +19,8 @@ export const doc = {
     'agents, and CI). By default it writes the agent-docs block, including guidance ' +
     'from configured integrations, to AGENTS.md and to the Claude Code file the project ' +
     'has (CLAUDE.md, else .claude/CLAUDE.md; when CLAUDE.md exists, a block in ' +
-    '.claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md), and a one-line import of AGENTS.md to GEMINI.md ' +
+    '.claude/CLAUDE.md is removed, unless the project ignores CLAUDE.md, in which case a .claude/CLAUDE.md the ' +
+    'project commits keeps a copy), and a one-line import of AGENTS.md to GEMINI.md ' +
     'unless GEMINI.md already imports it. It then prints getting-started steps. Agent ' +
     'docs go to the project root: the nearest folder at or above this one whose ' +
     'package.json declares an @astryxdesign package, else the nearest with any ' +
@@ -65,7 +66,7 @@ export const doc = {
         'Target AI tool for agent docs: claude (CLAUDE.md or .claude/CLAUDE.md, else creates .claude/CLAUDE.md), cursor (.cursorrules if present, else AGENTS.md), ' +
         'codex and muse (AGENTS.md), hermes (.hermes.md or HERMES.md if present, else AGENTS.md), all (every existing agent doc except GEMINI.md, which keeps its ' +
         'one-line import of AGENTS.md, else AGENTS.md and .claude/CLAUDE.md). With claude and all, when CLAUDE.md gets the block, .claude/CLAUDE.md gets none and ' +
-        'a block already there is removed, unless the project ignores CLAUDE.md: then .claude/CLAUDE.md keeps its copy, and all writes one there. ' +
+        'a block already there is removed, unless the project ignores CLAUDE.md: then a .claude/CLAUDE.md the project commits gets a copy too, with claude and all alike. ' +
         'An unknown tool exits 1 with ERR_UNKNOWN_AGENT. ' +
         'Used only when agent docs are installed (the default, --all, or --features agents); --agent-docs-path takes precedence',
     },

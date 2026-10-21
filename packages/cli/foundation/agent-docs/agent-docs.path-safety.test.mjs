@@ -889,6 +889,34 @@ describe('round 6: an ignored .claude/CLAUDE.md follows the usual rule; --agent 
       `# Mine\n\n${BLOCK}\n`,
     );
   });
+
+  it('--agent claude writes the committed .claude/CLAUDE.md copy on a first run beside an ignored root', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, '# Team\n');
+
+    const written = installAgentDocs(project, {
+      agent: 'claude',
+      renderedBlock: BLOCK,
+    });
+
+    expect(written).toEqual(['CLAUDE.md', '.claude/CLAUDE.md']);
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+  });
+
+  it('--agent claude creates no .claude/CLAUDE.md beside an ignored root when there is none', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+
+    expect(
+      installAgentDocs(project, {agent: 'claude', renderedBlock: BLOCK}),
+    ).toEqual(['CLAUDE.md']);
+    expect(fs.existsSync(path.join(project, '.claude'))).toBe(false);
+  });
 });
 
 describe('init exit codes and output', () => {
