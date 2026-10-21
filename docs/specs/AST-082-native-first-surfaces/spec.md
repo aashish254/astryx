@@ -109,8 +109,9 @@ depends only on runtimes it can maintain.
   `astryx-shared` condition, `@astryxdesign/native` exposes only core contracts.
   Code that runs on more than one native platform type-checks against it, and a
   platform prop there is a type error; platform props live in that platform's
-  files. Whether shared code must use this condition is OQ5, and how a file shared
-  by web and native code imports components is OQ8.
+  files. Whether shared code must use this condition is OQ5. A file shared by web and
+  native code imports only core contract types and non-visual logic; each
+  platform's own files import that platform's components (DEC-9).
 - **FR7 — Base props are coordinated across platforms.**
   - **Shared base props** are the same on every platform: `id`, a stable
     identifier, and `isHidden`, which removes the component from layout and the
@@ -410,6 +411,19 @@ stable release group (FR15).
 Rejected: a separate shared package now, because it moves code and adds a
 package to the release group before any native platform has shipped.
 
+### DEC-9 — Web and native share contracts and logic, not components
+
+**Reference:** `spec:AST-082/DEC-9`
+**Decider:** cixzhang, 2026-10-21
+
+Code shared between a web app and a native app imports core contract types and
+non-visual logic only, and each platform's files import that platform's
+components. This keeps the one-way boundary (FR16) intact, and most native apps
+share logic rather than screens with their web app.
+
+Rejected: a shared component entry that resolves to core on the web and to
+native elsewhere, because it hides which platform's contract a call site gets.
+
 ## Open questions
 
 - **OQ1 — What thresholds make a candidate supported?** (`human-design`)
@@ -437,9 +451,3 @@ package to the release group before any native platform has shipped.
   `aria-*` or `data-*` input still type-checks. Options: a lint rule, a
   development warning with the input not applied, or both. Recommendation: both,
   with the runtime change shipped as a breaking change under FR14.
-- **OQ8 — How does a file shared by web and native code import components?**
-  (`human-api`) Options: shared files import only core contract types and
-  non-visual logic, and each platform's files import its own components; or a
-  shared entry that resolves to core on the web and to native elsewhere.
-  Recommendation: the first, because it keeps the one-way boundary (FR16) and
-  most native apps share logic rather than screens with their web app.
