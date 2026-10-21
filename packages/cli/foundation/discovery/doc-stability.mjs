@@ -7,16 +7,15 @@
  * Published CLIs before {@link STABILITY_CLI} refuse an unknown field on a
  * page or block template, which they drop, and on a namespace doc, which
  * hides every doc topic the package ships. Component docs and guides keep
- * loading there and ignore the field. So a template or namespace doc that
- * sets `stability` is reported, unless the package's `@astryxdesign/cli` peer range
- * admits only CLIs that read it.
+ * loading there and ignore the field. So each template or namespace doc that
+ * sets `stability` gets a note, unless the package's `@astryxdesign/cli` peer
+ * range admits only CLIs that read it.
  *
  * @input A loaded integration and its package.json.
- * @output One `stability_needs_cli` finding per descriptor, at `info`: reported, and
- *   never a failure, even under `--strict`, so no build that passed starts
- *   failing.
- * @position foundation/discovery; read by `integration check` (through
- *   `doctor integration validate`) and `integration verify`.
+ * @output One note per descriptor. A note is not an issue: it is never an
+ *   error or a warning, and never fails a check, even under `--strict`.
+ * @position foundation/discovery; read by `doctor integration validate`
+ *   (and so `integration check`) for the package being authored.
  */
 
 import * as path from 'node:path';
@@ -28,14 +27,21 @@ import {
 } from '../integrations/cli-requirement.mjs';
 
 /**
+ * @typedef {object} OlderCliNote
+ * @property {string} file the descriptor, relative to the package
+ * @property {'template' | 'namespace'} kind
+ * @property {string} message what an older CLI does with it, and the fix
+ */
+
+/**
  * @param {any} loaded a loaded integration (absolute roots)
  * @param {any} pkg its package.json
  * @param {string} packageDir
- * @returns {Promise<Array<{code: string, severity: 'info', message: string, fix: string, file: string}>>}
+ * @returns {Promise<OlderCliNote[]>}
  */
-export async function docStabilityIssues(loaded, pkg, packageDir) {
+export async function olderCliNotes(loaded, pkg, packageDir) {
   if (stabilityCliProblem(pkg) == null) return [];
-  /** @type {Array<{file: string, namespace: boolean}>} */
+  /** @type {Array<{file: string, kind: 'template' | 'namespace'}>} */
   const files = [];
   if (loaded.docs) {
     const {namespaces} = await discoverIntegrationDocs(loaded).catch(() => ({
@@ -47,7 +53,7 @@ export async function docStabilityIssues(loaded, pkg, packageDir) {
         const inRoot = String(namespace.source).slice(
           String(loaded.name).length + 1,
         );
-        files.push({file: path.join(loaded.docs, inRoot), namespace: true});
+        files.push({file: path.join(loaded.docs, inRoot), kind: 'namespace'});
       }
     }
   }
@@ -61,18 +67,16 @@ export async function docStabilityIssues(loaded, pkg, packageDir) {
         await loadTopicModule(template.docPath).catch(() => null)
       );
       if (doc?.stability != null) {
-        files.push({file: template.docPath, namespace: false});
+        files.push({file: template.docPath, kind: 'template'});
       }
     }
   }
-  return files.map(({file, namespace}) => {
+  return files.map(({file, kind}) => {
     const relative = path.relative(packageDir, file).split(path.sep).join('/');
     return {
-      code: 'stability_needs_cli',
-      severity: /** @type {const} */ ('info'),
-      message: `${relative} sets \`stability\`: CLIs before ${STABILITY_CLI} drop this descriptor${namespace ? " and hide the package's doc topics" : ''}, and the package's @astryxdesign/cli peer range admits them.`,
-      fix: `Declare "@astryxdesign/cli": ">=${STABILITY_CLI}" in peerDependencies (optional in peerDependenciesMeta), or remove \`stability\` from the descriptor.`,
       file: relative,
+      kind,
+      message: `${relative} sets \`stability\`: CLIs before ${STABILITY_CLI} drop this descriptor${kind === 'namespace' ? " and hide the package's doc topics" : ''}, and the package's @astryxdesign/cli peer range admits them. Declare "@astryxdesign/cli": ">=${STABILITY_CLI}" in peerDependencies (optional in peerDependenciesMeta), or remove \`stability\`.`,
     };
   });
 }

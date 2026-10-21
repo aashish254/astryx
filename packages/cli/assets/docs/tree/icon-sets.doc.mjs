@@ -257,7 +257,7 @@ export const brand = defineTheme({name: 'brand', icons: themeIcons});`,
       content: [
         {
           type: 'prose',
-          text: "`astryx integration check` reads the set without running your icons. Each definition you have not mapped is listed with its description and words, so you or your agent can pick the icon. A finding suggests an `experimental icon map` command only when one of your icons has the definition's name or one of its words as its whole id; it never guesses. Its icon-set codes:",
+          text: "`astryx integration check` reads the set without running your icons. An unmapped built-in definition is an error that names the definition's description and words, so you or your agent can pick the icon; the message suggests an `experimental icon map` command only when one of your icons has the definition's name or one of its words as its whole id, and never guesses. Its icon-set codes:",
         },
         {
           type: 'list',
@@ -265,7 +265,6 @@ export const brand = defineTheme({name: 'brand', icons: themeIcons});`,
           items: [
             '`invalid_icon_set` (error): the descriptor, data file, or a definition file is invalid, for example a repeated `id`, an icon with no words, or a `map` key that is neither an Astryx definition nor one in your `definitions` folder. The set is withdrawn: apps do not see it.',
             '`icon_builtin_definition_missing` (error): a built-in definition is not in `map`.',
-            '`icon_definition_missing` (info): another Astryx definition is not in `map`. Reported so you can map it, never failing, even under `--strict`: a library need not draw every definition.',
             '`icon_definition_unused` (warning): a definition you declared is not in `map`.',
             "`icon_definition_shadowed` (warning): a definition you declared now exists in Astryx; map to Astryx's and remove yours.",
             '`icon_module_not_public` (error), `icon_export_name` (warning), `icon_not_component` (error): the export contract above.',
@@ -278,7 +277,11 @@ export const brand = defineTheme({name: 'brand', icons: themeIcons});`,
         },
         {
           type: 'prose',
-          text: 'Errors fail the check. Warnings fail only with `--strict`; info findings never fail. A set that maps every built-in definition and every definition it declares passes `--strict`, which integrations run in their build ({@link generic:checks}). The flow, start to finish: `experimental icon new-set` → `integration check` → `experimental icon add` (or `experimental icon map`) for each definition it lists → `integration check` passes.',
+          text: 'The other Astryx definitions your set leaves unmapped are not issues: a library need not draw every definition. They are listed under "Unmapped icon definitions (optional)", and in the JSON as the validate result\'s `iconSets`: for each set, `unmappedDefinitions` (each `{name, description, words}`) and `suggestions` (each `{definition, icon}`, for any unmapped definition one of your icons fits). They are never counted and never fail a check.',
+        },
+        {
+          type: 'prose',
+          text: 'Errors fail the check. Warnings fail only with `--strict`. A set that maps every built-in definition and every definition it declares passes `--strict`, which integrations run in their build ({@link generic:checks}). The flow, start to finish: `experimental icon new-set` → `integration check` → `experimental icon add` (or `experimental icon map`) for each definition it lists → `integration check` passes.',
         },
       ],
     },

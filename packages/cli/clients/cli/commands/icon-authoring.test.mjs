@@ -636,6 +636,13 @@ describe('a library of icon data, through the adapter', () => {
     ]) {
       expect(codes, code).not.toContain(code);
     }
+    // The optional definitions left unmapped are listed, never issues.
+    expect(codes).not.toContain('"severity":"info"');
+    const printed = await runCli(['integration', 'check'], pkg);
+    expect(printed.stdout).toContain('Unmapped icon definitions (optional)');
+    expect(printed.stdout).toContain(
+      'Mapping these is optional and never fails',
+    );
   }, 60_000);
 });
 

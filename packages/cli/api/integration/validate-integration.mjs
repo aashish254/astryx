@@ -35,8 +35,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
 import {integrationDocTypes} from '../docs/_adapter.mjs';
-import {iconSetIssues} from '../../foundation/discovery/icon-set-checks.mjs';
-import {docStabilityIssues} from '../../foundation/discovery/doc-stability.mjs';
+import {
+  iconSetCoverage,
+  iconSetIssues,
+} from '../../foundation/discovery/icon-set-checks.mjs';
+import {olderCliNotes} from '../../foundation/discovery/doc-stability.mjs';
 import {integrationDocConsistency} from '../../foundation/discovery/doc-consistency.mjs';
 import {
   THEME_SLUG_RE,
@@ -79,6 +82,9 @@ export {validateLoadedIntegration};
  * @property {'no_package_json'} [reason] Why nothing was validated (internal).
  * @property {Issue[]} issues
  * @property {import('../../foundation/integrations/integrations.mjs').LoadedIntegration} [integration]
+ * @property {import('../../foundation/discovery/icon-set-checks.mjs').IconSetCoverage[]} [iconSets]
+ *   Which definitions each icon set leaves unmapped (spec:AST-084 FR14).
+ * @property {import('../../foundation/discovery/doc-stability.mjs').OlderCliNote[]} [olderCliNotes]
  */
 
 /**
@@ -338,8 +344,11 @@ async function validateAtPackageDir(
     issues.push(...unreadThemeFolderIssues(packageDir, loaded));
   // The icon-set checks (AST-084 FR14): data against descriptor, module
   // exports, and theme map, all read statically.
-  if (loaded.iconSets && !rootProblem(loaded.iconSets))
+  if (loaded.iconSets && !rootProblem(loaded.iconSets)) {
     issues.push(...iconSetIssues(packageDir, loaded));
+    // Which definitions each set leaves unmapped: listed, never an issue.
+    result.iconSets = iconSetCoverage(loaded);
+  }
   // What the docs say that no reader serves: a prop listed twice, an
   // overlay's text for a prop the doc lacks, an empty or unreachable section,
   // and an overlay of no topic.
@@ -362,7 +371,7 @@ async function validateAtPackageDir(
     );
   }
   // Authoring only: a template or namespace doc that sets `stability` is
-  // dropped by a CLI before the release that reads it.
+  // dropped by a CLI before the release that reads it. Noted, never an issue.
   if (scanUnreachable) {
     /** @type {any} */
     let pkg = {};
@@ -373,7 +382,8 @@ async function validateAtPackageDir(
     } catch {
       // package.json problems are reported by their own check.
     }
-    issues.push(...(await docStabilityIssues(loaded, pkg, packageDir)));
+    const notes = await olderCliNotes(loaded, pkg, packageDir);
+    if (notes.length > 0) result.olderCliNotes = notes;
   }
 
   return result;
@@ -526,6 +536,12 @@ export async function validateIntegration(pkg, options = {}) {
             ]
           : result.issues,
       ...(docTypes ? {docTypes} : {}),
+      // Additive, never counted: present only for a package with icon sets,
+      // or with descriptors an older CLI drops.
+      ...(result.found && result.iconSets ? {iconSets: result.iconSets} : {}),
+      ...(result.found && result.olderCliNotes
+        ? {olderCliNotes: result.olderCliNotes}
+        : {}),
     },
   };
 }

@@ -13,14 +13,8 @@
 /** An issue surfaced while loading or validating an integration. */
 export interface AstryxIntegrationIssue {
   code: string;
-  /** `info` is reported and never fails or counts as a warning. */
-  severity: 'info' | 'warning' | 'error';
+  severity: 'warning' | 'error';
   message: string;
-  /**
-   * For an icon definition an icon set does not map: the icon the set's
-   * lookup suggests, as `map[map] = icon`.
-   */
-  suggestion?: {map: string; icon: string};
   /** What to change, ready to paste, when the check knows it. */
   fix?: string;
   /** The file the issue is in, relative to the package. */

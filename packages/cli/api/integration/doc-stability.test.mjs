@@ -1,18 +1,21 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file `integration check` reports a template or namespace doc that sets
- * `stability`, which a CLI before 0.7.2 refuses and drops (spec:AST-017
- * FR27), unless the package's CLI peer range admits only CLIs that read it.
- * A component doc or guide that sets it is not reported: older CLIs ignore
- * the field there.
+ * @file `doctor integration validate` (and so `integration check`) notes a
+ * template or namespace doc that sets `stability`, which a CLI before 0.7.2
+ * refuses and drops (spec:AST-017 FR27), unless the package's CLI peer range
+ * admits only CLIs that read it. A note is additive data, never an issue: it
+ * is not counted and never fails a check. A component doc or guide that sets
+ * the field is not noted: older CLIs ignore it there.
  */
 
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {validateLocalIntegration} from './validate-integration.mjs';
+import {validateIntegration} from './validate-integration.mjs';
+import {integrationCheck} from './check/check.mjs';
+import {runCli} from '../../test-utils/run-cli.mjs';
 
 /** @type {string} */
 let dir;
@@ -64,40 +67,66 @@ function writePackage(pkgExtra, stability) {
   );
 }
 
-/** @returns {Promise<any[]>} */
-async function stabilityFindings() {
-  const result = await validateLocalIntegration(dir);
-  return result.issues.filter(issue => issue.code === 'stability_needs_cli');
+/** @returns {Promise<any>} */
+async function validated() {
+  return (await validateIntegration(undefined, {cwd: dir})).data;
 }
 
-describe('stability_needs_cli', () => {
-  it('reports each template and namespace doc that sets stability, never failing', async () => {
+describe('olderCliNotes', () => {
+  it('notes each template and namespace doc that sets stability, never as an issue', async () => {
     writePackage({}, ", stability: 'experimental'");
-    const found = await stabilityFindings();
-    expect(found.map(issue => issue.file).sort()).toEqual([
-      'docs/stabns.doc.mjs',
-      'templates/stab-hero.doc.mjs',
-    ]);
-    for (const issue of found) {
-      expect(issue.severity).toBe('info');
-      expect(issue.message).toContain('CLIs before 0.7.2 drop this descriptor');
-      expect(issue.fix).toContain('">=0.7.2"');
+    const data = await validated();
+    expect(
+      data.olderCliNotes.map((/** @type {any} */ note) => [
+        note.file,
+        note.kind,
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        ['docs/stabns.doc.mjs', 'namespace'],
+        ['templates/stab-hero.doc.mjs', 'template'],
+      ]),
+    );
+    expect(data.olderCliNotes).toHaveLength(2);
+    for (const note of data.olderCliNotes) {
+      expect(note.message).toContain('CLIs before 0.7.2 drop this descriptor');
+      expect(note.message).toContain('">=0.7.2"');
     }
     expect(
-      found.find(issue => issue.file === 'docs/stabns.doc.mjs').message,
+      data.olderCliNotes.find(
+        (/** @type {any} */ note) => note.kind === 'namespace',
+      ).message,
     ).toContain("hide the package's doc topics");
+    // Not an issue: nothing about stability is counted.
+    expect(JSON.stringify(data.issues)).not.toContain('stability');
   });
+
+  it('never fails integration check --strict', async () => {
+    writePackage(
+      {peerDependencies: {'@astryxdesign/cli': '>=0.6.4'}},
+      ", stability: 'experimental'",
+    );
+    const strict = await integrationCheck({cwd: dir, strict: true});
+    expect(JSON.stringify(strict.data.failures)).not.toContain('stability');
+    const validate = strict.data.checks.find(each => each.check === 'validate');
+    expect(
+      /** @type {any} */ (validate?.response.data).olderCliNotes,
+    ).toHaveLength(2);
+    const text = await runCli(['integration', 'check', '--strict'], dir);
+    expect(text.stdout).toContain('Notes for older CLIs');
+    expect(text.stdout).toContain('templates/stab-hero.doc.mjs');
+  }, 60_000);
 
   it('says nothing when the CLI peer range starts at 0.7.2', async () => {
     writePackage(
       {peerDependencies: {'@astryxdesign/cli': '>=0.7.2'}},
       ", stability: 'experimental'",
     );
-    expect(await stabilityFindings()).toEqual([]);
+    expect(await validated()).not.toHaveProperty('olderCliNotes');
   });
 
   it('says nothing when no descriptor sets stability', async () => {
     writePackage({}, '');
-    expect(await stabilityFindings()).toEqual([]);
+    expect(await validated()).not.toHaveProperty('olderCliNotes');
   });
 });

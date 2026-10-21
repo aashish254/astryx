@@ -70,7 +70,7 @@ async function resolveIntegration(pkg, cwd) {
 
 /**
  * Add discovery errors once to an issue list.
- * @param {Array<{code: string, severity: 'info' | 'warning' | 'error', message: string}>} issues
+ * @param {Array<{code: string, severity: 'warning' | 'error', message: string}>} issues
  * @param {Array<{message: string, code?: string, severity?: 'warning' | 'error'} | Error>} errors
  * @param {string} code
  */

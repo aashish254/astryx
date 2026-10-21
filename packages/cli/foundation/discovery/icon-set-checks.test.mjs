@@ -10,7 +10,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {iconSetIssues} from './icon-set-checks.mjs';
+import {iconSetCoverage, iconSetIssues} from './icon-set-checks.mjs';
 import {moduleExportOrigin} from './module-exports.mjs';
 import {generatedTypesText} from './icon-set-writer.mjs';
 import {integrationCheck} from '../../api/integration/check/check.mjs';
@@ -36,10 +36,7 @@ afterEach(() => {
 });
 
 /** The findings about which icon definitions `map` covers. */
-const COVERAGE = new Set([
-  'icon_builtin_definition_missing',
-  'icon_definition_missing',
-]);
+const COVERAGE = new Set(['icon_builtin_definition_missing']);
 
 /**
  * The set's issues, leaving out the definition-coverage findings that the
@@ -411,31 +408,53 @@ describe('iconSetIssues', () => {
 });
 
 describe('icon definitions (map)', () => {
-  it('every built-in definition missing from map is an error, each other Astryx one info, each with a suggestion only when an icon id is its name or a word', () => {
+  it('every built-in definition missing from map is an error; the optional ones are listed, never issues, with a suggestion only when an icon id is its name or a word', () => {
     const issues = issuesOf({}, {coverage: true});
     const builtIn = issues.filter(
       issue => issue.code === 'icon_builtin_definition_missing',
     );
-    const other = issues.filter(
-      issue => issue.code === 'icon_definition_missing',
-    );
     // close and search are mapped; every other built-in is not.
     expect(builtIn).toHaveLength(ICON_NAMES.length - 2);
     expect(builtIn.every(issue => issue.severity === 'error')).toBe(true);
-    expect(other.length).toBeGreaterThan(0);
-    expect(other.every(issue => issue.severity === 'info')).toBe(true);
-    // `delete` names no icon, but one of its words is the trash icon's id.
-    const del = other.find(issue => issue.message.includes('"delete"'));
-    expect(del?.suggestion).toEqual({map: 'delete', icon: 'trash'});
-    expect(del?.message).toContain('astryx experimental icon map delete trash');
-    const home = other.find(issue => issue.message.includes('"home"'));
-    expect(home?.suggestion).toEqual({map: 'home', icon: 'home'});
-    // Nothing in the set draws a calendar: no suggestion.
-    const calendar = builtIn.find(issue =>
-      issue.message.includes('"calendar"'),
+    // An issue is only ever an error or a warning.
+    expect(
+      issues.every(issue => ['error', 'warning'].includes(issue.severity)),
+    ).toBe(true);
+    expect(issues.some(issue => /"delete"|"home"/.test(issue.message))).toBe(
+      false,
     );
-    expect(calendar).toBeDefined();
-    expect(calendar).not.toHaveProperty('suggestion');
+    const [coverage] = iconSetCoverage({
+      name: '@acme/glyphs',
+      iconSets: path.join(dir, 'icon-sets'),
+    });
+    expect(coverage.set).toBe('glyphs');
+    const names = coverage.unmappedDefinitions.map(each => each.name);
+    expect(names).toContain('delete');
+    expect(names).toContain('home');
+    // Built-in definitions are issues, not listed here.
+    expect(names).not.toContain('calendar');
+    expect(
+      coverage.unmappedDefinitions.find(each => each.name === 'delete'),
+    ).toMatchObject({
+      description: expect.any(String),
+      words: expect.any(Array),
+    });
+    // `delete` names no icon, but one of its words is the trash icon's id.
+    expect(coverage.suggestions).toContainEqual({
+      definition: 'delete',
+      icon: 'trash',
+    });
+    expect(coverage.suggestions).toContainEqual({
+      definition: 'home',
+      icon: 'home',
+    });
+    // Nothing in the set draws a calendar: no suggestion.
+    expect(
+      coverage.suggestions.some(each => each.definition === 'calendar'),
+    ).toBe(false);
+    expect(
+      builtIn.find(issue => issue.message.includes('"calendar"')),
+    ).toBeDefined();
   });
 
   it('a set mapping every built-in definition has no error', () => {
@@ -478,9 +497,22 @@ describe('icon definitions (map)', () => {
       issue => issue.code === 'icon_definition_unused',
     );
     const garbage = unused.find(issue => issue.message.includes('"garbage"'));
-    expect(garbage?.suggestion).toEqual({map: 'garbage', icon: 'trash'});
+    expect(garbage?.message).toContain(
+      'astryx experimental icon map garbage trash',
+    );
     const rubbish = unused.find(issue => issue.message.includes('"rubbish"'));
-    expect(rubbish).not.toHaveProperty('suggestion');
+    expect(rubbish?.message).not.toContain('Suggested');
+    const [coverage] = iconSetCoverage({
+      name: '@acme/glyphs',
+      iconSets: path.join(dir, 'icon-sets'),
+    });
+    expect(coverage.suggestions).toContainEqual({
+      definition: 'garbage',
+      icon: 'trash',
+    });
+    expect(
+      coverage.suggestions.some(each => each.definition === 'rubbish'),
+    ).toBe(false);
     expect(
       issues.find(issue => issue.code === 'icon_definition_shadowed')?.message,
     ).toContain('Astryx now has');
@@ -523,7 +555,7 @@ describe('integration check over an icon set', () => {
     expect(JSON.stringify(broken.data)).toContain('icon_export_missing');
   }, 60_000);
 
-  it('a set that maps every built-in definition passes --strict: other unmapped Astryx definitions are info', async () => {
+  it('a set that maps every built-in definition passes --strict: other unmapped Astryx definitions are listed, not issues', async () => {
     const complete = completeGlyphs();
     writeIconPackage(dir, {
       modules: complete.modules,
@@ -535,7 +567,10 @@ describe('integration check over an icon set', () => {
       strict.data.failures.filter(each => each.code !== 'doc_types_skipped'),
     ).toEqual([]);
     expect(strict.data.warnings).toBe(0);
-    expect(JSON.stringify(strict.data)).toContain('"severity":"info"');
+    const validate = strict.data.checks.find(each => each.check === 'validate');
+    const listed = /** @type {any} */ (validate?.response.data).iconSets;
+    expect(listed[0].unmappedDefinitions.length).toBeGreaterThan(0);
+    expect(JSON.stringify(strict.data)).not.toContain('"severity":"info"');
   }, 60_000);
 });
 

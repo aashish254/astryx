@@ -79,8 +79,6 @@ export const ICON_MODULE_NOT_PUBLIC = 'icon_module_not_public';
 export const ICON_EXPORT_NAME = 'icon_export_name';
 /** An icon export that is a literal, not a component. */
 export const ICON_NOT_COMPONENT = 'icon_not_component';
-/** An Astryx definition, not built in, missing from the set's `map`. */
-export const ICON_DEFINITION_MISSING = 'icon_definition_missing';
 /** A definition the set declares whose name is an Astryx definition. */
 export const ICON_DEFINITION_SHADOWED = 'icon_definition_shadowed';
 /** A definition the set declares that is missing from its `map`. */
@@ -297,12 +295,10 @@ function resolveFile(base) {
 
 /**
  * The definition checks of one set's `map`: every built-in definition mapped
- * (error), every other Astryx definition mapped (warning), and each
- * definition the set declares mapped and not already an Astryx definition
- * (warnings); another unmapped Astryx definition is `info`, reported and
- * never failing. One finding per definition; a finding about an unmapped
- * definition carries a `suggestion` only when one of the set's icons has the
- * definition's name or one of its words as its whole id.
+ * (error), and each definition the set declares mapped and not already an
+ * Astryx definition (warnings). Another unmapped Astryx definition is not an
+ * issue: a library need not draw every definition, so it is listed in
+ * {@link iconSetCoverage} instead and never fails a check.
  * @param {DiscoveredIconSet} set
  * @returns {Issue[]}
  */
@@ -313,24 +309,17 @@ function checkDefinitions(set) {
   const mapped = new Set(Object.keys(set.data.map ?? {}));
   const astryx = astryxIconDefinitions().definitions.map(each => each.doc);
   for (const doc of astryx) {
-    if (mapped.has(doc.name)) continue;
+    if (mapped.has(doc.name) || !doc.builtIn) continue;
     const suggestion = suggestIcon(set, doc);
     const hint = suggestion
       ? ` Suggested: astryx experimental icon map ${doc.name} ${suggestion.icon}.`
       : '';
-    const message = doc.builtIn
-      ? `${label} maps no icon to the built-in icon definition "${doc.name}" (${doc.description} Words: ${doc.words.join(', ')}.). Every set maps every built-in definition: add it to "map" in ${set.name}.icons.json with the id of the icon that draws it.${hint}`
-      : `${label} maps no icon to the Astryx icon definition "${doc.name}" (${doc.description} Words: ${doc.words.join(', ')}.). Add it to "map" with the id of the icon that draws it, so templates that use it get your icon.${hint}`;
-    const issue = doc.builtIn
-      ? issueError(ICON_BUILTIN_DEFINITION_MISSING, message)
-      : // Reported, never failing: a library need not draw every Astryx
-        // definition, and `--strict` must be passable.
-        {
-          code: ICON_DEFINITION_MISSING,
-          severity: /** @type {const} */ ('info'),
-          message,
-        };
-    issues.push(suggestion ? {...issue, suggestion} : issue);
+    issues.push(
+      issueError(
+        ICON_BUILTIN_DEFINITION_MISSING,
+        `${label} maps no icon to the built-in icon definition "${doc.name}" (${doc.description} Words: ${doc.words.join(', ')}.). Every set maps every built-in definition: add it to "map" in ${set.name}.icons.json with the id of the icon that draws it.${hint}`,
+      ),
+    );
   }
   const names = new Set(astryx.map(doc => doc.name));
   for (const {doc} of set.definitions) {
@@ -343,14 +332,66 @@ function checkDefinitions(set) {
       );
     } else if (!mapped.has(doc.name)) {
       const suggestion = suggestIcon(set, doc);
-      const issue = issueWarning(
-        ICON_DEFINITION_UNUSED,
-        `${label} declares the icon definition "${doc.name}", but "map" names no icon for it. Add it to "map" with the id of the icon that draws it, or remove definitions/${doc.name}.doc.mjs.${suggestion ? ` Suggested: astryx experimental icon map ${doc.name} ${suggestion.icon}.` : ''}`,
+      issues.push(
+        issueWarning(
+          ICON_DEFINITION_UNUSED,
+          `${label} declares the icon definition "${doc.name}", but "map" names no icon for it. Add it to "map" with the id of the icon that draws it, or remove definitions/${doc.name}.doc.mjs.${suggestion ? ` Suggested: astryx experimental icon map ${doc.name} ${suggestion.icon}.` : ''}`,
+        ),
       );
-      issues.push(suggestion ? {...issue, suggestion} : issue);
     }
   }
   return issues;
+}
+
+/**
+ * @typedef {object} IconSetCoverage
+ * @property {string} set the set's name
+ * @property {Array<{name: string, description: string, words: string[]}>} unmappedDefinitions
+ *   Astryx's optional (not built-in) definitions the set's `map` does not
+ *   name. Mapping them is optional, so they never fail a check.
+ * @property {Array<{definition: string, icon: string}>} suggestions for every
+ *   unmapped definition, built-in, optional, or the set's own, the icon whose
+ *   whole id is the definition's name or one of its words; nothing is guessed
+ *   beyond that
+ */
+
+/**
+ * Which icon definitions each valid set under a package's
+ * `experimental.iconSets` root leaves unmapped, and the icons that fit them.
+ * Reported beside the issues, never as one (spec:AST-084 FR14).
+ * @param {{name: string, iconSets?: string}} loaded
+ * @returns {IconSetCoverage[]}
+ */
+export function iconSetCoverage(loaded) {
+  if (!loaded.iconSets) return [];
+  const found = discoverIconSetDirectory(loaded.iconSets, loaded.name);
+  const astryx = astryxIconDefinitions().definitions.map(each => each.doc);
+  const names = new Set(astryx.map(doc => doc.name));
+  return found.sets.map(set => {
+    const mapped = new Set(Object.keys(set.data.map ?? {}));
+    const unmapped = [
+      ...astryx,
+      ...set.definitions
+        .map(each => each.doc)
+        .filter(doc => !names.has(doc.name)),
+    ].filter(doc => !mapped.has(doc.name));
+    return {
+      set: set.name,
+      unmappedDefinitions: unmapped
+        .filter(doc => names.has(doc.name) && !doc.builtIn)
+        .map(doc => ({
+          name: doc.name,
+          description: doc.description,
+          words: [...doc.words],
+        })),
+      suggestions: unmapped.flatMap(doc => {
+        const suggestion = suggestIcon(set, doc);
+        return suggestion
+          ? [{definition: doc.name, icon: suggestion.icon}]
+          : [];
+      }),
+    };
+  });
 }
 
 /**

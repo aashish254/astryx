@@ -38,7 +38,7 @@
  * "healthy" — the two are otherwise byte-identical.
  * @typedef {object} ValidateIntegrationResponse
  * @property {'integration.validate'} type
- * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport}} data
+ * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, iconSets?: IconSetCoverage[], olderCliNotes?: OlderCliNote[]}} data
  */
 
 /**
@@ -50,6 +50,33 @@
  * @typedef {import('../../foundation/discovery/doc-types.mjs').DocTypesReport & {fixtures?: number}} DocTypesReport
  *   `fixtures`: how many test fixture docs (under `__tests__` in the
  *   components or docs root, which those readers skip) were not checked
+ */
+
+/**
+ * Experimental (spec:AST-084 FR14): for a package that declares
+ * `experimental.iconSets`, which icon definitions each valid set leaves
+ * unmapped. Listed beside the issues and never counted: mapping an optional
+ * definition is optional, and nothing here fails a check, even under
+ * `--strict`.
+ * @typedef {object} IconSetCoverage
+ * @property {string} set The set's name.
+ * @property {Array<{name: string, description: string, words: string[]}>} unmappedDefinitions
+ *   Astryx's optional (not built-in) definitions the set's `map` does not
+ *   name. An unmapped built-in definition is an error issue instead.
+ * @property {Array<{definition: string, icon: string}>} suggestions For each
+ *   unmapped definition (built-in, optional, or the set's own), the icon
+ *   whose whole id is the definition's name or one of its words, when one is.
+ */
+
+/**
+ * A descriptor an older CLI drops: a page or block template, or a namespace
+ * doc, that sets `stability` while the package's `@astryxdesign/cli` peer
+ * range admits a release before 0.7.2. Listed beside the issues for the
+ * package being authored, and never counted or failing a check.
+ * @typedef {object} OlderCliNote
+ * @property {string} file The descriptor, relative to the package.
+ * @property {'template' | 'namespace'} kind
+ * @property {string} message What an older CLI does with it, and the fix.
  */
 
 export {};

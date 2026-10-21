@@ -129,17 +129,8 @@ function codesIn(text) {
       for (const member of members) codes.add(member);
     }
   }
-  // A code raised only at severity `info` never fails, even under --strict.
-  const infoOnly = new Set(
-    [
-      ...text.matchAll(
-        /\bcode:\s*'([a-z][a-z0-9_]*)',\s*severity:\s*(?:\/\*\*[^*]*\*\/\s*)?\(?\s*'info'/g,
-      ),
-    ].map(m => m[1]),
-  );
-  for (const m of text.matchAll(/\bcode:\s*'([a-z][a-z0-9_]*)'/g)) {
-    if (!infoOnly.has(m[1])) codes.add(m[1]);
-  }
+  for (const m of text.matchAll(/\bcode:\s*'([a-z][a-z0-9_]*)'/g))
+    codes.add(m[1]);
   for (const m of text.matchAll(
     /\bcode:\s*[^,\n}]*?\?\?\s*'([a-z][a-z0-9_]*)'/g,
   )) {
@@ -289,7 +280,6 @@ describe('what can fail integration check --strict', () => {
             "error(found ? 'ternary_one' : 'ternary_two', 'm');",
             "/** @property {'typed_code_one' | 'typed_code_two'} code */",
             "issues.push({code: 'second_code', severity: 'warning'});",
-            "issues.push({code: 'info_only_code', severity: 'info'});",
             "x = {code: e.code ?? 'fallback_code'};",
             "addErrors(issues, errors, 'added_code');",
             "/** @typedef {'not_in_code' | 'type_mismatch'} DriftKind */",

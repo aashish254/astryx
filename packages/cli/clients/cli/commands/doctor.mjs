@@ -22,7 +22,14 @@ import {
   validateIntegration,
 } from '../../../api/integration/validate-integration.mjs';
 import {jsonOut} from '../../../foundation/response/json.mjs';
-import {emit, section, record, records, text} from '../formatters/index.mjs';
+import {
+  emit,
+  list,
+  section,
+  record,
+  records,
+  text,
+} from '../formatters/index.mjs';
 import {defineCommand} from '../lib/define-command.mjs';
 import {doc as doctorCommand} from './doctor.doc.mjs';
 import {doc as doctorIntegrationGroup} from './doctor-integration.doc.mjs';
@@ -94,22 +101,8 @@ function issueBlocks(issues, seen) {
   return [
     section('Integration issues'),
     records(fresh, {
-      fields: [
-        'severity',
-        'code',
-        'message',
-        'suggestion',
-        'fix',
-        'file',
-        'line',
-      ],
-      format: {
-        severity: statusToken,
-        // An unmapped icon definition names the icon to map it to.
-        suggestion: (/** @type {{map: string, icon: string}} */ value) =>
-          `map.${value.map} = "${value.icon}"`,
-      },
-      labels: {suggestion: 'suggest'},
+      fields: ['severity', 'code', 'message', 'fix', 'file', 'line'],
+      format: {severity: statusToken},
     }),
     ...alsoApply(issues, fresh),
   ];
@@ -118,8 +111,7 @@ function issueBlocks(issues, seen) {
 /**
  * The issues not printed yet, recording them as printed. `integration
  * check` runs several checks that each report an experimental icon set's
- * package-wide issues, and `stability_needs_cli`; each is printed once, under
- * the first check. Every
+ * package-wide issues; each is printed once, under the first check. Every
  * other issue prints under each check that reports it, as it always has.
  * @template {{code: string, message: string}} T
  * @param {T[]} issues
@@ -128,8 +120,7 @@ function issueBlocks(issues, seen) {
  */
 function unseen(issues, seen) {
   if (!seen) return issues;
-  const once = (/** @type {T} */ issue) =>
-    /icon|^stability_needs_cli$/u.test(issue.code);
+  const once = (/** @type {T} */ issue) => /icon/u.test(issue.code);
   const fresh = issues.filter(
     issue => !once(issue) || !seen.has(`${issue.code}\0${issue.message}`),
   );
@@ -246,22 +237,8 @@ function printIntegrationValidation(data, seen) {
     ...(data.issues.length > 0
       ? [
           records(unseen(data.issues, seen), {
-            fields: [
-              'severity',
-              'code',
-              'message',
-              'suggestion',
-              'fix',
-              'file',
-              'line',
-            ],
-            format: {
-              severity: statusToken,
-              // An unmapped icon definition names the icon to map it to.
-              suggestion: (/** @type {{map: string, icon: string}} */ value) =>
-                `map.${value.map} = "${value.icon}"`,
-            },
-            labels: {suggestion: 'suggest'},
+            fields: ['severity', 'code', 'message', 'fix', 'file', 'line'],
+            format: {severity: statusToken},
           }),
         ]
       : [text('[ok] No integration issues found.')]),
@@ -270,7 +247,63 @@ function printIntegrationValidation(data, seen) {
         `${warnings} warning${warnings === 1 ? '' : 's'}`,
     ),
     ...docTypesBlocks(data.docTypes, errors > 0),
+    ...iconSetCoverageBlocks(data.iconSets),
+    ...olderCliNoteBlocks(data.olderCliNotes),
   );
+}
+
+/**
+ * The optional icon definitions each icon set leaves unmapped, and the icons
+ * that fit (spec:AST-084 FR14). Listed, never counted: nothing here fails.
+ * @param {import('../../../api/integration/validate-integration.type.mjs').IconSetCoverage[] | undefined} sets
+ * @returns {import('../formatters/index.mjs').Block[]}
+ */
+function iconSetCoverageBlocks(sets) {
+  const listed = (sets ?? []).filter(
+    each => each.unmappedDefinitions.length > 0 || each.suggestions.length > 0,
+  );
+  if (listed.length === 0) return [];
+  return [
+    section('Unmapped icon definitions (optional)'),
+    records(
+      listed.map(each => ({
+        set: each.set,
+        unmapped: each.unmappedDefinitions.length,
+        definitions: each.unmappedDefinitions
+          .map(definition => definition.name)
+          .join(', '),
+      })),
+      {fields: ['set', 'unmapped', 'definitions']},
+    ),
+    ...listed.flatMap(each =>
+      each.suggestions.length > 0
+        ? [
+            list(
+              each.suggestions.map(
+                ({definition, icon}) =>
+                  `astryx experimental icon map ${definition} ${icon}${listed.length === 1 ? '' : ` --set ${each.set}`}`,
+              ),
+            ),
+          ]
+        : [],
+    ),
+    text(
+      'Mapping these is optional and never fails a check. --json lists each with its description and words.',
+    ),
+  ];
+}
+
+/**
+ * Descriptors an older CLI drops: listed, never counted.
+ * @param {import('../../../api/integration/validate-integration.type.mjs').OlderCliNote[] | undefined} notes
+ * @returns {import('../formatters/index.mjs').Block[]}
+ */
+function olderCliNoteBlocks(notes) {
+  if (!notes || notes.length === 0) return [];
+  return [
+    section('Notes for older CLIs'),
+    records(notes, {fields: ['file', 'kind', 'message']}),
+  ];
 }
 
 /**

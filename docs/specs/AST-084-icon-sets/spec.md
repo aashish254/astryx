@@ -427,7 +427,6 @@ set is installed.
   | --------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | `invalid_icon_set`                | error    | the descriptor, data file, or a definition file is invalid (FR3, FR3a)                                                                                    |
   | `icon_builtin_definition_missing` | error    | a built-in definition is not in `map`                                                                                                                     |
-  | `icon_definition_missing`         | info     | another Astryx definition is not in `map`                                                                                                                 |
   | `icon_definition_unused`          | warning  | a definition the set declares is not in `map`                                                                                                             |
   | `icon_definition_shadowed`        | warning  | a definition the set declares has the name of an Astryx one                                                                                               |
   | `icon_module_not_public`          | error    | an icon or variant is read from a module other than the package or one of its `exports` subpaths (FR19)                                                   |
@@ -441,19 +440,27 @@ set is installed.
   | `icon_source_version_drift`       | warning  | the data names another upstream version than the package depends on                                                                                       |
   | `icon_license_notice_missing`     | warning  | a set with an upstream has no license notice file                                                                                                         |
 
-  A definition finding names the definition's description and words, one
-  finding per definition, and carries a `suggestion` (`{map, icon}`, printed
-  `suggest: map.delete = "trash"`) only when one of the set's icons has the
-  definition's name or one of its words as its whole `id`; nothing is
-  guessed. When an export cannot be found because a re-export could not be
-  followed, the message names that re-export. A theme map built at runtime
-  is not checked. Errors fail the check; warnings fail only under `--strict`
-  (`architecture:cli-surface` INV32 and INV35); `info` findings are reported
-  and never fail or count as warnings, so a set that maps every built-in
-  definition and every definition it declares passes `--strict`. Module
+  A definition finding names the definition's description and words, and
+  its message suggests an `experimental icon map` command only when one of
+  the set's icons has the definition's name or one of its words as its whole
+  `id`; nothing is guessed. When an export cannot be found because a
+  re-export could not be followed, the message names that re-export. A theme
+  map built at runtime is not checked. Errors fail the check; warnings fail
+  only under `--strict` (`architecture:cli-surface` INV32 and INV35). Module
   specifiers resolve as Node resolves them, through every ancestor's
   `node_modules`. In text output, a package-wide finding is printed once,
   under the first check that reports it; the JSON lists it under each.
+
+  The Astryx definitions that are not built in, which a set need not map, are
+  not issues. The validate result lists them in an additive field,
+  `iconSets`: for each valid set, `set`, `unmappedDefinitions` (each
+  `{name, description, words}`), and `suggestions` (each `{definition, icon}`,
+  for every unmapped definition one of the set's icons fits by the rule
+  above). Text output prints them as an "Unmapped icon definitions
+  (optional)" section. They are never counted as errors or warnings and never
+  fail a check, so a set that maps every built-in definition and every
+  definition it declares passes `--strict`. The field is present only for a
+  package that declares `experimental.iconSets`.
 
 - **FR15 — `astryx doctor` checks the project's icon sets.** Doctor's
   `icon-sets` check MUST fail when `experimental.iconSet` names a set that is
