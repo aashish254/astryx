@@ -79,14 +79,16 @@ export function orderMatches(table, order, lexical, query, limit) {
     (it.res.score ?? 0) >= 95 &&
     /^(exact name|plural of the name|name )/.test(it.res.reason ?? '');
   // Matches the lexical ranker scored the same move as one block, in its
-  // order; the learned order places the blocks of a run, and an entry the
-  // query names leads its run.
+  // order; the learned position of the block's first match places the block
+  // in its run (not its best member's, which would let one strong member lift
+  // a whole block of weak ones), and an entry the query names leads its run.
   /** @type {Map<string, number>} */
   const block = new Map();
   const blockOf = (/** @type {Item} */ it) => `${it.band}:${it.res.score}`;
   for (const it of items) {
     const at = named(it) ? -1 : it.learned;
-    block.set(blockOf(it), Math.min(block.get(blockOf(it)) ?? Infinity, at));
+    const k = blockOf(it);
+    if (!block.has(k) || at === -1) block.set(k, at);
   }
   let ranked = [...items].sort(
     (x, y) =>

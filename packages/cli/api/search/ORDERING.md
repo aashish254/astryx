@@ -4,7 +4,7 @@
 
 ## Rule
 
-Search ordering is owned here. Inside one score band, a searcher's static weights decide the order. Matches never cross bands or kinds. There is no model runtime: every number is a plain static value read at load time.
+`spec:AST-083` owns search's result order; this file describes the data that implements it. Inside one score band, a searcher's static weights decide the order. Matches never cross bands or kinds. There is no model runtime: every number is a plain static value read at load time.
 
 ## Files
 
@@ -25,3 +25,4 @@ These files are static and reviewed. They are not computed when the CLI runs, an
 - A Core component or hook without a card is still matched and scored as usual; inside its band it is ordered by its other signals.
 - When Core adds or renames items, a reviewed change adds or updates their cards and, if needed, refreshed weights.
 - Any refresh must keep every test that pins search's behavior passing, including the ordering invariants in `_order.test.mjs`. It must also keep the `astryx search` output's matches, scores and reasons identical to the lexical ranker's.
+- Any refresh must also be measured as `spec:AST-083` FR6 requires: against the held-out, fresh and synthetic evaluation sets, with no row worse than the previous order (a row is worse when the paired 95% confidence interval of its change lies entirely below zero).
