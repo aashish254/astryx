@@ -57,6 +57,7 @@ import {
 // The on-disk contribution validators live in foundation: Project and
 // integration-warnings need them too, and foundation must not depend on api.
 import {
+  blockComponentsReport,
   componentDocNamesReport,
   validateLoadedIntegration,
   issueError as error,
@@ -640,6 +641,10 @@ export async function validateIntegration(pkg, options = {}) {
   const docNames = integration
     ? await componentDocNamesReport(integration)
     : undefined;
+  // The block component names that could not be judged: listed, never failed.
+  const blockComponents = integration
+    ? await blockComponentsReport(integration)
+    : undefined;
   return {
     type: 'integration.validate',
     data: {
@@ -661,6 +666,7 @@ export async function validateIntegration(pkg, options = {}) {
           : result.issues,
       ...(docTypes ? {docTypes} : {}),
       ...(docNames ? {docNames} : {}),
+      ...(blockComponents ? {blockComponents} : {}),
     },
   };
 }

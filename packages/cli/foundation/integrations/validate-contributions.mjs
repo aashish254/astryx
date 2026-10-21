@@ -25,6 +25,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {parse as parseModule} from '@babel/parser';
 import {isValidSemver} from '../env/semver.mjs';
+import {findCoreDir} from '../fs/paths.mjs';
 import {KNOWN_INTEGRATION_KEYS} from '../../authoring/integration/schema.mjs';
 import {
   contributionFiles,
@@ -436,6 +437,151 @@ async function checkTemplates(integration, issues) {
     );
   }
   checkTemplateSourcesWithoutDoc(integration, issues);
+  issues.push(...(await judgeBlockComponents(integration)).issues);
+}
+
+/**
+ * The component names each of a package's templates gives in `exampleFor`
+ * and `componentsUsed`, judged against the components `astryx component`
+ * finds: the package's own, and every doc it resolves in Core. A name the
+ * template imports needs no doc of its own. A name neither has is an
+ * `unknown_block_component` warning, since no component lists the block
+ * under it; without Core installed, a name the package does not have cannot
+ * be judged and is listed in `unchecked` instead.
+ * @param {LoadedIntegration} integration
+ * @returns {Promise<{issues: Issue[], unchecked: Array<{docPath: string, name: string, reason: string}>}>}
+ */
+async function judgeBlockComponents(integration) {
+  /** @type {Issue[]} */
+  const issues = [];
+  /** @type {Array<{docPath: string, name: string, reason: string}>} */
+  const unchecked = [];
+  const root = integration.templates;
+  if (!root || rootProblem(root)) return {issues, unchecked};
+  let templates;
+  try {
+    ({templates} = await discoverIntegrationTemplatesForOne(integration));
+  } catch {
+    return {issues, unchecked};
+  }
+  /** @type {Set<string>} */
+  let own;
+  try {
+    own = new Set(
+      componentDiscovery
+        .discoverIntegrationComponents(integration)
+        .map(record => record.name),
+    );
+  } catch {
+    return {issues, unchecked};
+  }
+  const coreDir = findCoreDir(integration.__packageDir ?? root);
+  /** @type {Map<string, boolean>} */
+  const inCore = new Map();
+  /** @param {string} name */
+  const coreHas = name => {
+    if (!coreDir) return false;
+    if (!inCore.has(name)) {
+      let found;
+      try {
+        found = componentDiscovery.findComponentReadme(coreDir, name) != null;
+      } catch {
+        found = false;
+      }
+      inCore.set(name, found);
+    }
+    return /** @type {boolean} */ (inCore.get(name));
+  };
+  for (const template of templates) {
+    const fields = [
+      ...(typeof template.exampleFor === 'string'
+        ? [{field: 'exampleFor', name: template.exampleFor}]
+        : []),
+      ...(Array.isArray(template.componentsUsed) ? template.componentsUsed : [])
+        .filter(name => typeof name === 'string')
+        .map(name => ({field: 'componentsUsed', name})),
+    ];
+    if (fields.length === 0) continue;
+    const imported = importedNames(template.filePath);
+    for (const {field, name} of fields) {
+      if (own.has(name) || imported.has(name)) continue;
+      if (!coreDir) {
+        unchecked.push({
+          docPath: template.docPath,
+          name,
+          reason:
+            'Core is not installed, so its component names cannot be checked.',
+        });
+        continue;
+      }
+      if (coreHas(name)) continue;
+      issues.push(
+        issueWarning(
+          'unknown_block_component',
+          `Template "${template.dirName}" names "${name}" in ${field}, but neither this package nor Core has a component by that name and the template does not import it, so no component lists the block under that name. Fix: use the component's exact name, or remove "${name}" from ${field}.`,
+        ),
+      );
+    }
+  }
+  return {issues, unchecked};
+}
+
+/**
+ * Every name a module imports, as imported and as bound locally, read
+ * without running it; empty when it cannot be read.
+ * @param {string} file
+ * @returns {Set<string>}
+ */
+function importedNames(file) {
+  /** @type {Set<string>} */
+  const names = new Set();
+  let ast;
+  try {
+    ast = parseModule(fs.readFileSync(file, 'utf8'), {
+      sourceType: 'module',
+      plugins: ['typescript', 'jsx'],
+      errorRecovery: true,
+    });
+  } catch {
+    return names;
+  }
+  for (const node of ast.program.body) {
+    if (node.type !== 'ImportDeclaration') continue;
+    for (const specifier of node.specifiers) {
+      names.add(specifier.local.name);
+      if (specifier.type === 'ImportSpecifier') {
+        const imported = specifier.imported;
+        names.add(
+          imported.type === 'Identifier' ? imported.name : imported.value,
+        );
+      }
+    }
+  }
+  return names;
+}
+
+/**
+ * The block component names the check could not judge, shaped like the doc
+ * type report so `integration check` counts them as not compared: each name
+ * a template gives in `exampleFor` or `componentsUsed` that the package does
+ * not have and the template does not import, when Core is not installed to
+ * look it up in. A name judged unknown is an `unknown_block_component` issue,
+ * so `findings` is always empty.
+ * @param {LoadedIntegration} integration
+ * @returns {Promise<{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}>}
+ */
+export async function blockComponentsReport(integration) {
+  const {unchecked} = await judgeBlockComponents(integration);
+  const base = integration.__packageDir ?? integration.templates ?? '';
+  return {
+    status: 'checked',
+    findings: [],
+    unchecked: unchecked.map(entry => ({
+      file: slash(path.relative(base, entry.docPath)),
+      name: entry.name,
+      reason: entry.reason,
+    })),
+  };
 }
 
 /**
@@ -528,7 +674,13 @@ async function checkComponents(integration, issues) {
         ),
       );
     }
-    await checkComponentDocNames(components, issues, root, files.caseMismatch);
+    await checkComponentDocNames(
+      integration,
+      components,
+      issues,
+      root,
+      files.caseMismatch,
+    );
     const overlap = integration.__packageDir
       ? newComponentDocNote(
           (context ??= createFixContext(integration.__packageDir, integration)),
@@ -663,19 +815,34 @@ function componentDocFiles(root) {
  * so such a `name` still reaches readers: `astryx component` prints it in the
  * import line, which then names something the source does not export. A family member is
  * read through its family's doc and is not checked here.
+ * @param {LoadedIntegration} integration
  * @param {Array<{name: string, docPath: string, sourcePath: string|null}>} components
  * @param {Issue[]} issues
  * @param {string} root
  * @param {Map<string, string>} skip docs already reported, by path
  */
-async function checkComponentDocNames(components, issues, root, skip) {
-  await judgeComponentDocNames(components, root, skip, issues, null);
+async function checkComponentDocNames(
+  integration,
+  components,
+  issues,
+  root,
+  skip,
+) {
+  await judgeComponentDocNames(
+    integration,
+    components,
+    root,
+    skip,
+    issues,
+    null,
+  );
 }
 
 /**
- * Judge each component doc's `name` against its source: a warning when the
- * source provably does not export it, and an entry in `unchecked` when the
- * source's exports cannot all be read, so it is listed rather than judged.
+ * Judge each component doc's `name` against the module its printed import
+ * names: a warning when that module provably does not export it, and an
+ * entry in `unchecked` when it cannot be judged, so it is listed instead.
+ * @param {LoadedIntegration} integration
  * @param {Array<{name: string, docPath: string, sourcePath: string|null}>} components
  * @param {string} root the components root
  * @param {Map<string, string>} skip docs already reported, by path
@@ -683,12 +850,14 @@ async function checkComponentDocNames(components, issues, root, skip) {
  * @param {Array<{docPath: string, name: string, reason: string}> | null} unchecked
  */
 async function judgeComponentDocNames(
+  integration,
   components,
   root,
   skip,
   issues,
   unchecked,
 ) {
+  const base = integration.__packageDir ?? root;
   for (const record of components) {
     if (componentDiscovery.isIntegrationMember(record)) continue;
     if (skip.has(record.docPath)) continue;
@@ -702,35 +871,68 @@ async function judgeComponentDocNames(
     }
     const name = doc?.name;
     if (typeof name !== 'string' || name === record.name) continue;
-    // Only what the code contradicts: the source must provably not export
+    // The module the printed import names: the doc's import, the published
+    // subpath, or the package root, resolved through package.json "exports".
+    // Without a package to resolve it in, the same-stem source.
+    const printed = componentDiscovery.importedModule(
+      integration,
+      record.docPath,
+      doc,
+    );
+    if (printed === null) {
+      unchecked?.push({
+        docPath: record.docPath,
+        name,
+        reason:
+          'Its import names another package, or resolves to no file this check can read.',
+      });
+      continue;
+    }
+    const module = printed ?? record.sourcePath;
+    const shown = slash(path.relative(base, module));
+    // Only what the code contradicts: the module must provably not export
     // the name the doc gives.
-    const judged = moduleExportVerdict(record.sourcePath, name);
+    const judged = moduleExportVerdict(module, name);
     if (judged.verdict === 'exports') continue;
     if (judged.verdict === 'unknown') {
       unchecked?.push({docPath: record.docPath, name, reason: judged.reason});
       continue;
     }
+    // A module whose only export is a default: the package's entry may
+    // publish it under any name, so the name is not judged.
+    const exportedNames = moduleExportNames(module);
+    if (
+      exportedNames != null &&
+      exportedNames.length === 1 &&
+      exportedNames[0] === 'default'
+    ) {
+      unchecked?.push({
+        docPath: record.docPath,
+        name,
+        reason: `${shown} exports a default, which the package entry may publish under any name.`,
+      });
+      continue;
+    }
     if (issues == null) continue;
     const file = path.basename(record.docPath);
-    const source = path.basename(record.sourcePath);
-    // The name to propose: the file name when the source exports it, else
-    // the one component the source exports, which discovery then lists.
+    // The name to propose: the file name when the module exports it, else
+    // the one component the module exports.
     let fix;
-    if (moduleExportsName(record.sourcePath, record.name)) {
+    if (moduleExportsName(module, record.name)) {
       fix = `Fix: set name: '${record.name}' in ${file}.`;
     } else {
-      const exported = (moduleExportNames(record.sourcePath) ?? []).filter(
-        each => /^[A-Z][A-Za-z0-9]*$/u.test(each),
+      const exported = (exportedNames ?? []).filter(each =>
+        /^[A-Z][A-Za-z0-9]*$/u.test(each),
       );
       fix =
         exported.length === 1
-          ? `Fix: set name: '${exported[0]}' in ${file}, the component ${source} exports.`
-          : `Fix: set name in ${file} to the component ${source} exports${exported.length > 1 ? ` (${exported.join(', ')})` : ''}.`;
+          ? `Fix: set name: '${exported[0]}' in ${file}, the component ${shown} exports.`
+          : `Fix: set name in ${file} to the component ${shown} exports${exported.length > 1 ? ` (${exported.join(', ')})` : ''}.`;
     }
     issues.push(
       issueWarning(
         'doc_name_mismatch',
-        `Component doc "${slash(path.relative(root, record.docPath))}" sets name: '${name}', but ${source} does not export ${name}, so Astryx lists the component as "${record.name}" (its file name), and \`astryx component ${record.name}\` prints \`import {${name}}\`. ${fix}`,
+        `Component doc "${slash(path.relative(root, record.docPath))}" sets name: '${name}', but ${shown}, the module its import names, does not export ${name}, so Astryx lists the component as "${record.name}" (its file name), and \`astryx component ${record.name}\` prints \`import {${name}}\`. ${fix}`,
       ),
     );
   }
@@ -756,6 +958,7 @@ export async function componentDocNamesReport(integration) {
           integration,
         );
       await judgeComponentDocNames(
+        integration,
         components,
         root,
         componentDocFiles(root).caseMismatch,

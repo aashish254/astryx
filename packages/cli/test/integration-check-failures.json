@@ -1,12 +1,13 @@
 {
   "checks": ["validate", "components", "templates", "docs"],
   "results": {
-    "validate": ["docNames", "docTypes", "issues"],
+    "validate": ["blockComponents", "docNames", "docTypes", "issues"],
     "components": ["conflicts", "issues", "propDrift"],
     "templates": ["conflicts", "issues"],
     "docs": ["copiedPassages", "findings", "fluff", "issues", "strayPointers"]
   },
   "reports": {
+    "blockComponents": "block_components_skipped",
     "docNames": "doc_names_skipped",
     "docTypes": "doc_types_skipped",
     "propDrift": "prop_drift_skipped"
@@ -14,6 +15,7 @@
   "codes": [
     "ambiguous_component_replacement",
     "ambiguous_template_replacement",
+    "block_components_skipped",
     "codemod_outside_version",
     "component_name_conflict",
     "copied_passage",
@@ -69,6 +71,7 @@
     "symlinked_root",
     "template_id_conflict",
     "type_mismatch",
+    "unknown_block_component",
     "unknown_field",
     "unknown_manifest_key",
     "unknown_translated_prop",

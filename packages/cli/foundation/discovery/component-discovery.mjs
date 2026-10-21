@@ -994,7 +994,7 @@ function packageMain(packageDir) {
  * @param {Record<string, any> | null} doc
  * @returns {string | null | undefined}
  */
-function importedModule(integration, docPath, doc) {
+export function importedModule(integration, docPath, doc) {
   const packageName = integration?.name;
   const packageDir = integration?.__packageDir;
   if (!packageName || !packageDir) return undefined;

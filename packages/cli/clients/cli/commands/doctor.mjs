@@ -192,6 +192,20 @@ function docNamesBlocks(report) {
 }
 
 /**
+ * The block component names that could not be judged, without Core.
+ * @param {import('../../../api/integration/validate-integration.type.mjs').BlockComponentsReport | undefined} report
+ */
+function blockComponentsBlocks(report) {
+  if (!report || report.unchecked.length === 0) return [];
+  return [
+    text(
+      `[info] Block component names not checked: ${report.unchecked.length} name(s) only Core could resolve:`,
+    ),
+    records(report.unchecked, {fields: ['file', 'name', 'reason']}),
+  ];
+}
+
+/**
  * @param {import('../../../api/integration/validate-integration.type.mjs').ValidateIntegrationResponse['data']} data
  */
 function printIntegrationValidation(data) {
@@ -214,6 +228,7 @@ function printIntegrationValidation(data) {
     ),
     ...docTypesBlocks(data.docTypes, errors > 0),
     ...docNamesBlocks(data.docNames),
+    ...blockComponentsBlocks(data.blockComponents),
   );
 }
 

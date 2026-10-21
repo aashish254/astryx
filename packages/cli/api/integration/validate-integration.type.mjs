@@ -38,7 +38,7 @@
  * "healthy" — the two are otherwise byte-identical.
  * @typedef {object} ValidateIntegrationResponse
  * @property {'integration.validate'} type
- * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, docNames?: DocNamesReport}} data
+ * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, docNames?: DocNamesReport, blockComponents?: BlockComponentsReport}} data
  */
 
 /**
@@ -62,6 +62,18 @@
  * `name` (what the doc says), and `reason`.
  *
  * @typedef {{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}} DocNamesReport
+ */
+
+/**
+ * Each component name a template gives in `exampleFor` or `componentsUsed`
+ * that could not be judged. Present when the manifest loads. A name neither
+ * the package nor Core has, and the template does not import, is an
+ * `unknown_block_component` issue, so `findings` is always empty;
+ * `unchecked` lists each name the package does not have when Core is not
+ * installed to look it up in: `file` (the template doc, package-relative),
+ * `name`, and `reason`.
+ *
+ * @typedef {{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}} BlockComponentsReport
  */
 
 export {};

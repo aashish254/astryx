@@ -321,8 +321,8 @@ function topLevel(program, type) {
 }
 
 /**
- * Every runtime name a module exports that this read can see, or null when
- * it cannot see them all: an `export *`, `export =`, CommonJS exports, or a
+ * Every runtime name a module exports that this read can see (`default` for
+ * a default export), or null when it cannot see them all: an `export *`, `export =`, CommonJS exports, or a
  * file that does not parse.
  * @param {string} file
  * @returns {string[] | null}
@@ -371,6 +371,13 @@ export function moduleExportNames(file) {
       const exported = specifier.exported?.name ?? specifier.exported?.value;
       if (typeof exported === 'string') names.add(exported);
     }
+  }
+  if (
+    topLevel(ast.program, 'ExportDefaultDeclaration').some(
+      (/** @type {any} */ node) => runtimeDefault(node.declaration),
+    )
+  ) {
+    names.add('default');
   }
   return [...names].sort();
 }
