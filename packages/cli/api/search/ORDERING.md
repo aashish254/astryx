@@ -1,10 +1,10 @@
 # Search ordering data
 
-`astryx search` decides **what matches**, and each match's score and reason, with the lexical ranker (`_lexical.mjs` and the files it imports). The files in this folder only decide **the order of matches inside one band of equal match strength**: they never add or drop a match, change a score, or move a match past one of another band or kind (doc or not).
+`astryx search` decides **what matches**, and each match's score and reason, with the lexical ranker (`_lexical.mjs` and the files it imports). The files in this folder only decide **the order of matches inside one score band**: they never add or drop a match, change a score, or move a match past one of another band or kind (doc or not). The bands are scores 195 and up, 188–194, 170–187, 160–169, 151–159, 100–150, 55–99, and under 55. A band can be wide (55–99 holds keyword matches beside one-word description hits), so inside a band a lower score can lead a higher one.
 
 ## Rule
 
-Search ordering is owned here. Inside one match-strength band, a searcher's static weights decide the order. Matches never cross bands or kinds. There is no model runtime: every number is a plain static value read at load time.
+Search ordering is owned here. Inside one score band, a searcher's static weights decide the order. Matches never cross bands or kinds. There is no model runtime: every number is a plain static value read at load time.
 
 ## Files
 

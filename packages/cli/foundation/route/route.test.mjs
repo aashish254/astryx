@@ -2,6 +2,7 @@
 
 import {describe, expect, it} from 'vitest';
 import {
+  classify,
   defineDispatcher,
   defineSearcher,
   defineTree,
@@ -134,5 +135,19 @@ describe('runTree', () => {
     await expect(
       runTree(defineTree('root', [stray, exact, main]), {query: 'x'}, ctx),
     ).rejects.toThrow(/not one of its children/);
+  });
+});
+
+describe('classify', () => {
+  it('ignores a token that is only an Object.prototype name', () => {
+    const weights = {classes: ['a', 'b'], tokens: {button: [2, 0]}};
+    const probs = classify(weights, [
+      'button',
+      'constructor',
+      '__proto__',
+      'toString',
+    ]);
+    expect(probs.every(Number.isFinite)).toBe(true);
+    expect(probs).toEqual(classify(weights, ['button']));
   });
 });

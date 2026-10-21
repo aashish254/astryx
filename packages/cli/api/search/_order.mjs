@@ -3,10 +3,11 @@
 /**
  * @file How a searcher orders the lexical ranker's matches. Search answers
  * only with what the lexical ranker matched, each with its own score and
- * reason. The lexical ranker's bands hold: an entry the whole query names, a
- * phrase or title match, a match on every word, a name or keyword match, and a
- * match in prose alone each stay above the bands below them, and a doc or a
- * non-doc never passes one the lexical ranker placed above it. Inside such a
+ * reason. A match never moves past one of another score band (BANDS below)
+ * or another kind, doc or not; between runs the lexical order holds. A band
+ * can be wide: 55–99 holds keyword matches beside one-word description hits,
+ * and a synonym name match can score under 55, so inside a band a weaker match
+ * can lead a stronger one when the weights favor it. Inside such a
  * run the learned order places the matches, with these exceptions: matches
  * that scored the same keep their lexical order, as one block; an entry the
  * query names leads; in a query of one or two words, the matches on every

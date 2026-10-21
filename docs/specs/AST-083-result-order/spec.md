@@ -29,8 +29,9 @@ is a measured quality, and it may change whenever a measurement shows the new
 order is at least as good as the old one.
 
 This record owns that split: the facts every answer must keep, and the rule
-for changing the order inside them. Search owns its own matching
-(`_lexical.mjs`). `spec:AST-048` owns what build recommends. `spec:AST-017`
+for changing the order inside them. Search owns its own matching.
+`spec:AST-048` owns what build recommends and delegates the order of its
+blocks here, because the same rule governs both commands' order. `spec:AST-017`
 owns response fields and compatibility.
 
 ## Non-goals
@@ -49,21 +50,22 @@ owns response fields and compatibility.
   `matchCount` equals its match count. Search never returns more results than
   the lexical ranker does for the same query and limit.
 - **FR2: bands do not cross.** Search orders matches only inside a run of one
-  match-strength band and one kind (doc or not). A match never moves past a
+  score band and one kind (doc or not); a band is a range of lexical scores,
+  so inside one a lower score can lead a higher one. A match never moves past a
   match of another band or kind; between runs, the lexical order holds,
   including its domain priority.
 - **FR3: a whole name keeps today's answer.** A query that is an entry's
   whole name or title, read with dashes and spaces alike, gets the lexical
   ranker's answer unchanged.
-- **FR4: build re-orders only its own blocks.** Build's `blocks` are the
+- **FR4: build re-orders only its own blocks.** `spec:AST-048` owns which
+  blocks build lists and delegates their order here. Build's `blocks` are the
   blocks build itself lists, each with its own score and reason. Build never
   adds one and never lists more than before. A block the request names, a
   block the weights do not know, and a block from an integration package
   keep the place build gave them.
 - **FR5: the order is local, deterministic, and static.** The order inside a
-  run comes from plain code and static, reviewed data files (described in
-  `packages/cli/api/search/ORDERING.md`). No model runtime runs, no network
-  is used, and the same inputs give the same order.
+  run comes from plain code and fixed values shipped with the CLI. No model
+  runtime runs, no network is used, and the same inputs give the same order.
 - **FR6: the order changes only when measured.** A change to the order
   inside runs, whether new weights, a new searcher, or a new rule, ships only
   when measured against the held-out, fresh, and synthetic evaluation sets

@@ -129,7 +129,9 @@
 export function classify(weights, tokens) {
   const score = weights.classes.map(() => 0);
   for (const token of tokens) {
-    const row = weights.tokens[token];
+    const row = Object.hasOwn(weights.tokens, token)
+      ? weights.tokens[token]
+      : undefined;
     if (row) for (let k = 0; k < score.length; k++) score[k] += row[k];
   }
   const top = Math.max(...score);
