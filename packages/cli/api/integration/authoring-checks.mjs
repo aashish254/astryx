@@ -94,10 +94,13 @@ async function resolveIntegration(pkg, cwd) {
   // checks read nothing from it rather than fail on it.
   /** @type {typeof integration & {__unnamed?: boolean}} */
   const usable = {...integration};
-  // A package without a valid name (validate warned about it) is still
-  // checked; the docs check names its docs under a stand-in provider ID.
+  // The provider ID readers key the package on: the manifest's providerId,
+  // else its name. A package with neither (validate warned about it) is
+  // still checked; the docs check names its docs under a stand-in ID.
   try {
-    normalizeProviderId(integration.name);
+    usable.providerId = normalizeProviderId(
+      integration.__declaredProviderId ?? integration.name,
+    );
   } catch {
     usable.__unnamed = true;
   }
