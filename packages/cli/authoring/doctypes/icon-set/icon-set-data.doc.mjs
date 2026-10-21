@@ -40,7 +40,7 @@ export const doc = {
       name: 'generated',
       type: 'string',
       description:
-        "The module `astryx icon add` writes, as a `./` path from the package root: one export per icon, a re-export of a library component or the adapter applied to a library export. The package's entry re-exports it.",
+        "The module `astryx icon add` writes, as a `./` path from the package root: one export per icon, a re-export of a library component or the adapter applied to a library export, and `themeIcons`, the theme map, from the built-in entries of `map`. The CLI writes its declaration file beside it. The package's entry re-exports it.",
       example: "'./icon-sets/outline/outline.generated.js'",
     },
     {

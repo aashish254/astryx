@@ -138,10 +138,14 @@ async function checkPackage(program, options) {
         ),
       );
     } else {
+      // A package-wide issue every check reports is printed once, under the
+      // first check; the counts below are unchanged.
+      /** @type {Set<string>} */
+      const seen = new Set();
       data.checks.forEach((check, index) => {
         // A blank line keeps each check's output apart from the next.
         if (index > 0) emit(text(''));
-        printIntegrationCheckResponse(check.response);
+        printIntegrationCheckResponse(check.response, seen);
       });
     }
     const plural = (/** @type {number} */ n, /** @type {string} */ word) =>

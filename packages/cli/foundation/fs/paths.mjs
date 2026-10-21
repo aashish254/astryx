@@ -82,11 +82,13 @@ function findPnpPackage(startDir, name) {
  *
  * @param {string} startDir
  * @param {string} name
+ * @param {number} [maxDepth] how many folders to walk up; `Infinity` walks
+ *   every ancestor, as Node's own resolution does
  * @returns {string|null} the package directory, or null when not installed
  */
-export function findInstalledPackage(startDir, name) {
+export function findInstalledPackage(startDir, name, maxDepth = 6) {
   let dir = startDir;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < maxDepth; i++) {
     const candidate = path.join(dir, 'node_modules', ...name.split('/'));
     if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
     const parent = path.dirname(dir);
@@ -153,7 +155,7 @@ export function discoverExternalPackages(startDir = process.cwd()) {
   if (!nodeModulesDir) return externals;
 
   /** @param {string} searchDir */
-  const scanDir = (searchDir) => {
+  const scanDir = searchDir => {
     if (!fs.existsSync(searchDir)) return;
     const entries = fs.readdirSync(searchDir, {withFileTypes: true});
 
@@ -236,7 +238,8 @@ export function existsCaseExact(targetPath, rootDir) {
 
   const rel = path.relative(rootDir, targetPath);
   if (rel === '') return true;
-  if (path.isAbsolute(rel) || rel === '..' || rel.startsWith(`..${path.sep}`)) return false;
+  if (path.isAbsolute(rel) || rel === '..' || rel.startsWith(`..${path.sep}`))
+    return false;
 
   let dir = rootDir;
   for (const segment of rel.split(path.sep)) {

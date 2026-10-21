@@ -107,7 +107,7 @@ export const docs = {
             [
               '`@astryxdesign/cli`',
               'You ship a docs section, a placed guide, a template that sets `replaces` or `keywords`, a component that sets `replaces`, a doc section with an `id`, or a theme',
-              '`>=0.8.0` when you ship an icon set, `>=0.6.6` when you ship a template that sets `keywords`, `>=0.6.7` when a component sets `replaces`, otherwise `>=0.6.4`. Optional in `peerDependenciesMeta`',
+              "`>=0.8.0` when you ship an icon set, `>=0.6.6` when you ship a template that sets `keywords`, `>=0.6.7` when a component sets `replaces`, otherwise `>=0.6.4`. Always optional in `peerDependenciesMeta`: a required peer an app cannot satisfy makes npm remove the app's CLI without a word",
             ],
           ],
         },
@@ -136,7 +136,7 @@ export const docs = {
           items: [
             'An unknown field in `astryx.integration.mjs` is ignored with an `unknown_manifest_key` warning, and the rest of the manifest still loads.',
             'A named export that the CLI does not know is ignored with no warning, so `debug` and `gapReport` are safe to add.',
-            'Published 0.7.x and earlier do not read icon sets: `iconSets` is a manifest key they do not know, so your icons, icon definitions, and template icon mapping do not appear there.',
+            'Published 0.7.x and earlier do not read icon sets: `iconSets` is a manifest key they do not know, so `astryx doctor` there warns that the package was published against a newer Astryx CLI, and your icons, icon definitions, and template icon mapping do not appear until the app upgrades.',
             'Published 0.6.3 and earlier print each `{@link ...}` as written.',
             'Published 0.6.3 and earlier reject a template that sets `replaces` or `keywords`, drop that template, and hide every doc topic your package ships. Published 0.6.4 and 0.6.5 still drop a template that sets `keywords`.',
             'Published 0.6.3 and earlier cannot read a docs section, a section `id`, or a theme folder that `integration add theme` writes. They can then hide every doc topic your package ships.',

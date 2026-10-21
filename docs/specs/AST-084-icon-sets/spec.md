@@ -374,7 +374,11 @@ set is installed.
   ```
 
   A value is a binding, an element (`<XIcon />`), or a `createElement`,
-  `jsx`, or `_jsx` call with the binding first.
+  `jsx`, or `_jsx` call with the binding first. A set with a generated
+  module (FR18) gets `themeIcons` written there: one entry per built-in
+  definition in `map`, each an element of the set's own icon, hidden from
+  assistive technology and sized `1em`, rewritten whenever `map` or the
+  icons change, so an author never writes it by hand.
 
 ### Checks and catalogs
 
@@ -385,13 +389,15 @@ set is installed.
   | --------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | `invalid_icon_set`                | error    | the descriptor, data file, or a definition file is invalid (FR3, FR3a)                                                                                    |
   | `icon_builtin_definition_missing` | error    | a built-in definition is not in `map`                                                                                                                     |
-  | `icon_definition_missing`         | warning  | another Astryx definition is not in `map`                                                                                                                 |
+  | `icon_definition_missing`         | info     | another Astryx definition is not in `map`                                                                                                                 |
   | `icon_definition_unused`          | warning  | a definition the set declares is not in `map`                                                                                                             |
   | `icon_definition_shadowed`        | warning  | a definition the set declares has the name of an Astryx one                                                                                               |
   | `icon_module_not_public`          | error    | an icon or variant is read from a module other than the package or one of its `exports` subpaths (FR19)                                                   |
   | `icon_export_name`                | warning  | an export is not named `<Name>Icon` (FR19)                                                                                                                |
   | `icon_not_component`              | error    | an export is a literal value, not a component or an adapter call (FR19)                                                                                   |
   | `icon_export_missing`             | error    | the module does not export a named export, re-exports followed (relative files and installed packages), or the generated module or adapter does not exist |
+  | `icon_module_invalid`             | error    | the set's module, a file it re-exports, or the generated module does not parse; reported once instead of a missing export per icon                        |
+  | `icon_generated_types_mismatch`   | error    | the generated module's declaration file is missing or does not match the module                                                                           |
   | `icon_theme_map_mismatch`         | error    | the theme map's keys or values disagree with the built-in entries of `map`                                                                                |
   | `icon_theme_map_unchecked`        | warning  | a theme map entry is not one of the forms FR13 lists, so it is not checked                                                                                |
   | `icon_source_version_drift`       | warning  | the data names another upstream version than the package depends on                                                                                       |
@@ -399,11 +405,17 @@ set is installed.
 
   A definition finding names the definition's description and words, one
   finding per definition, and carries a `suggestion` (`{map, icon}`, printed
-  `suggest: map.delete = "trash"`) only when the set already has an icon whose
-  words fit it. When an export cannot be found because a re-export could not
-  be followed, the message names that re-export. A theme map built at runtime
-  is not checked. Warnings fail only under `--strict`
-  (`architecture:cli-surface` INV32 and INV35).
+  `suggest: map.delete = "trash"`) only when one of the set's icons has the
+  definition's name or one of its words as its whole `id`; nothing is
+  guessed. When an export cannot be found because a re-export could not be
+  followed, the message names that re-export. A theme map built at runtime
+  is not checked. Errors fail the check; warnings fail only under `--strict`
+  (`architecture:cli-surface` INV32 and INV35); `info` findings are reported
+  and never fail or count as warnings, so a set that maps every built-in
+  definition and every definition it declares passes `--strict`. Module
+  specifiers resolve as Node resolves them, through every ancestor's
+  `node_modules`. In text output, a package-wide finding is printed once,
+  under the first check that reports it; the JSON lists it under each.
 
 - **FR15 — `astryx doctor` checks the project's icon sets.** Doctor's
   `icon-sets` check MUST fail when `iconSet` names a set that is not installed,
@@ -423,14 +435,21 @@ set is installed.
 - **FR18 — The CLI writes the set, one verified icon at a time.** Every
   command reads modules statically, never searches a library, and leaves
   files as they were when it fails.
-  - `integration add icon-set <name>` writes the descriptor and a data file
-    with an empty `map` and no icons. With `--from <module>` it wraps every
-    component the module exports: an alias of one component is recorded once
+  - `integration add icon-set <name>` writes the descriptor, a data file
+    with an empty `map` and no icons, and the generated module with an empty
+    `themeIcons`. With `--from <module>` it wraps every component the module
+    exports, and, once the set declares an `adapter`, every data export
+    (object or string) through it: an alias of one value is recorded once
     (the `…Icon` name preferred), each icon is named `<Name>Icon` with its id
     from the name, and `map` is filled only where a definition's name or one
     of its words equals an icon's id. Run again, it refreshes the icons, keeps
     every `map` entry whose icon still exists, and names the entries it
     removed.
+  - Leading words every icon export of a library shares (`feather` in
+    `featherEye` and `featherSun`) are a library prefix: ids and export
+    names leave them out (`featherEye` is id `eye`, `EyeIcon`). `icon add`
+    applies the same rule from the source module's exports, so its commands
+    need no `--id`.
   - `integration add icon-definition <name> --description --words [--icon]
 [--set]` writes one of the set's own definitions and, with `--icon`, its
     `map` entry. A name Astryx has is refused.
@@ -451,9 +470,15 @@ set is installed.
   - Each icon becomes an export of the set's generated module: a re-export
     when the library export is a component (a function, class, `forwardRef`,
     or `memo`), else `export const <Name>Icon = adaptIcon(<source>)` with the
-    set's adapter. A non-component with no declared `adapter` is refused. The
-    data file names the set's own module; the receipt names the line the
-    package entry needs to re-export the generated module.
+    set's adapter, imported once. A non-component with no declared
+    `adapter` is refused. Statements the module already has are kept,
+    however it was formatted. Beside it the CLI writes its declaration file
+    (`<set>.generated.d.ts`): each re-export as written, so a component keeps
+    its library's types, each adapted icon as
+    `ComponentType<SVGProps<SVGSVGElement>>`, and `themeIcons`. `icon add`,
+    `icon map`, and the bulk wrap rewrite both. The data file names the set's
+    own module; the receipt names the line the package entry needs to
+    re-export the generated module.
 
 - **FR19 — Every icon is a named component export of the package.** Every
   icon and variant is a named export of the set's package public entry (its
@@ -511,23 +536,24 @@ integration validate` type-checks `IconSetDoc` descriptors
 
 ## Verification
 
-| Contract  | Verification                                                                                                               | Representative states                                                                                                                                                                                                                | Mutation or failure expectation                                                                                  |
-| --------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| FR1–FR3   | descriptor and data-file parser tests; discovery tests; `integration add` tests                                            | valid set; missing or misnamed descriptor; missing data file; unknown field; `schemaVersion: 2`; two sets in one package; a match with an unknown confidence; a match naming its own set; added set; existing file                   | a set without its descriptor or data file is discovered, or the manifest lists icons and still passes            |
-| FR4       | wrapper generator test                                                                                                     | regenerate from the same upstream version; upstream adds an icon                                                                                                                                                                     | regenerating changes the file, or a new upstream icon is missing                                                 |
-| FR5       | pack and discovery tests                                                                                                   | module path escaping the package; nested notice file                                                                                                                                                                                 | an escaped path is accepted, or discovery imports the icon module                                                |
-| FR6–FR7   | `icon` command text and JSON tests                                                                                         | exact definition; exact id; exact word; an id one icon is named and another is tagged; a word many icons are named for; prefix; no match; `--set`; `--limit`; unknown set or id; `--list` coverage                                   | ranking order changes, a tie is order-dependent, or a missing icon is not `ERR_NOT_FOUND`                        |
-| FR8       | search tests                                                                                                               | icon-only word; word matching a component and an icon; `--type icon`                                                                                                                                                                 | an icon outranks an equal component, or `--type icon` returns another domain                                     |
-| FR9–FR10  | discovery and config tests                                                                                                 | set installed but module missing; invalid data file; one set; two sets with and without `iconSet`                                                                                                                                    | a withdrawn set answers, or two sets pick one silently                                                           |
-| FR3a      | definition parser and folder tests; docs tree tests                                                                        | valid definition; unknown field; built-in set equals `IconName`; unique names; a set's own definition; one that shadows Astryx's; `docs icon-definitions`                                                                            | a definition outside a folder is read, or a built-in is missing                                                  |
-| FR11–FR12 | template print and copy tests; a test over every bundled template descriptor                                               | reviewed exact or strong match; likely match suggested; declared definition the set maps; one it does not map; an undeclared import; installed-set icon; solid variant; name collision; no set; every bundled template icon declared | an unmapped icon is dropped, a name is guessed, a reference keeps the old name, or the receipt omits a kept icon |
-| FR18      | command tests for `integration add icon-set --from`, `integration add icon-definition`, `icon add`, `icon map`, `icon use` | wrap and refresh; matches with no flag; `--definition`; `--new-definition`; an Astryx name refused; missing export with close names; `--default`; adapter required and used; idempotent re-run                                       | a file is written without verification, a failed write leaves files, or a re-run changes the file                |
-| FR19      | `integration check` tests                                                                                                  | module outside the package; a name without `Icon`; a literal export; `export *` from an installed package; an unresolved re-export                                                                                                   | a deep or foreign module passes, or a literal export passes                                                      |
-| FR13      | integration check tests; theme fixture                                                                                     | theme map equal to the built-in entries of `map`; extra key; missing key; wrong artwork; `createElement` and `jsx` values; an unreadable entry                                                                                       | a disagreeing theme map passes, or an unreadable entry passes silently                                           |
-| FR14      | `integration check` tests, with and without `--strict`                                                                     | every error listed in FR14; upstream version drift; missing notice                                                                                                                                                                   | an export the module lacks passes, or a warning fails without `--strict`                                         |
-| FR15      | Doctor tests                                                                                                               | no sets; one set; two sets without `iconSet`; `iconSet` not installed; invalid data file                                                                                                                                             | a missing configured set passes, or no sets warns                                                                |
-| FR16      | discover tests                                                                                                             | package adding a set; `--type icon-set`; item page                                                                                                                                                                                   | icon sets are not listed, or icons appear as discover items                                                      |
-| FR17      | wrapper package tests                                                                                                      | named re-exports; one-icon import bundle size; license text present                                                                                                                                                                  | a wrapper bundles artwork, drops a notice, or importing one icon pulls in the library                            |
+| Contract   | Verification                                                                                                               | Representative states                                                                                                                                                                                                                | Mutation or failure expectation                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| FR1–FR3    | descriptor and data-file parser tests; discovery tests; `integration add` tests                                            | valid set; missing or misnamed descriptor; missing data file; unknown field; `schemaVersion: 2`; two sets in one package; a match with an unknown confidence; a match naming its own set; added set; existing file                   | a set without its descriptor or data file is discovered, or the manifest lists icons and still passes            |
+| FR4        | wrapper generator test                                                                                                     | regenerate from the same upstream version; upstream adds an icon                                                                                                                                                                     | regenerating changes the file, or a new upstream icon is missing                                                 |
+| FR5        | pack and discovery tests                                                                                                   | module path escaping the package; nested notice file                                                                                                                                                                                 | an escaped path is accepted, or discovery imports the icon module                                                |
+| FR6–FR7    | `icon` command text and JSON tests                                                                                         | exact definition; exact id; exact word; an id one icon is named and another is tagged; a word many icons are named for; prefix; no match; `--set`; `--limit`; unknown set or id; `--list` coverage                                   | ranking order changes, a tie is order-dependent, or a missing icon is not `ERR_NOT_FOUND`                        |
+| FR8        | search tests                                                                                                               | icon-only word; word matching a component and an icon; `--type icon`                                                                                                                                                                 | an icon outranks an equal component, or `--type icon` returns another domain                                     |
+| FR9–FR10   | discovery and config tests                                                                                                 | set installed but module missing; invalid data file; one set; two sets with and without `iconSet`                                                                                                                                    | a withdrawn set answers, or two sets pick one silently                                                           |
+| FR3a       | definition parser and folder tests; docs tree tests                                                                        | valid definition; unknown field; built-in set equals `IconName`; unique names; a set's own definition; one that shadows Astryx's; `docs icon-definitions`                                                                            | a definition outside a folder is read, or a built-in is missing                                                  |
+| FR11–FR12  | template print and copy tests; a test over every bundled template descriptor                                               | reviewed exact or strong match; likely match suggested; declared definition the set maps; one it does not map; an undeclared import; installed-set icon; solid variant; name collision; no set; every bundled template icon declared | an unmapped icon is dropped, a name is guessed, a reference keeps the old name, or the receipt omits a kept icon |
+| FR13, FR18 | writer and command tests                                                                                                   | adapter import across repeated adds; a formatted module; data library with and without an adapter; library prefix; `themeIcons` after `icon map`; declaration file; a set nested deeper than six folders                             | a second adapter import, a guessed prefix, or a stale theme map or declaration file                              |
+| FR18       | command tests for `integration add icon-set --from`, `integration add icon-definition`, `icon add`, `icon map`, `icon use` | wrap and refresh; matches with no flag; `--definition`; `--new-definition`; an Astryx name refused; missing export with close names; `--default`; adapter required and used; idempotent re-run                                       | a file is written without verification, a failed write leaves files, or a re-run changes the file                |
+| FR19       | `integration check` tests                                                                                                  | module outside the package; a name without `Icon`; a literal export; `export *` from an installed package; an unresolved re-export                                                                                                   | a deep or foreign module passes, or a literal export passes                                                      |
+| FR13       | integration check tests; theme fixture                                                                                     | theme map equal to the built-in entries of `map`; extra key; missing key; wrong artwork; `createElement` and `jsx` values; an unreadable entry                                                                                       | a disagreeing theme map passes, or an unreadable entry passes silently                                           |
+| FR14       | `integration check` tests, with and without `--strict`                                                                     | every error listed in FR14; upstream version drift; missing notice                                                                                                                                                                   | an export the module lacks passes, or a warning fails without `--strict`                                         |
+| FR15       | Doctor tests                                                                                                               | no sets; one set; two sets without `iconSet`; `iconSet` not installed; invalid data file                                                                                                                                             | a missing configured set passes, or no sets warns                                                                |
+| FR16       | discover tests                                                                                                             | package adding a set; `--type icon-set`; item page                                                                                                                                                                                   | icon sets are not listed, or icons appear as discover items                                                      |
+| FR17       | wrapper package tests                                                                                                      | named re-exports; one-icon import bundle size; license text present                                                                                                                                                                  | a wrapper bundles artwork, drops a notice, or importing one icon pulls in the library                            |
 
 ## Decision log
 

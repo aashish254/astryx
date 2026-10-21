@@ -50,7 +50,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "`outline.doc.mjs` is the descriptor: name, display name, description, and `license`, the SPDX license of the artwork (it starts as your package's own). `outline.icons.json` starts with no icons and an empty `map`; its `module` is your package name. Every field is in {@link schema:icon-set-doc} and {@link schema:icon-set-data}.",
+          text: "`outline.doc.mjs` is the descriptor: name, display name, description, and `license`, the SPDX license of the artwork (it starts as your package's own). `outline.icons.json` starts with no icons and an empty `map`; its `module` is your package name. `outline.generated.js` is the set's generated module, with its declaration file `outline.generated.d.ts`: the CLI writes both, and every icon and the theme map are exports of it. Every field is in {@link schema:icon-set-doc} and {@link schema:icon-set-data}.",
         },
       ],
     },
@@ -108,6 +108,10 @@ export const docs = {
           type: 'prose',
           text: "Every component the library exports becomes an icon (an alias of one component is recorded once), named `<Name>Icon`, and `map` is filled only where a definition's name or one of its words is an icon's id. Run it again after a library release to refresh the icons; `map` entries whose icon still exists are kept, and the receipt names any that lost theirs.",
         },
+        {
+          type: 'prose',
+          text: 'A library whose icons are data (objects or SVG strings) has no components to find: create the set, declare an `adapter` in its data file (see library shapes), and run the command again; every data export then becomes an icon through the adapter. When every icon export shares a leading word, such as `feather` in `featherEye` and `featherSun`, ids and export names leave it out: `featherEye` becomes id `eye`, exported as `EyeIcon`. `icon add` follows the same rule, so its commands need no `--id`.',
+        },
       ],
     },
     {
@@ -130,7 +134,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "`icon add` writes the set's generated module (`generated` in the data file). Add one line to the file your package's entry points at; the receipt names it:",
+          text: "`icon add` writes the set's generated module (`generated` in the data file) and its declaration file, which re-exports each component's own types and types each adapted icon as `ComponentType<SVGProps<SVGSVGElement>>`. Add one line to the file your package's entry points at, and to its types; the receipt names it:",
         },
         {
           type: 'code',
@@ -210,11 +214,29 @@ export function adapt(data) {
   return function AdaptedIcon(props) {
     return createElement(
       'svg',
-      {viewBox: '0 0 24 24', width: '1em', height: '1em', fill: 'currentColor', ...props},
+      {'viewBox': '0 0 24 24', 'width': '1em', 'height': '1em', 'fill': 'currentColor', ...props},
       createElement('path', {d: data.path}),
     );
   };
 }`,
+        },
+      ],
+    },
+    {
+      id: 'theme-map',
+      title: 'The theme map',
+      content: [
+        {
+          type: 'prose',
+          text: 'The generated module also exports `themeIcons`: one entry per built-in definition in `map`, each an element of your own icon, hidden from assistive technology and sized `1em`. The CLI rewrites it on every `icon add` and `icon map`, so you never write it by hand, and `integration check` proves it matches `map`. A theme uses it in one line:',
+        },
+        {
+          type: 'code',
+          lang: 'tsx',
+          code: `import {defineTheme} from '@astryxdesign/core/theme';
+import {themeIcons} from '@acme/icons';
+
+export const brand = defineTheme({name: 'brand', icons: themeIcons});`,
         },
       ],
     },
@@ -224,7 +246,7 @@ export function adapt(data) {
       content: [
         {
           type: 'prose',
-          text: '`astryx integration check` reads the set without running your icons. Each definition you have not mapped is listed with its description and words, so you or your agent can pick the icon; when your set already has an icon that fits, the finding suggests the `icon map` command. Its icon-set codes:',
+          text: "`astryx integration check` reads the set without running your icons. Each definition you have not mapped is listed with its description and words, so you or your agent can pick the icon. A finding suggests an `icon map` command only when one of your icons has the definition's name or one of its words as its whole id; it never guesses. Its icon-set codes:",
         },
         {
           type: 'list',
@@ -232,18 +254,35 @@ export function adapt(data) {
           items: [
             '`invalid_icon_set` (error): the descriptor, data file, or a definition file is invalid, for example a repeated `id`, an icon with no words, or a `map` key that is neither an Astryx definition nor one in your `definitions` folder. The set is withdrawn: apps do not see it.',
             '`icon_builtin_definition_missing` (error): a built-in definition is not in `map`.',
-            '`icon_definition_missing` (warning): another Astryx definition is not in `map`.',
+            '`icon_definition_missing` (info): another Astryx definition is not in `map`. Reported so you can map it, never failing, even under `--strict`: a library need not draw every definition.',
             '`icon_definition_unused` (warning): a definition you declared is not in `map`.',
             "`icon_definition_shadowed` (warning): a definition you declared now exists in Astryx; map to Astryx's and remove yours.",
             '`icon_module_not_public` (error), `icon_export_name` (warning), `icon_not_component` (error): the export contract above.',
             '`icon_export_missing` (error): an export, the generated module, or the adapter does not exist; when a re-export cannot be followed, the message names it.',
+            "`icon_module_invalid` (error): the set's module, a file it re-exports, or the generated module does not parse; reported once, instead of a missing export per icon.",
+            "`icon_generated_types_mismatch` (error): the generated module's declaration file is missing or does not match it.",
             '`icon_theme_map_mismatch` (error) and `icon_theme_map_unchecked` (warning): the theme map disagrees with the built-in entries of `map`, or has an entry the reader cannot read.',
             '`icon_source_version_drift` and `icon_license_notice_missing` (warnings): the data names another library version than the package depends on, or a set with an upstream ships no license notice.',
           ],
         },
         {
           type: 'prose',
-          text: 'Warnings fail only with `--strict`, which every integration runs in its build ({@link generic:checks}). The flow, start to finish: `integration add icon-set` → `integration check` → `icon add` (or `icon map`) for each definition it lists → `integration check` passes.',
+          text: 'Errors fail the check. Warnings fail only with `--strict`; info findings never fail. A set that maps every built-in definition and every definition it declares passes `--strict`, which integrations run in their build ({@link generic:checks}). The flow, start to finish: `integration add icon-set` → `integration check` → `icon add` (or `icon map`) for each definition it lists → `integration check` passes.',
+        },
+      ],
+    },
+    {
+      id: 'publish',
+      title: 'Before you publish',
+      content: [
+        {
+          type: 'list',
+          style: 'unordered',
+          items: [
+            'Run `astryx integration verify` yourself before publishing. Do not put it in `prepublishOnly`: under `npm publish --dry-run` its own `npm pack` becomes a dry run too, and it checks nothing.',
+            "Declare `@astryxdesign/cli` `>=0.8.0` as an optional peer (`peerDependenciesMeta`). A required peer an app cannot satisfy makes npm remove the app's CLI without a word. On an older CLI, `astryx doctor` warns that your package was published against a newer Astryx CLI ({@link generic:versioning}).",
+            'Your package needs `react` (the theme map and adapter use it): declare it as a peer, as Core does.',
+          ],
         },
       ],
     },

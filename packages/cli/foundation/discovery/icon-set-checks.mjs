@@ -38,13 +38,18 @@ import {
   resolveIconModule,
 } from './icon-set-discovery.mjs';
 import {
+  generatedTypesPath,
+  generatedTypesText,
+  readGeneratedStatements,
+} from './icon-set-writer.mjs';
+import {
   exportValueKind,
   moduleExportOrigin,
+  moduleParseFailure,
   staticExportBindings,
   unfollowedReexports,
 } from './module-exports.mjs';
 import {astryxIconDefinitions} from './icon-definition-discovery.mjs';
-import {rankIcons} from './icon-ranking.mjs';
 import {
   issueError,
   issueWarning,
@@ -62,6 +67,10 @@ export const ICON_THEME_MAP_MISMATCH = 'icon_theme_map_mismatch';
 /** A built-in definition missing from the set's `map`. */
 export const ICON_BUILTIN_DEFINITION_MISSING =
   'icon_builtin_definition_missing';
+/** A generated module's declaration file that is missing or out of date. */
+export const ICON_GENERATED_TYPES_MISMATCH = 'icon_generated_types_mismatch';
+/** A module of the set's package that does not parse. */
+export const ICON_MODULE_INVALID = 'icon_module_invalid';
 /** A theme-map entry the static reader cannot read. */
 export const ICON_THEME_MAP_UNCHECKED = 'icon_theme_map_unchecked';
 /** An icon read from a module other than the set's package public entry. */
@@ -111,10 +120,47 @@ export function iconSetIssues(packageDir, loaded) {
   for (const set of found.sets) {
     issues.push(...checkContract({...set, packageDir}, loaded.name, pkg));
     issues.push(...checkDefinitions(set));
-    issues.push(...checkExports(set, packageDir, loaded.name));
+    // A module that does not parse hides every export behind it: report it
+    // once instead of one missing export per icon.
+    const broken = unparsedModule(set, packageDir, loaded.name);
+    if (broken) issues.push(broken);
+    else issues.push(...checkExports(set, packageDir, loaded.name));
     issues.push(...checkUpstream(set, packageDir, pkg));
   }
   return issues;
+}
+
+/**
+ * The set's module, its relative re-exports, or its generated module, when
+ * one does not parse: one error naming the file and the parser's message.
+ * @param {DiscoveredIconSet} set
+ * @param {string} packageDir
+ * @param {string} packageName
+ * @returns {Issue | null}
+ */
+function unparsedModule(set, packageDir, packageName) {
+  const entry = resolveIconModule(set.data.module, packageDir, {
+    name: packageName,
+    dir: packageDir,
+  });
+  const files = [
+    ...(entry ? [entry] : []),
+    ...(set.data.generated
+      ? [path.join(packageDir, set.data.generated)].filter(file =>
+          fs.existsSync(file),
+        )
+      : []),
+  ];
+  for (const file of files) {
+    const failure = moduleParseFailure(file);
+    if (failure) {
+      return issueError(
+        ICON_MODULE_INVALID,
+        `Icon set "${set.name}": ${path.relative(packageDir, failure.file).split(path.sep).join('/')} does not parse (${failure.message}), so its exports cannot be read. Fix the file; for the generated icons module, delete the broken lines and run \`astryx icon add\` again.`,
+      );
+    }
+  }
+  return null;
 }
 
 /**
@@ -183,6 +229,32 @@ function checkContract(set, packageName, pkg) {
   const packageDir = /** @type {string} */ (set.packageDir);
   if (set.data.generated) {
     const file = path.join(packageDir, set.data.generated);
+    const typesRel = generatedTypesPath(set.data.generated);
+    if (fs.existsSync(file) && typesRel) {
+      const typesFile = path.join(packageDir, typesRel);
+      let expected = null;
+      try {
+        expected = generatedTypesText(
+          readGeneratedStatements(
+            fs.readFileSync(file, 'utf-8'),
+            set.data.generated,
+          ),
+        );
+      } catch {
+        // A module that does not parse is reported on its own.
+      }
+      const actual = fs.existsSync(typesFile)
+        ? fs.readFileSync(typesFile, 'utf-8')
+        : null;
+      if (expected != null && actual !== expected) {
+        issues.push(
+          issueError(
+            ICON_GENERATED_TYPES_MISMATCH,
+            `${label}: ${typesRel} ${actual == null ? 'is missing' : 'does not match its generated module'}. Run \`astryx icon map\` or \`astryx icon add\` to rewrite it, or restore it from the generated module's exports.`,
+          ),
+        );
+      }
+    }
     if (!fs.existsSync(file)) {
       issues.push(
         issueError(
@@ -227,9 +299,10 @@ function resolveFile(base) {
  * The definition checks of one set's `map`: every built-in definition mapped
  * (error), every other Astryx definition mapped (warning), and each
  * definition the set declares mapped and not already an Astryx definition
- * (warnings). One finding per definition; a finding about an unmapped
- * definition carries a `suggestion` when one of the set's icons draws it by
- * the lookup's own scorer.
+ * (warnings); another unmapped Astryx definition is `info`, reported and
+ * never failing. One finding per definition; a finding about an unmapped
+ * definition carries a `suggestion` only when one of the set's icons has the
+ * definition's name or one of its words as its whole id.
  * @param {DiscoveredIconSet} set
  * @returns {Issue[]}
  */
@@ -250,7 +323,13 @@ function checkDefinitions(set) {
       : `${label} maps no icon to the Astryx icon definition "${doc.name}" (${doc.description} Words: ${doc.words.join(', ')}.). Add it to "map" with the id of the icon that draws it, so templates that use it get your icon.${hint}`;
     const issue = doc.builtIn
       ? issueError(ICON_BUILTIN_DEFINITION_MISSING, message)
-      : issueWarning(ICON_DEFINITION_MISSING, message);
+      : // Reported, never failing: a library need not draw every Astryx
+        // definition, and `--strict` must be passable.
+        {
+          code: ICON_DEFINITION_MISSING,
+          severity: /** @type {const} */ ('info'),
+          message,
+        };
     issues.push(suggestion ? {...issue, suggestion} : issue);
   }
   const names = new Set(astryx.map(doc => doc.name));
@@ -274,27 +353,24 @@ function checkDefinitions(set) {
   return issues;
 }
 
-/** The lowest score a suggestion needs: an exact match on an id or a word. */
-const SUGGESTION_FLOOR = 80;
-
 /**
- * The set's icon that best draws one definition, by the icon lookup's own
- * scorer: the definition's name (`chevronDown` reads as `chevron down`) and
- * then each of its words, in order, as queries; the first query whose best
- * match is an exact one wins. Null when no query finds one.
+ * The set's icon whose whole id is the definition's name (`chevronDown` is
+ * `chevron-down`) or, in order, one of its words (spaces read as `-`). Null
+ * when none is: a suggestion is never a guess from parts of words.
  * @param {DiscoveredIconSet} set
  * @param {import('../../authoring/doctypes/icon-definition/type').IconDefinitionDoc} doc
  * @returns {{map: string, icon: string} | null}
  */
 export function suggestIcon(set, doc) {
-  const name = doc.name.replace(/([a-z0-9])([A-Z])/gu, '$1 $2').toLowerCase();
-  // Score the icons by what they are, not by what the map already says.
-  const bare = {...set, data: {...set.data, map: {}}};
-  for (const query of [name, ...doc.words]) {
-    const [best] = rankIcons([bare], query);
-    if (best && best.score >= SUGGESTION_FLOOR) {
-      return {map: doc.name, icon: best.id};
-    }
+  const kebab = doc.name.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase();
+  // No guessing: only an icon whose whole id is the definition's name or one
+  // of its words.
+  for (const candidate of [
+    kebab,
+    ...doc.words.map(word => word.trim().toLowerCase().replace(/\s+/gu, '-')),
+  ]) {
+    const icon = set.data.icons.find(each => each.id === candidate);
+    if (icon) return {map: doc.name, icon: icon.id};
   }
   return null;
 }
@@ -478,7 +554,11 @@ function checkUpstream(set, packageDir, pkg) {
   const range = ['dependencies', 'peerDependencies', 'optionalDependencies']
     .map(field => pkg[field]?.[source.package])
     .find(value => typeof value === 'string');
-  const installedDir = findInstalledPackage(packageDir, source.package);
+  const installedDir = findInstalledPackage(
+    packageDir,
+    source.package,
+    Infinity,
+  );
   const installed = installedDir
     ? readJson(path.join(installedDir, 'package.json'))?.version
     : undefined;

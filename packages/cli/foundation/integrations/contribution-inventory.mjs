@@ -25,6 +25,7 @@ import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.
 import {discoverIntegrationCodemods} from '../../assets/codemods/integration-discovery.mjs';
 import {discoverIntegrationDocs} from '../discovery/docs-discovery.mjs';
 import {discoverIconSetDirectory} from '../discovery/icon-set-discovery.mjs';
+import {generatedTypesPath} from '../discovery/icon-set-writer.mjs';
 
 // ── File-walk helpers (no module imports, no execution) ──────────
 
@@ -138,6 +139,10 @@ function enumerateIconSetFiles(root, pkgDir) {
     if (set.data.generated) {
       const generated = path.join(pkgDir, set.data.generated);
       if (fs.existsSync(generated)) files.push(generated);
+      const types = generatedTypesPath(set.data.generated);
+      if (types && fs.existsSync(path.join(pkgDir, types))) {
+        files.push(path.join(pkgDir, types));
+      }
     }
   }
   return [...new Set(files)].sort().map(file => rel(pkgDir, file));

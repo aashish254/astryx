@@ -13,7 +13,8 @@
 /** An issue surfaced while loading or validating an integration. */
 export interface AstryxIntegrationIssue {
   code: string;
-  severity: 'warning' | 'error';
+  /** `info` is reported and never fails or counts as a warning. */
+  severity: 'info' | 'warning' | 'error';
   message: string;
   /**
    * For an icon definition an icon set does not map: the icon the set's

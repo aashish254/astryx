@@ -24,7 +24,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {parse} from '@babel/parser';
 import {parseIconSetData} from '../../authoring/doctypes/icon-set/parse.mjs';
+import {ICON_NAMES} from '../../authoring/doctypes/icon-set/icon-names.mjs';
 import {assertWithin} from '../fs/path-safety.mjs';
 import {findLocalIntegrationManifestOrNull} from '../integrations/manifest-writer.mjs';
 import {loadManifestObject} from '../integrations/integrations.mjs';
@@ -426,30 +428,112 @@ export function assertIconExport(file, module, exportName) {
 }
 
 /**
- * Every icon a whole library exports, for wrapping it at once: one entry per
- * component, read by its `…Icon` export when it has one (an alias of the
- * same component is recorded once), with its id from the name and the name
- * the set exports it as. Names that are not PascalCase, and exports that are
- * not components, are left out.
+ * The library exports that can be icons: PascalCase components and, when the
+ * set declares an adapter, also data exports (objects and strings), camelCase
+ * included. `default` and `Icon` are left out.
  * @param {string} file
- * @returns {Array<{export: string, id: string, name: string}>}
+ * @param {{adapter?: boolean}} [options]
+ * @returns {Array<{name: string, adapt: boolean}>}
  */
-export function libraryIcons(file) {
-  /** @type {Map<string, string[]>} */
-  const byOrigin = new Map();
+function iconCandidates(file, {adapter = false} = {}) {
+  /** @type {Array<{name: string, adapt: boolean}>} */
+  const out = [];
   for (const name of moduleExportNames(file)) {
-    if (!/^[A-Z][A-Za-z0-9]*$/u.test(name) || name === 'Icon') continue;
+    if (name === 'default' || name === 'Icon') continue;
+    const kind = exportValueKind(file, name);
+    if (kind === 'component' && /^[A-Z][A-Za-z0-9]*$/u.test(name)) {
+      out.push({name, adapt: false});
+    } else if (
+      adapter &&
+      kind === 'data' &&
+      /^[A-Za-z][A-Za-z0-9]*$/u.test(name)
+    ) {
+      out.push({name, adapt: true});
+    }
+  }
+  return out;
+}
+
+/**
+ * The leading words every icon export of a library shares, such as
+ * `feather` in `featherEye` and `featherSun`: a library prefix that ids and
+ * the set's export names leave out. Empty when fewer than two exports share
+ * one, or when it would leave an export with no name.
+ * @param {string[]} names
+ * @returns {string[]}
+ */
+export function libraryPrefix(names) {
+  if (names.length < 2) return [];
+  const split = names.map(name => iconIdOf(name).split('-'));
+  /** @type {string[]} */
+  const prefix = [];
+  for (let index = 0; ; index++) {
+    const word = split[0][index];
+    if (
+      word == null ||
+      !split.every(words => words[index] === word && words.length > index + 1)
+    ) {
+      break;
+    }
+    prefix.push(word);
+  }
+  return prefix;
+}
+
+/**
+ * An export's id and the name the set exports it as, with the library prefix
+ * left out: `featherEye` with prefix `feather` is id `eye`, `EyeIcon`.
+ * @param {string} name
+ * @param {string[]} prefix
+ * @returns {{id: string, name: string}}
+ */
+export function iconNaming(name, prefix) {
+  const words = iconIdOf(name).split('-').slice(prefix.length);
+  const id = words.join('-');
+  const pascal = words
+    .map(word => word[0].toUpperCase() + word.slice(1))
+    .join('');
+  return {
+    id,
+    name: prefix.length > 0 ? iconExportName(pascal) : iconExportName(name),
+  };
+}
+
+/**
+ * The library prefix of the module an icon is read from
+ * ({@link libraryPrefix} over its icon exports).
+ * @param {string} file
+ * @param {{adapter?: boolean}} [options]
+ */
+export function modulePrefix(file, options) {
+  return libraryPrefix(iconCandidates(file, options).map(each => each.name));
+}
+
+/**
+ * Every icon a whole library exports, for wrapping it at once: one entry per
+ * component (and, with an adapter, per data export), read by its `…Icon`
+ * export when it has one (an alias of the same value is recorded once), with
+ * its id and the name the set exports it as from the name, the library
+ * prefix left out ({@link libraryPrefix}).
+ * @param {string} file
+ * @param {{adapter?: boolean}} [options] whether the set declares an adapter
+ * @returns {Array<{export: string, id: string, name: string, adapt: boolean}>}
+ */
+export function libraryIcons(file, options = {}) {
+  const candidates = iconCandidates(file, options);
+  /** @type {Map<string, {names: string[], adapt: boolean}>} */
+  const byOrigin = new Map();
+  for (const {name, adapt} of candidates) {
     const origin = moduleExportOrigin(file, name);
     if (!origin) continue;
-    if (exportValueKind(file, name) !== 'component') continue;
     const key = `${origin.file}\0${origin.name}`;
-    const names = byOrigin.get(key) ?? [];
-    names.push(name);
-    byOrigin.set(key, names);
+    const entry = byOrigin.get(key) ?? {names: [], adapt};
+    entry.names.push(name);
+    byOrigin.set(key, entry);
   }
-  /** @type {Map<string, {export: string, id: string, name: string}>} */
-  const byId = new Map();
-  for (const [key, names] of byOrigin) {
+  /** @type {Array<[string, string, boolean]>} */
+  const chosen = [];
+  for (const [key, {names, adapt}] of byOrigin) {
     const local = key.split('\0')[1];
     const withIcon = names.filter(name => name.endsWith('Icon'));
     const preferred =
@@ -458,9 +542,15 @@ export function libraryIcons(file) {
       [...(withIcon.length > 0 ? withIcon : names)].sort(
         (a, b) => a.length - b.length || (a < b ? -1 : 1),
       )[0];
-    const id = iconIdOf(preferred);
-    if (!id || byId.has(id)) continue;
-    byId.set(id, {export: preferred, id, name: iconExportName(preferred)});
+    chosen.push([key, preferred, adapt]);
+  }
+  const prefix = libraryPrefix(chosen.map(([, name]) => name));
+  /** @type {Map<string, {export: string, id: string, name: string, adapt: boolean}>} */
+  const byId = new Map();
+  for (const [, preferred, adapt] of chosen) {
+    const naming = iconNaming(preferred, prefix);
+    if (!naming.id || byId.has(naming.id)) continue;
+    byId.set(naming.id, {export: preferred, ...naming, adapt});
   }
   return [...byId.values()].sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
@@ -571,11 +661,51 @@ export function writeDefinitionFile(set, doc) {
 /** The comment the generated icons module opens with. */
 const GENERATED_HEADER = [
   '// Generated by `astryx icon add`: one export per icon of this set.',
-  '// Edit with `astryx icon add`; a line edited by hand is kept as written.',
+  '// Edit with `astryx icon add`; a statement added by hand is kept.',
 ];
+
+/**
+ * The top-level statements of a generated module, one normalized line each,
+ * however the file was formatted: whitespace collapsed, no padding inside
+ * braces, no trailing comma. Comments are dropped.
+ * @param {string} text
+ * @param {string} label the module's path, for the error
+ * @returns {string[]}
+ */
+function generatedStatements(text, label) {
+  let ast;
+  try {
+    ast = parse(text, {sourceType: 'module', plugins: ['jsx', 'typescript']});
+  } catch (error) {
+    throw new IconSetAuthoringError(
+      `The generated icons module ${label} does not parse (${error instanceof Error ? error.message : String(error)}). Fix or delete it, then run the command again.`,
+      'ERR_INVALID_ARGUMENT',
+    );
+  }
+  return ast.program.body.map(node =>
+    text
+      .slice(
+        /** @type {number} */ (node.start),
+        /** @type {number} */ (node.end),
+      )
+      .replace(/\s+/gu, ' ')
+      .replace(/\{ /gu, '{')
+      .replace(/,? \}/gu, '}')
+      .replace(/,\}/gu, '}'),
+  );
+}
 
 /** The local name the generated module gives the set's adapter. */
 const ADAPTER_LOCAL = 'adaptIcon';
+
+/** The theme map the generated module writes. */
+export const THEME_MAP_NAME = 'themeIcons';
+
+/** How the generated module imports React for its theme map. */
+const REACT_IMPORT = "import {createElement} from 'react';";
+
+/** The built-in icon definitions: the shared names a theme map covers. */
+const BUILT_IN = new Set(ICON_NAMES);
 
 /**
  * The generated icons module of a set, from the package root: `generated`
@@ -604,23 +734,107 @@ export function generatedModulePath(set, packageDir) {
  *   component
  */
 
+/** The props every theme-map element gets: sized to its box, hidden from assistive tech. */
+const THEME_ELEMENT_PROPS =
+  "{'aria-hidden': true, 'width': '1em', 'height': '1em'}";
+
 /**
- * Add icon exports to the set's generated module, keeping every line it
- * already has: re-exports and adapted exports, each import and export line
- * sorted, the adapter imported once when any export needs it. An export the
- * module already has with the same source is left as it is; one with
- * another source is refused. Returns a function that puts the old file back.
+ * The declaration file beside a generated module (`x.generated.js` →
+ * `x.generated.d.ts`, `.mjs` → `.d.mts`); null for a TypeScript module.
+ * @param {string} generated
+ * @returns {string | null}
+ */
+export function generatedTypesPath(generated) {
+  if (/\.m?tsx?$/u.test(generated)) return null;
+  if (generated.endsWith('.mjs')) return generated.replace(/\.mjs$/u, '.d.mts');
+  if (generated.endsWith('.cjs')) return generated.replace(/\.cjs$/u, '.d.cts');
+  return generated.replace(/\.jsx?$/u, '.d.ts');
+}
+
+/**
+ * The declaration file's text for a generated module's statements: each
+ * re-export as written, so a component keeps its library's types; each
+ * adapted icon as a component that takes SVG props; and the theme map.
+ * @param {string[]} statements the module's normalized statements
+ * @returns {string}
+ */
+export function generatedTypesText(statements) {
+  /** @type {string[]} */
+  const lines = [];
+  const react = new Set();
+  for (const statement of statements) {
+    if (statement.startsWith('import ')) continue;
+    if (/^export (?:\*|\{[^}]*\}) from /u.test(statement)) {
+      lines.push(statement);
+      continue;
+    }
+    const adapted = new RegExp(
+      `^export const (\\w+) = ${ADAPTER_LOCAL}\\(`,
+      'u',
+    ).exec(statement);
+    if (adapted) {
+      react.add('ComponentType').add('SVGProps');
+      lines.push(
+        `export declare const ${adapted[1]}: ComponentType<SVGProps<SVGSVGElement>>;`,
+      );
+      continue;
+    }
+    const theme = /^export const (\w+) = \{(.*)\};$/u.exec(statement);
+    if (
+      theme &&
+      (theme[1] === THEME_MAP_NAME || statement.includes('createElement('))
+    ) {
+      react.add('ReactElement');
+      const keys = [...theme[2].matchAll(/(\w+): createElement\(/gu)].map(
+        match => match[1],
+      );
+      lines.push(
+        `export declare const ${theme[1]}: {${keys.map(key => `readonly ${key}: ReactElement`).join('; ')}};`,
+      );
+    }
+  }
+  return [
+    ...GENERATED_HEADER,
+    ...(react.size > 0
+      ? [`import type {${[...react].sort().join(', ')}} from 'react';`]
+      : []),
+    ...lines,
+    '',
+  ].join('\n');
+}
+
+/**
+ * The generated module's statements, normalized, from its text.
+ * @param {string} text
+ * @param {string} label
+ */
+export function readGeneratedStatements(text, label) {
+  return generatedStatements(text, label);
+}
+
+/**
+ * The generated module and its declaration file after adding icons: every
+ * statement it already has is kept; each new icon is a re-export of a
+ * component or the adapter applied to anything else; the adapter is imported
+ * once when an export needs it; and, when the data names `themeIcons` as its
+ * theme map, `themeIcons` is rewritten from the built-in entries of `map`.
+ * An export the module already has with another source is refused.
  * @param {string} packageDir
  * @param {string} generated the module's ./ path from the package root
- * @param {{module: string, export: string} | undefined} adapter
+ * @param {string | null} before the module's current text
+ * @param {import('../../authoring/doctypes/icon-set/type').IconSetData} data
+ *   the data file as it will be written
  * @param {GeneratedIcon[]} icons
- * @returns {{changed: boolean, undo: () => void}}
+ * @returns {{js: string, dts: string | null}}
  */
-export function writeGeneratedIcons(packageDir, generated, adapter, icons) {
-  const file = assertWithin(generated, packageDir, {
-    label: 'generated icons module',
-  });
-  const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : null;
+export function generatedModuleText(
+  packageDir,
+  generated,
+  before,
+  data,
+  icons,
+) {
+  const file = path.join(packageDir, generated);
   const fileDir = path.dirname(file);
   /** @param {string} from */
   const specifierOf = from => {
@@ -631,16 +845,21 @@ export function writeGeneratedIcons(packageDir, generated, adapter, icons) {
       .join('/');
     return relative.startsWith('.') ? relative : `./${relative}`;
   };
-  const lines = (before ?? '')
-    .split('\n')
-    .filter(line => line.trim() !== '' && !GENERATED_HEADER.includes(line));
+  const themeName = data.themeMap === THEME_MAP_NAME ? THEME_MAP_NAME : null;
+  const lines = before == null ? [] : generatedStatements(before, generated);
+  // Written once, below: the adapter's import, React's createElement, and
+  // the theme map.
+  const adapterImport = new RegExp(`\\bas ${ADAPTER_LOCAL}\\b`, 'u');
+  const managed = (/** @type {string} */ line) =>
+    adapterImport.test(line) ||
+    line === REACT_IMPORT ||
+    (themeName != null && line.startsWith(`export const ${themeName} = `));
   const imports = new Set(
-    lines.filter(
-      line =>
-        line.startsWith('import ') && !line.includes(` as ${ADAPTER_LOCAL} `),
-    ),
+    lines.filter(line => line.startsWith('import ') && !managed(line)),
   );
-  const exports = new Set(lines.filter(line => !line.startsWith('import ')));
+  const exports = new Set(
+    lines.filter(line => !line.startsWith('import ') && !managed(line)),
+  );
   /** @param {string} name */
   const existing = name =>
     [...exports].find(line =>
@@ -649,7 +868,6 @@ export function writeGeneratedIcons(packageDir, generated, adapter, icons) {
         'u',
       ).test(line),
     );
-  let changed = false;
   for (const icon of icons) {
     const specifier = specifierOf(icon.from);
     /** @type {string[]} */
@@ -683,38 +901,116 @@ export function writeGeneratedIcons(packageDir, generated, adapter, icons) {
     }
     for (const line of wantImports) imports.add(line);
     for (const line of want) exports.add(line);
-    changed = true;
   }
-  if (!changed) return {changed: false, undo: () => {}};
   const needsAdapter = [...exports].some(line =>
     line.includes(`= ${ADAPTER_LOCAL}(`),
   );
-  if (needsAdapter && !adapter) {
+  if (needsAdapter && !data.adapter) {
     throw new IconSetAuthoringError(
       'An icon here is not a component, so the set needs an adapter. Declare "adapter": {"module": "./src/adapt.js", "export": "adapt"} in the data file: a function in your package that turns the library export into a component (astryx docs cli/integrations/building-blocks/icon-sets library-shapes).',
       'ERR_INVALID_ARGUMENT',
     );
   }
-  const text = [
-    ...GENERATED_HEADER,
-    ...(needsAdapter && adapter
+  /** @type {string[]} */
+  const theme = [];
+  if (themeName) {
+    const byId = new Map(data.icons.map(icon => [icon.id, icon.export]));
+    for (const name of Object.keys(data.map ?? {}).sort()) {
+      const exportName = byId.get(/** @type {string} */ (data.map?.[name]));
+      if (BUILT_IN.has(name) && exportName) {
+        theme.push(
+          `  ${name}: createElement(${exportName}, ${THEME_ELEMENT_PROPS}),`,
+        );
+      }
+    }
+  }
+  const adapterLine =
+    needsAdapter && data.adapter
       ? [
-          `import {${adapter.export} as ${ADAPTER_LOCAL}} from '${specifierOf(adapter.module)}';`,
+          `import {${data.adapter.export} as ${ADAPTER_LOCAL}} from '${specifierOf(data.adapter.module)}';`,
         ]
-      : []),
+      : [];
+  const js = [
+    ...GENERATED_HEADER,
+    ...(themeName ? [REACT_IMPORT] : []),
+    ...adapterLine,
     ...[...imports].sort(),
     ...[...exports].sort(),
+    ...(themeName
+      ? theme.length > 0
+        ? [`export const ${themeName} = {`, ...theme, '};']
+        : [`export const ${themeName} = {};`]
+      : []),
     '',
   ].join('\n');
-  fs.mkdirSync(fileDir, {recursive: true});
-  replaceText(file, text);
+  const typesPath = generatedTypesPath(generated);
   return {
-    changed: true,
-    undo: () => {
-      if (!fs.existsSync(file) || fs.readFileSync(file, 'utf-8') !== text)
+    js,
+    dts: typesPath
+      ? generatedTypesText(generatedStatements(js, generated))
+      : null,
+  };
+}
+
+/**
+ * Write the set's generated module and its declaration file
+ * ({@link generatedModuleText}). Returns whether either changed, and a
+ * function that puts both back.
+ * @param {string} packageDir
+ * @param {string} generated
+ * @param {import('../../authoring/doctypes/icon-set/type').IconSetData} data
+ * @param {GeneratedIcon[]} icons
+ * @returns {{changed: boolean, files: string[], undo: () => void}}
+ */
+export function writeGeneratedIcons(packageDir, generated, data, icons) {
+  const file = assertWithin(generated, packageDir, {
+    label: 'generated icons module',
+  });
+  const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : null;
+  const {js, dts} = generatedModuleText(
+    packageDir,
+    generated,
+    before,
+    data,
+    icons,
+  );
+  const typesRel = generatedTypesPath(generated);
+  const typesFile = typesRel ? path.join(packageDir, typesRel) : null;
+  const typesBefore =
+    typesFile && fs.existsSync(typesFile)
+      ? fs.readFileSync(typesFile, 'utf-8')
+      : null;
+  /** @type {string[]} */
+  const files = [];
+  /** @type {Array<() => void>} */
+  const undos = [];
+  /**
+   * @param {string} target
+   * @param {string} text
+   * @param {string | null} prior
+   * @param {string} rel
+   */
+  const put = (target, text, prior, rel) => {
+    if (prior === text) return;
+    fs.mkdirSync(path.dirname(target), {recursive: true});
+    replaceText(target, text);
+    files.push(rel.replace(/^\.\//u, ''));
+    undos.push(() => {
+      if (!fs.existsSync(target) || fs.readFileSync(target, 'utf-8') !== text) {
         return;
-      if (before == null) fs.rmSync(file);
-      else replaceText(file, before);
+      }
+      if (prior == null) fs.rmSync(target);
+      else replaceText(target, prior);
+    });
+  };
+  put(file, js, before, generated);
+  if (typesFile && dts != null && typesRel)
+    put(typesFile, dts, typesBefore, typesRel);
+  return {
+    changed: files.length > 0,
+    files,
+    undo: () => {
+      for (const undo of undos.reverse()) undo();
     },
   };
 }

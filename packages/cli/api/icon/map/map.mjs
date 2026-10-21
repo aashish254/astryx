@@ -16,6 +16,7 @@ import {
   closestNames,
   findLocalIconSet,
   mappableDefinitions,
+  writeGeneratedIcons,
   writeIconSetData,
 } from '../_adapter.mjs';
 
@@ -83,7 +84,22 @@ export function iconMap(definition, icon, options = {}) {
       map[definition] = /** @type {string} */ (icon);
     }
     const changed = remove ? previous != null : previous !== icon;
-    if (changed) writeIconSetData(set, {...set.data, map});
+    /** @type {string[]} */
+    const files = [];
+    if (changed) {
+      const next = {...set.data, map};
+      // A set with a generated module gets its theme map rewritten too.
+      const written = set.data.generated
+        ? writeGeneratedIcons(packageDir, set.data.generated, next, [])
+        : null;
+      try {
+        writeIconSetData(set, next);
+      } catch (error) {
+        written?.undo();
+        throw error;
+      }
+      files.push(...(written?.files ?? []));
+    }
     return {
       type: /** @type {const} */ ('icon.map'),
       data: {
@@ -94,6 +110,7 @@ export function iconMap(definition, icon, options = {}) {
         icon: remove ? null : /** @type {string} */ (icon),
         previous,
         changed,
+        ...(files.length > 0 ? {files} : {}),
       },
     };
   });

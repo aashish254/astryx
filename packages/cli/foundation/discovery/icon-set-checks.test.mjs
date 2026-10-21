@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {iconSetIssues} from './icon-set-checks.mjs';
 import {moduleExportOrigin} from './module-exports.mjs';
+import {generatedTypesText} from './icon-set-writer.mjs';
 import {integrationCheck} from '../../api/integration/check/check.mjs';
 import {
   completeGlyphs,
@@ -410,7 +411,7 @@ describe('iconSetIssues', () => {
 });
 
 describe('icon definitions (map)', () => {
-  it('every built-in definition missing from map is an error, each other Astryx one a warning, each with a suggestion when an icon draws it', () => {
+  it('every built-in definition missing from map is an error, each other Astryx one info, each with a suggestion only when an icon id is its name or a word', () => {
     const issues = issuesOf({}, {coverage: true});
     const builtIn = issues.filter(
       issue => issue.code === 'icon_builtin_definition_missing',
@@ -422,8 +423,8 @@ describe('icon definitions (map)', () => {
     expect(builtIn).toHaveLength(ICON_NAMES.length - 2);
     expect(builtIn.every(issue => issue.severity === 'error')).toBe(true);
     expect(other.length).toBeGreaterThan(0);
-    expect(other.every(issue => issue.severity === 'warning')).toBe(true);
-    // `delete` names no icon, but the trash icon is tagged delete.
+    expect(other.every(issue => issue.severity === 'info')).toBe(true);
+    // `delete` names no icon, but one of its words is the trash icon's id.
     const del = other.find(issue => issue.message.includes('"delete"'));
     expect(del?.suggestion).toEqual({map: 'delete', icon: 'trash'});
     expect(del?.message).toContain('astryx icon map delete trash');
@@ -461,19 +462,25 @@ describe('icon definitions (map)', () => {
       data: data(d => (d.map.rotate = 'home')),
       definitions: {
         rotate: definitionSource('rotate'),
-        garbage: definitionSource('garbage', {words: ['garbage']}),
+        garbage: definitionSource('garbage', {words: ['bin', 'trash']}),
+        // The trash icon is tagged garbage, and `tra` starts its id: neither
+        // is a suggestion. No guessing.
+        rubbish: definitionSource('rubbish', {words: ['garbage', 'tra']}),
         delete: definitionSource('delete'),
       },
     });
     expect(issues.map(issue => issue.code).sort()).toEqual([
       'icon_definition_shadowed',
       'icon_definition_unused',
+      'icon_definition_unused',
     ]);
-    const unused = issues.find(
+    const unused = issues.filter(
       issue => issue.code === 'icon_definition_unused',
     );
-    expect(unused?.message).toContain('"garbage"');
-    expect(unused?.suggestion).toEqual({map: 'garbage', icon: 'trash'});
+    const garbage = unused.find(issue => issue.message.includes('"garbage"'));
+    expect(garbage?.suggestion).toEqual({map: 'garbage', icon: 'trash'});
+    const rubbish = unused.find(issue => issue.message.includes('"rubbish"'));
+    expect(rubbish).not.toHaveProperty('suggestion');
     expect(
       issues.find(issue => issue.code === 'icon_definition_shadowed')?.message,
     ).toContain('Astryx now has');
@@ -515,4 +522,65 @@ describe('integration check over an icon set', () => {
     expect(broken.data.failed).toBe(true);
     expect(JSON.stringify(broken.data)).toContain('icon_export_missing');
   }, 60_000);
+
+  it('a set that maps every built-in definition passes --strict: other unmapped Astryx definitions are info', async () => {
+    const complete = completeGlyphs();
+    writeIconPackage(dir, {
+      modules: complete.modules,
+      data: {...complete.data, module: '@acme/glyphs'},
+    });
+    const strict = await integrationCheck({cwd: dir, strict: true});
+    // The fixture has no TypeScript, so only that skipped work remains.
+    expect(
+      strict.data.failures.filter(each => each.code !== 'doc_types_skipped'),
+    ).toEqual([]);
+    expect(strict.data.warnings).toBe(0);
+    expect(JSON.stringify(strict.data)).toContain('"severity":"info"');
+  }, 60_000);
+});
+
+describe('modules that do not parse, and generated types', () => {
+  it('a module that does not parse is one error, not a missing export per icon', () => {
+    const issues = issuesOf({
+      modules: modules({
+        'index.js': "export {XIcon} from './icons/x.js';\nexport {SearchIcon\n",
+      }),
+    });
+    expect(issues).toEqual([
+      expect.objectContaining({code: 'icon_module_invalid', severity: 'error'}),
+    ]);
+    expect(issues[0].message).toContain('index.js does not parse');
+  });
+
+  it("a generated module's declaration file that is missing or stale is an error", () => {
+    const generated = './icon-sets/glyphs/glyphs.generated.js';
+    const withGenerated = data(d => (d.generated = generated));
+    const setup = (/** @type {string | null} */ types) => {
+      fs.rmSync(dir, {recursive: true, force: true});
+      writeIconPackage(dir, {data: withGenerated});
+      const file = path.join(dir, generated);
+      fs.mkdirSync(path.dirname(file), {recursive: true});
+      fs.writeFileSync(file, "export {XIcon} from '../../icons/x.js';\n");
+      if (types != null) {
+        fs.writeFileSync(file.replace(/\.js$/u, '.d.ts'), types);
+      }
+      return iconSetIssues(dir, {
+        name: '@acme/glyphs',
+        iconSets: path.join(dir, 'icon-sets'),
+      });
+    };
+    const codes = (/** @type {any[]} */ issues) =>
+      issues
+        .map(issue => issue.code)
+        .filter(code => code === 'icon_generated_types_mismatch');
+    expect(codes(setup(null))).toEqual(['icon_generated_types_mismatch']);
+    expect(codes(setup('export {};\n'))).toEqual([
+      'icon_generated_types_mismatch',
+    ]);
+    expect(
+      codes(
+        setup(generatedTypesText(["export {XIcon} from '../../icons/x.js';"])),
+      ),
+    ).toEqual([]);
+  });
 });

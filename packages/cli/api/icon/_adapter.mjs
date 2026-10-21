@@ -40,10 +40,13 @@ export {
   resolveIconSource,
   generatedModulePath,
   iconExportName,
+  iconNaming,
+  modulePrefix,
   setModuleNote,
   variantExportName,
   writeGeneratedIcons,
   writeIconSetData,
+  THEME_MAP_NAME,
 } from '../../foundation/discovery/icon-set-writer.mjs';
 export {exportValueKind} from '../../foundation/discovery/module-exports.mjs';
 

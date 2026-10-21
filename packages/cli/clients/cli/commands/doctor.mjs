@@ -85,13 +85,15 @@ function printHuman(report) {
 
 /**
  * @param {Array<{code: string, severity: string, message: string}>} issues
+ * @param {Set<string>} [seen] issues an earlier check printed
  * @returns {import('../formatters/index.mjs').Block[]}
  */
-function issueBlocks(issues) {
-  if (issues.length === 0) return [];
+function issueBlocks(issues, seen) {
+  const fresh = unseen(issues, seen);
+  if (fresh.length === 0) return alsoApply(issues, fresh);
   return [
     section('Integration issues'),
-    records(issues, {
+    records(fresh, {
       fields: ['severity', 'code', 'message', 'suggestion'],
       format: {
         severity: statusToken,
@@ -101,6 +103,40 @@ function issueBlocks(issues) {
       },
       labels: {suggestion: 'suggest'},
     }),
+    ...alsoApply(issues, fresh),
+  ];
+}
+
+/**
+ * The issues not printed yet, recording them as printed. `integration
+ * check` runs several checks that each report the package-wide issues (an
+ * icon set's, say); each is printed once, under the first check.
+ * @template {{code: string, message: string}} T
+ * @param {T[]} issues
+ * @param {Set<string> | undefined} seen
+ * @returns {T[]}
+ */
+function unseen(issues, seen) {
+  if (!seen) return issues;
+  const fresh = issues.filter(
+    issue => !seen.has(`${issue.code}\0${issue.message}`),
+  );
+  for (const issue of issues) seen.add(`${issue.code}\0${issue.message}`);
+  return fresh;
+}
+
+/**
+ * One line naming the issues an earlier check already printed.
+ * @param {unknown[]} issues
+ * @param {unknown[]} fresh
+ */
+function alsoApply(issues, fresh) {
+  const repeated = issues.length - fresh.length;
+  if (repeated === 0) return [];
+  return [
+    text(
+      `${repeated} package-wide issue${repeated === 1 ? '' : 's'} listed above also appl${repeated === 1 ? 'ies' : 'y'} here.`,
+    ),
   ];
 }
 
@@ -185,8 +221,9 @@ function docTypesBlocks(report, failed) {
 
 /**
  * @param {import('../../../api/integration/validate-integration.type.mjs').ValidateIntegrationResponse['data']} data
+ * @param {Set<string>} [seen] issues an earlier check printed, printed once
  */
-function printIntegrationValidation(data) {
+function printIntegrationValidation(data, seen) {
   const {warnings, errors} = summarizeIssues(data.issues);
   emit(
     section(
@@ -194,9 +231,14 @@ function printIntegrationValidation(data) {
     ),
     ...(data.issues.length > 0
       ? [
-          records(data.issues, {
-            fields: ['severity', 'code', 'message'],
-            format: {severity: statusToken},
+          records(unseen(data.issues, seen), {
+            fields: ['severity', 'code', 'message', 'suggestion'],
+            format: {
+              severity: statusToken,
+              suggestion: (/** @type {{map: string, icon: string}} */ value) =>
+                `map.${value.map} = "${value.icon}"`,
+            },
+            labels: {suggestion: 'suggest'},
           }),
         ]
       : [text('[ok] No integration issues found.')]),
@@ -210,13 +252,14 @@ function printIntegrationValidation(data) {
 
 /**
  * @param {import('../../../api/integration/authoring-checks.type.mjs').IntegrationTemplateConflictResponse['data']} data
+ * @param {Set<string>} [seen] issues an earlier check printed, printed once
  */
-function printTemplateConflicts(data) {
+function printTemplateConflicts(data, seen) {
   const output = [
     section(
       `Checking integration templates: ${integrationLabel(data) ?? '(local package)'}`,
     ),
-    ...issueBlocks(data.issues),
+    ...issueBlocks(data.issues, seen),
   ];
   if (data.conflicts.length === 0 && data.issues.length === 0) {
     output.push(text('[ok] No template ids conflict with Core.'));
@@ -353,13 +396,14 @@ function propDriftBlocks(report, failed) {
 
 /**
  * @param {import('../../../api/integration/authoring-checks.type.mjs').IntegrationComponentConflictResponse['data']} data
+ * @param {Set<string>} [seen] issues an earlier check printed, printed once
  */
-function printComponentConflicts(data) {
+function printComponentConflicts(data, seen) {
   const output = [
     section(
       `Checking integration components: ${integrationLabel(data) ?? '(local package)'}`,
     ),
-    ...issueBlocks(data.issues),
+    ...issueBlocks(data.issues, seen),
   ];
   // An [ok] after a failed check reads as a pass: say nothing it could not check.
   const failed = data.issues.some(issue => issue.severity === 'error');
@@ -390,13 +434,14 @@ function printComponentConflicts(data) {
 
 /**
  * @param {import('../../../api/integration/authoring-checks.type.mjs').IntegrationDocConflictResponse['data']} data
+ * @param {Set<string>} [seen] issues an earlier check printed, printed once
  */
-function printDocConflicts(data) {
+function printDocConflicts(data, seen) {
   const output = [
     section(
       `Checking integration docs: ${integrationLabel(data) ?? '(local package)'}`,
     ),
-    ...issueBlocks(data.issues),
+    ...issueBlocks(data.issues, seen),
   ];
   if (
     !data.issues.some(
@@ -426,16 +471,17 @@ function printDocConflicts(data) {
  * Print one `doctor integration` check's result as its own subcommand prints
  * it. `astryx integration check` prints each check it runs through this.
  * @param {import('../../../api/integration/integration-check.type.mjs').IntegrationCheckResponse} response
+ * @param {Set<string>} [seen] issues an earlier check printed, printed once
  */
-export function printIntegrationCheckResponse(response) {
+export function printIntegrationCheckResponse(response, seen) {
   if (response.type === 'integration.validate') {
-    printIntegrationValidation(response.data);
+    printIntegrationValidation(response.data, seen);
   } else if (response.type === 'integration.component-conflicts') {
-    printComponentConflicts(response.data);
+    printComponentConflicts(response.data, seen);
   } else if (response.type === 'integration.template-conflicts') {
-    printTemplateConflicts(response.data);
+    printTemplateConflicts(response.data, seen);
   } else {
-    printDocConflicts(response.data);
+    printDocConflicts(response.data, seen);
   }
 }
 

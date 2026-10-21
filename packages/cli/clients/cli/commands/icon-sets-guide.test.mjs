@@ -39,10 +39,31 @@ describe('icon-set authoring guide', () => {
       'icon_module_not_public',
       'icon_not_component',
       'icon_theme_map_unchecked',
+      'icon_module_invalid',
+      'icon_generated_types_mismatch',
+      'themeIcons',
+      "defineTheme({name: 'brand', icons: themeIcons})",
+      'prepublishOnly',
+      'optional peer',
+      'never fail',
       'adapter',
       '`iconSet`',
     ]) {
       expect(stdout).toContain(phrase);
     }
+  });
+});
+
+describe('versioning guide', () => {
+  it('tells icon-set authors to declare the CLI as an optional peer, and what an older CLI says', async () => {
+    const {status, stdout} = await runCli([
+      'docs',
+      'cli/integrations/ship/versioning',
+      '--full',
+    ]);
+    expect(status).toBe(0);
+    expect(stdout).toContain('`>=0.8.0` when you ship an icon set');
+    expect(stdout).toContain('Always optional in `peerDependenciesMeta`');
+    expect(stdout).toContain('published against a newer Astryx CLI');
   });
 });

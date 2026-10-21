@@ -80,7 +80,7 @@ import {checkAppThemes, checkThemes} from './theme-checks.mjs';
  *   `invalid_doc` issues from the project's contributed docs.
  * @property {string|null} [docsCatalogError] - Why the project's docs catalog
  *   could not be built, when it could not.
- * @property {Array<{package: string, code: string, severity: 'warning'|'error', message: string}>|null} [integrationIssues]
+ * @property {Array<{package: string, code: string, severity: 'info'|'warning'|'error', message: string}>|null} [integrationIssues]
  * @property {Array<{spec: string, error: string}>|null} [autolinkFailures]
  * @property {Array<{spec: string, label: string, error: string|null}>|null} [configuredIntegrations]
  *   Every name astryx.config lists, from the provider ledger: the package it
@@ -1412,7 +1412,7 @@ export async function runChecks(options = {}) {
   let docsCatalogIssues = [];
   /** @type {string|null} */
   let docsCatalogError = null;
-  /** @type {Array<{package: string, code: string, severity: 'warning'|'error', message: string}>|null} */
+  /** @type {Array<{package: string, code: string, severity: 'info'|'warning'|'error', message: string}>|null} */
   let integrationIssues = null;
   /** @type {Array<{spec: string, error: string}>|null} */
   let autolinkFailures = null;

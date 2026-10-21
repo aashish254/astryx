@@ -228,6 +228,18 @@ describe('icon add', () => {
       ),
     ).toBe(true);
     expect(dataOf('outline').map).toEqual({crossOut: 'cross'});
+    expect(
+      fs.readFileSync(
+        path.join(
+          pkg,
+          'icon-sets',
+          'outline',
+          'definitions',
+          'crossOut.doc.mjs',
+        ),
+        'utf-8',
+      ),
+    ).toContain("words: ['strike', 'cross']");
     const refused = await json([
       'icon',
       'add',
@@ -438,4 +450,187 @@ describe('icon use', () => {
       expect.objectContaining({name: 'glyphs'}),
     );
   });
+});
+
+describe('a library of icon data, through the adapter', () => {
+  beforeEach(() => {
+    const lib = path.join(pkg, 'node_modules', '@acme', 'glyph-data');
+    fs.mkdirSync(lib, {recursive: true});
+    fs.writeFileSync(
+      path.join(lib, 'package.json'),
+      JSON.stringify({
+        name: '@acme/glyph-data',
+        version: '1.0.0',
+        type: 'module',
+        exports: {'.': './index.js'},
+      }),
+    );
+    fs.writeFileSync(
+      path.join(lib, 'index.js'),
+      [
+        "export const glyphEye = {path: 'M1 1'};",
+        "export const glyphEyeOff = {path: 'M1 2'};",
+        "export const glyphTrash = {path: 'M2 2'};",
+        "export const glyphX = {path: 'M3 3'};",
+        '',
+      ].join('\n'),
+    );
+    fs.mkdirSync(path.join(pkg, 'src'));
+    fs.writeFileSync(
+      path.join(pkg, 'src', 'adapt.js'),
+      'export function adapt(data) { return () => null; }\n',
+    );
+    fs.writeFileSync(
+      path.join(pkg, 'index.js'),
+      "export * from './icon-sets/outline/outline.generated.js';\n",
+    );
+  });
+
+  /** Declare the adapter in the set's data file. */
+  const declareAdapter = () => {
+    const file = path.join(pkg, 'icon-sets', 'outline', 'outline.icons.json');
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    data.adapter = {module: './src/adapt.js', export: 'adapt'};
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  };
+  const generated = () =>
+    fs.readFileSync(
+      path.join(pkg, 'icon-sets', 'outline', 'outline.generated.js'),
+      'utf-8',
+    );
+
+  it('the bulk wrap finds nothing until the adapter is declared, then wraps every data export without the shared prefix', async () => {
+    const before = await json([
+      'integration',
+      'add',
+      'icon-set',
+      'outline',
+      '--from',
+      '@acme/glyph-data',
+    ]);
+    expect(before.code).toBe(1);
+    expect(before.body.error).toContain('adapter');
+    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    declareAdapter();
+    const wrapped = await json([
+      'integration',
+      'add',
+      'icon-set',
+      'outline',
+      '--from',
+      '@acme/glyph-data',
+    ]);
+    expect(wrapped.code).toBe(0);
+    expect(
+      dataOf('outline').icons.map((/** @type {any} */ i) => [i.id, i.export]),
+    ).toEqual([
+      ['eye', 'EyeIcon'],
+      ['eye-off', 'EyeOffIcon'],
+      ['trash', 'TrashIcon'],
+      ['x', 'XIcon'],
+    ]);
+    expect(generated()).toContain(
+      'export const EyeIcon = adaptIcon(EyeIconSource);',
+    );
+    expect(generated()).toContain(
+      "import {glyphEye as EyeIconSource} from '@acme/glyph-data';",
+    );
+  });
+
+  it('icon add appended twice writes the adapter import once, and the module still parses', async () => {
+    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    declareAdapter();
+    for (const [name, definition] of [
+      ['glyphTrash', 'delete'],
+      ['glyphEye', 'view'],
+      ['glyphX', 'close'],
+    ]) {
+      const added = await json([
+        'icon',
+        'add',
+        name,
+        '--from',
+        '@acme/glyph-data',
+        ...(definition === 'view'
+          ? [
+              '--new-definition',
+              'peek',
+              '--description',
+              'Peek.',
+              '--words',
+              'peek',
+            ]
+          : ['--definition', definition]),
+      ]);
+      expect(added.code, name).toBe(0);
+    }
+    const text = generated();
+    expect(text.match(/as adaptIcon/gu)).toHaveLength(1);
+    // The library prefix is left out of the id and the export name.
+    expect(dataOf('outline').map).toMatchObject({delete: 'trash', close: 'x'});
+    expect(text).toContain(
+      'export const TrashIcon = adaptIcon(TrashIconSource);',
+    );
+    // A built-in mapping lands in the theme map, and the types follow.
+    expect(text).toContain(
+      "close: createElement(XIcon, {'aria-hidden': true, 'width': '1em', 'height': '1em'}),",
+    );
+    const types = fs.readFileSync(
+      path.join(pkg, 'icon-sets', 'outline', 'outline.generated.d.ts'),
+      'utf-8',
+    );
+    expect(types).toContain(
+      'export declare const TrashIcon: ComponentType<SVGProps<SVGSVGElement>>;',
+    );
+    expect(types).toContain(
+      'export declare const themeIcons: {readonly close: ReactElement};',
+    );
+    // icon map rewrites the theme map.
+    await json(['icon', 'map', 'close', 'trash']);
+    expect(generated()).toContain('close: createElement(TrashIcon,');
+    // Integration check reads it all: no parse error, no missing export, no
+    // theme-map or types mismatch.
+    const check = await runCli(['integration', 'check', '--json'], pkg);
+    const codes = JSON.stringify(JSON.parse(check.stdout));
+    for (const code of [
+      'icon_module_invalid',
+      'icon_export_missing',
+      'icon_theme_map_mismatch',
+      'icon_generated_types_mismatch',
+    ]) {
+      expect(codes, code).not.toContain(code);
+    }
+  }, 60_000);
+});
+
+describe('module resolution', () => {
+  it('resolves the library from a set package nested deeper than six folders below node_modules', async () => {
+    const deep = path.join(tmp, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'icons');
+    fs.mkdirSync(path.dirname(deep), {recursive: true});
+    fs.renameSync(pkg, deep);
+    // The library is installed at the top, as a hoisting package manager does.
+    fs.mkdirSync(path.join(tmp, 'node_modules', '@acme'), {recursive: true});
+    fs.renameSync(
+      path.join(deep, 'node_modules', '@acme', 'glyph-library'),
+      path.join(tmp, 'node_modules', '@acme', 'glyph-library'),
+    );
+    pkg = deep;
+    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    const added = await json([
+      'icon',
+      'add',
+      'Bin',
+      '--from',
+      '@acme/glyph-library',
+      '--definition',
+      'delete',
+    ]);
+    expect(added.code).toBe(0);
+    fs.writeFileSync(
+      path.join(pkg, 'index.js'),
+      "export * from './icon-sets/outline/outline.generated.js';\n",
+    );
+    const check = await runCli(['integration', 'check', '--json'], pkg);
+    expect(check.stdout).not.toContain('icon_export_missing');
+  }, 60_000);
 });

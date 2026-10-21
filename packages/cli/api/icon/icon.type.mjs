@@ -151,6 +151,7 @@
  * @property {string | null} data.icon - The icon id now mapped; null after `remove`.
  * @property {string | null} data.previous - The icon id it replaced.
  * @property {boolean} data.changed - Whether the file was written.
+ * @property {string[]} [data.files] - The generated module and its types, when its theme map was rewritten.
  */
 
 /**

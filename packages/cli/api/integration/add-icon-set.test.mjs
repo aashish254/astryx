@@ -58,13 +58,27 @@ describe('integrationAdd icon-set', () => {
         files: [
           'icon-sets/outline/outline.doc.mjs',
           'icon-sets/outline/outline.icons.json',
+          'icon-sets/outline/outline.generated.js',
+          'icon-sets/outline/outline.generated.d.ts',
           'package.json',
           'astryx.integration.mjs',
         ],
         written: true,
         dryRun: false,
+        icons: 0,
+        notes: [
+          'Add `export * from \'./icon-sets/outline/outline.generated.js\';` to the module "@acme/icons" resolves to (and to its types), so the icons and `themeIcons` import from it.',
+          'Run `astryx integration check` to see the icon definitions still to map.',
+        ],
       },
     });
+    // The generated module starts with an empty theme map, and its types.
+    expect(read('icon-sets/outline/outline.generated.js')).toContain(
+      'export const themeIcons = {};',
+    );
+    expect(read('icon-sets/outline/outline.generated.d.ts')).toContain(
+      'export declare const themeIcons: {};',
+    );
 
     const doc = read('icon-sets/outline/outline.doc.mjs');
     expect(doc).toContain(
@@ -76,6 +90,8 @@ describe('integrationAdd icon-set', () => {
     expect(JSON.parse(read('icon-sets/outline/outline.icons.json'))).toEqual({
       schemaVersion: 1,
       module: '@acme/icons',
+      generated: './icon-sets/outline/outline.generated.js',
+      themeMap: 'themeIcons',
       map: {},
       icons: [],
     });

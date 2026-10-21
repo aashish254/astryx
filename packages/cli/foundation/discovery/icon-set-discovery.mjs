@@ -302,7 +302,8 @@ export function resolveIconModule(specifier, fromDir, self = {}) {
   const packageDir =
     self.name === name && self.dir
       ? self.dir
-      : findInstalledPackage(fromDir, name);
+      : // Node's own resolution: every ancestor's node_modules, no depth cap.
+        findInstalledPackage(fromDir, name, Infinity);
   if (!packageDir) return null;
   /** @type {Record<string, unknown>} */
   let pkg;

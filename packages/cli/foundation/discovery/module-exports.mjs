@@ -204,7 +204,12 @@ function resolvePackageModule(specifier, fromFile) {
   const count = specifier.startsWith('@') ? 2 : 1;
   const name = parts.slice(0, count).join('/');
   const rest = parts.slice(count).join('/');
-  const packageDir = findInstalledPackage(path.dirname(fromFile), name);
+  // Node's own resolution: every ancestor's node_modules, no depth cap.
+  const packageDir = findInstalledPackage(
+    path.dirname(fromFile),
+    name,
+    Infinity,
+  );
   if (!packageDir) return null;
   /** @type {Record<string, any>} */
   let pkg;
@@ -236,6 +241,44 @@ function resolvePackageModule(specifier, fromFile) {
       }
     }) ?? null
   );
+}
+
+/**
+ * The first module, from `file` through its relative re-exports, that does
+ * not parse, with the parser's message; null when every one parses.
+ * @param {string} file
+ * @returns {{file: string, message: string} | null}
+ */
+export function moduleParseFailure(file) {
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @type {string[]} */
+  const queue = [file];
+  while (queue.length > 0) {
+    const next = /** @type {string} */ (queue.shift());
+    if (seen.has(next)) continue;
+    seen.add(next);
+    let ast;
+    try {
+      ast = parseModule(next);
+    } catch (error) {
+      return {
+        file: next,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+    for (const type of ['ExportNamedDeclaration', 'ExportAllDeclaration']) {
+      for (const node of nodesOfType(ast.program, type)) {
+        const specifier = node.source?.value;
+        if (typeof specifier !== 'string' || !specifier.startsWith('.')) {
+          continue;
+        }
+        const target = resolveLocalModule(specifier, next);
+        if (target) queue.push(target);
+      }
+    }
+  }
+  return null;
 }
 
 /**

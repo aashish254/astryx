@@ -49,6 +49,9 @@ import {
   definitionFile,
   findLocalIconSet,
   generatedModulePath,
+  generatedModuleText,
+  generatedTypesPath,
+  THEME_MAP_NAME,
   iconSetDataText,
   libraryIcons,
   resolveIconSource,
@@ -1306,10 +1309,15 @@ async function addIconSet(name, options) {
     }
   }
 
-  // --from: every component the library exports becomes an icon, re-exported
-  // through the set's generated module.
-  /** @type {{icons: Array<{id: string, export: string, words: string[]}>, map: Record<string, string>, generated?: string, lines: string[], note?: string}} */
-  const wrapped = {icons: [], map: {}, lines: []};
+  // The set's generated icons module, with its theme map, starts empty; with
+  // --from, every component the library exports becomes an icon in it.
+  const generated = `./${projectPath(path.relative(packageDir, path.join(setDir, `${name}.generated.js`)))}`;
+  /** @type {Array<{id: string, export: string, words: string[]}>} */
+  let icons = [];
+  /** @type {Record<string, string>} */
+  let map = {};
+  /** @type {import('../../foundation/discovery/icon-set-writer.mjs').GeneratedIcon[]} */
+  let exportsToWrite = [];
   if (from != null) {
     const source = await iconAuthoring(() =>
       resolveIconSource(from, {packageDir, pkg}),
@@ -1317,26 +1325,35 @@ async function addIconSet(name, options) {
     const found = libraryIcons(source.file);
     if (found.length === 0) {
       throw new AstryxError(
-        `"${from}" exports no icon components this command can read. Add icons one at a time with \`astryx icon add <Export> --from ${from}\`.`,
+        `"${from}" exports no icon components this command can read. If its icons are data (objects or SVG strings), run \`astryx integration add icon-set ${name}\`, declare an "adapter" in ${name}.icons.json, and run this command again; or add icons one at a time with \`astryx icon add <Export> --from ${from}\`.`,
         undefined,
         ERROR_CODES.ERR_NOT_FOUND,
       );
     }
-    wrapped.generated = `./${projectPath(path.relative(packageDir, path.join(setDir, `${name}.generated.js`)))}`;
-    wrapped.icons = found.map(icon => ({
+    icons = found.map(icon => ({
       id: icon.id,
       export: icon.name,
       words: icon.id.split('-'),
     }));
-    wrapped.map = exactDefinitionMap(wrapped.icons, {});
-    wrapped.lines = found
-      .map(icon =>
-        icon.export === icon.name
-          ? `export {${icon.name}} from '${source.module}';`
-          : `export {${icon.export} as ${icon.name}} from '${source.module}';`,
-      )
-      .sort();
+    map = exactDefinitionMap(icons, {});
+    exportsToWrite = found.map(icon => ({
+      name: icon.name,
+      from: source.module,
+      source: icon.export,
+      adapt: icon.adapt,
+    }));
   }
+  const data = {
+    schemaVersion: /** @type {const} */ (1),
+    module: pkg.name,
+    generated,
+    themeMap: THEME_MAP_NAME,
+    map,
+    icons,
+  };
+  const generatedText = await iconAuthoring(() =>
+    generatedModuleText(packageDir, generated, null, data, exportsToWrite),
+  );
 
   const displayName = kebabToTitle(name);
   // The artwork license defaults to the package's own license; the author
@@ -1357,25 +1374,27 @@ async function addIconSet(name, options) {
     '};',
     '',
   ].join('\n');
-  const dataContents = iconSetDataText({
-    schemaVersion: 1,
-    module: pkg.name,
-    ...(wrapped.generated ? {generated: wrapped.generated} : {}),
-    map: wrapped.map,
-    icons: wrapped.icons,
-  });
+  const dataContents = iconSetDataText(data);
 
   /** @type {import('./add-helpers.mjs').WritePlan[]} */
   const plans = [
     {path: docFile, contents: docContents, createOnly: true},
     {path: dataFile, contents: dataContents, createOnly: true},
   ];
-  if (wrapped.generated) {
+  plans.push({
+    path: assertWithin(generated, packageDir, {
+      label: 'generated icons module',
+    }),
+    contents: generatedText.js,
+    createOnly: true,
+  });
+  const typesPath = generatedTypesPath(generated);
+  if (typesPath && generatedText.dts != null) {
     plans.push({
-      path: assertWithin(wrapped.generated, packageDir, {
-        label: 'generated icons module',
+      path: assertWithin(typesPath, packageDir, {
+        label: 'generated icon types',
       }),
-      contents: generatedModuleText(wrapped.lines),
+      contents: generatedText.dts,
       createOnly: true,
     });
   }
@@ -1454,27 +1473,14 @@ async function addIconSet(name, options) {
     writtenFiles,
     dryRun,
   );
-  if (wrapped.generated) {
-    result.data.icons = wrapped.icons.length;
+  {
+    result.data.icons = icons.length;
     result.data.notes = [
-      `Add \`export * from '${wrapped.generated}';\` to the module "${pkg.name}" resolves to, so the icons import from it.`,
+      `Add \`export * from '${generated}';\` to the module "${pkg.name}" resolves to (and to its types), so the icons and \`${THEME_MAP_NAME}\` import from it.`,
       'Run `astryx integration check` to see the icon definitions still to map.',
     ];
   }
   return result;
-}
-
-/**
- * The generated icons module's text, for a fresh wrap.
- * @param {string[]} lines
- */
-function generatedModuleText(lines) {
-  return [
-    '// Generated by `astryx icon add`: one export per icon of this set.',
-    '// Edit with `astryx icon add`; a line edited by hand is kept as written.',
-    ...lines,
-    '',
-  ].join('\n');
 }
 
 /**
@@ -1539,7 +1545,9 @@ async function refreshIconSet(
     const where = await findLocalIconSet(cwd, name);
     const {set} = where;
     const source = resolveIconSource(from, where);
-    const found = libraryIcons(source.file);
+    const found = libraryIcons(source.file, {
+      adapter: Boolean(set.data.adapter),
+    });
     const previous = new Map(set.data.icons.map(icon => [icon.id, icon]));
     const icons = found.map(icon => {
       const prior = previous.get(icon.id);
@@ -1563,6 +1571,7 @@ async function refreshIconSet(
     const next = {
       ...set.data,
       generated,
+      ...(set.data.themeMap ? {} : {themeMap: THEME_MAP_NAME}),
       map: exactDefinitionMap(icons, kept),
       icons,
     };
@@ -1572,15 +1581,15 @@ async function refreshIconSet(
       const written = writeGeneratedIcons(
         packageDir,
         generated,
-        set.data.adapter,
+        next,
         found.map(icon => ({
           name: icon.name,
           from: source.module,
           source: icon.export,
-          adapt: false,
+          adapt: icon.adapt,
         })),
       );
-      if (written.changed) files.push(generated.replace(/^\.\//u, ''));
+      files.push(...written.files);
       try {
         writeIconSetData(set, next);
       } catch (error) {

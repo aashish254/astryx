@@ -9,7 +9,7 @@ export const doc = {
   displayName: 'integrationAddIconSet()',
   summary: 'Add an icon set to an integration package.',
   description:
-    'Creates an integration manifest when the package has none, writes the set directory with its strongly typed same-stem IconSetDoc and a starter data file (schemaVersion 1, module set to the package name, no icons and an empty map yet), declares the iconSets root on first use, and includes the manifest and root in package.json files when the package already uses an allowlist. Every path is confined to the package and existing files are never overwritten.',
+    "Creates an integration manifest when the package has none, writes the set directory with its strongly typed same-stem IconSetDoc and a starter data file (schemaVersion 1, module set to the package name, no icons and an empty map yet), and the set's generated module with its declaration file and an empty themeIcons theme map; with from, it wraps a library's icons into them. It declares the iconSets root on first use, and includes the manifest and root in package.json files when the package already uses an allowlist. Every path is confined to the package and existing files are never overwritten.",
   importPath: '@astryxdesign/cli/api',
   signature:
     'integrationAddIconSet(name: string, options?: IntegrationAddIconSetOptions): Promise<IntegrationAddResponse>',

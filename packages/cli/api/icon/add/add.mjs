@@ -37,12 +37,14 @@ import {
   mappableDefinitions,
   exportValueKind,
   generatedModulePath,
-  iconExportName,
+  iconNaming,
+  modulePrefix,
   variantExportName,
   rankIcons,
   resolveIconSource,
   setModuleNote,
   writeGeneratedIcons,
+  THEME_MAP_NAME,
   writeDefinitionFile,
   writeIconSetData,
 } from '../_adapter.mjs';
@@ -118,7 +120,20 @@ export function iconAdd(exportName, options) {
     }
     const generated = generatedModulePath(set, packageDir);
     const module = set.data.module;
-    const id = givenId ?? iconIdOf(exportName);
+    // A library prefix every icon export shares (`feather` in `featherEye`)
+    // is left out of the id and the set's export name, as the bulk wrap does.
+    const shared = useDefault
+      ? []
+      : modulePrefix(source.file, {adapter: Boolean(set.data.adapter)});
+    const nameWords = iconIdOf(exportName).split('-');
+    const prefix =
+      shared.length > 0 &&
+      nameWords.length > shared.length &&
+      shared.every((word, index) => nameWords[index] === word)
+        ? shared
+        : [];
+    const naming = iconNaming(exportName, prefix);
+    const id = givenId ?? naming.id;
     const variantValues = {
       ...(appearance != null ? {appearance} : {}),
       ...(size != null ? {size} : {}),
@@ -129,11 +144,8 @@ export function iconAdd(exportName, options) {
     // icon's name with the variant's values.
     const baseIcon = set.data.icons.find(each => each.id === id);
     const setName = asVariant
-      ? variantExportName(
-          baseIcon?.export ?? iconExportName(exportName),
-          variantValues,
-        )
-      : iconExportName(exportName);
+      ? variantExportName(baseIcon?.export ?? naming.name, variantValues)
+      : naming.name;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id)) {
       throw new AstryxError(
         `"${exportName}" gives no icon id; pass --id with a lower-kebab id.`,
@@ -234,15 +246,19 @@ export function iconAdd(exportName, options) {
     const map = {...(set.data.map ?? {})};
     if (mapped) map[mapped] = id;
 
+    const next = {
+      ...set.data,
+      ...(set.data.generated ? {} : {generated}),
+      ...(set.data.themeMap ? {} : {themeMap: THEME_MAP_NAME}),
+      map,
+      icons,
+    };
     /** @type {string[]} */
     const files = [];
-    const written = writeGeneratedIcons(
-      packageDir,
-      generated,
-      set.data.adapter,
-      [{name: setName, from: source.module, source: sourceExport, adapt}],
-    );
-    if (written.changed) files.push(generated.replace(/^\.\//u, ''));
+    const written = writeGeneratedIcons(packageDir, generated, next, [
+      {name: setName, from: source.module, source: sourceExport, adapt},
+    ]);
+    files.push(...written.files);
     let undoDefinition = () => {};
     if (created) {
       undoDefinition = writeDefinitionFile(set, created);
@@ -256,12 +272,6 @@ export function iconAdd(exportName, options) {
           .join('/'),
       );
     }
-    const next = {
-      ...set.data,
-      ...(set.data.generated ? {} : {generated}),
-      map,
-      icons,
-    };
     const changed =
       JSON.stringify(next) !== JSON.stringify(set.data) ||
       created != null ||
