@@ -1176,7 +1176,9 @@ export async function checkAuthoringDocs(_ctx, options = {}) {
       id,
       label,
       status: 'pass',
-      message: `All ${audit.sections} authoring schemas are readable in \`astryx docs authoring\`.`,
+      // Experimental schemas are checked like every other but not counted,
+      // so the count is unchanged without them (spec:AST-017 FR27).
+      message: `All ${audit.sections - (audit.experimental ?? 0)} authoring schemas are readable in \`astryx docs authoring\`.`,
     };
   } catch (err) {
     return {
@@ -1244,7 +1246,9 @@ export async function checkCliDocs(_ctx, options = {}) {
       id,
       label,
       status: 'pass',
-      message: `All ${audit.docs} CLI docs are readable: ${audit.tree} in the \`astryx docs cli\` tree and ${audit.authoring} in \`astryx docs authoring\`.`,
+      // Experimental docs are checked like every other but not counted
+      // (spec:AST-017 FR27).
+      message: `All ${audit.docs - audit.experimental.docs} CLI docs are readable: ${audit.tree - audit.experimental.tree} in the \`astryx docs cli\` tree and ${audit.authoring - audit.experimental.authoring} in \`astryx docs authoring\`.`,
     };
   } catch (err) {
     return {
@@ -1318,7 +1322,11 @@ export async function checkDocsTree(_ctx, options = {}) {
         fix: DOCS_TREE_FIX,
       };
     }
-    const nodes = [...tree.nodes.values()];
+    // Experimental docs are checked like every other but not counted
+    // (spec:AST-017 FR27).
+    const nodes = [...tree.nodes.values()].filter(
+      node => !isExperimentalTreeNode(tree, node),
+    );
     const namespaces = nodes.filter(node => node.kind === 'namespace').length;
     return {
       id,
@@ -1335,6 +1343,19 @@ export async function checkDocsTree(_ctx, options = {}) {
       fix: 'Reinstall @astryxdesign/cli.',
     };
   }
+}
+
+/**
+ * Is this docs-tree node an experimental surface's doc (spec:AST-017 FR27):
+ * marked experimental itself, or under an experimental namespace?
+ * @param {any} tree
+ * @param {any} node
+ */
+function isExperimentalTreeNode(tree, node) {
+  return [...tree.ancestors(node), node].some(
+    (/** @type {any} */ each) =>
+      each.ref?.selfDoc?.stability === 'experimental',
+  );
 }
 
 /**
@@ -1363,16 +1384,23 @@ export async function checkDocsProgressiveDisclosure(ctx) {
   if (catalog) {
     // A guide the docs tree places is a topic read by its route; it is held
     // to the same budget as every flat topic.
-    const guides = [...(await projectTree(catalog)).nodes.values()]
+    const tree = await projectTree(catalog);
+    const placed = [...tree.nodes.values()]
       // A flat topic in the Unorganized level is checked above, as a topic.
-      .filter(node => node.kind === 'generic' && !node.ref?.flatTopic)
-      .map(guideEntry);
+      .filter(node => node.kind === 'generic' && !node.ref?.flatTopic);
+    // An experimental guide is checked but not counted (spec:AST-017 FR27).
+    const uncounted = new Set(
+      placed
+        .filter(node => isExperimentalTreeNode(tree, node))
+        .map(node => node.route),
+    );
+    const guides = placed.map(guideEntry);
     for (const entry of [...catalog.entries(), ...guides]) {
       for (const lang of [null, ...overlayLanguages(entry)]) {
         const where = lang ? `${entry.name} [${lang}]` : entry.name;
         try {
           const doc = detailView(await compileTopic(catalog, entry, lang));
-          if (lang == null) topics += 1;
+          if (lang == null && !uncounted.has(entry.name)) topics += 1;
           const indexBytes = docsIndexBytes(buildDocsIndexData(doc));
           if (indexBytes > DOC_OUTPUT_BUDGET_BYTES) {
             problems.push(

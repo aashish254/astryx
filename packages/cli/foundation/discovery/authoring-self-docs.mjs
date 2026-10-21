@@ -222,6 +222,7 @@ export async function buildAuthoringTopic() {
  * @param {{root?: string, sources?: string[], budget?: number}} [options]
  * @returns {Promise<{
  *   sections: number,
+ *   experimental: number,
  *   unreachable: string[],
  *   failed: {source: string, error: string}[],
  *   oversized: {key: string, title: string, bytes: number}[],
@@ -240,6 +241,9 @@ export async function auditAuthoringSelfDocs({
   const topic = buildAuthoringReferenceDoc(loaded.map(entry => entry.doc));
   return {
     sections: topic.sections.length,
+    // Experimental schemas (spec:AST-017 FR27), counted apart.
+    experimental: loaded.filter(({doc}) => doc?.stability === 'experimental')
+      .length,
     unreachable,
     failed,
     oversized: oversizedDocSections(topic.sections, budget),

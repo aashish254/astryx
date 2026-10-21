@@ -7,8 +7,9 @@
  *
  *   The goldens under `__golden__/no-icon-set/` were written by the CLI
  *   without the icon-set feature, so a byte that an experimental surface adds
- *   to search or to a template copy fails here. Help and the manifest gain
- *   only the `experimental` group.
+ *   to search, a template copy, or doctor's doc counts fails here. Help, the
+ *   manifest, and the `astryx docs cli` listing gain only the experimental
+ *   group or namespace, the one marked entry point FR27 allows.
  *
  * Update after an intended change to stable output: `vitest run -u` on this
  * file, then review the diff of `__golden__/no-icon-set/`; a diff that names
@@ -137,12 +138,29 @@ describe('with no icon set, stable output is unchanged', () => {
     expect(lines[0]).toMatch(/^\s+experimental\s+\[experimental\] /);
   });
 
-  it('doctor has no icon-sets check', () => {
+  it('doctor has no icon-sets check, and its doc counts leave experimental docs out', async () => {
     const res = astryx(['doctor', '--json']);
     const checks = JSON.parse(res.stdout).data.checks;
     expect(
       checks.map((/** @type {{id: string}} */ check) => check.id),
     ).not.toContain('icon-sets');
+    const counts = checks
+      .filter((/** @type {{id: string}} */ check) =>
+        [
+          'authoring-docs',
+          'cli-docs',
+          'docs-tree',
+          'docs-progressive-disclosure',
+        ].includes(check.id),
+      )
+      .map(
+        (/** @type {{id: string, message: string}} */ check) =>
+          `${check.id}: ${check.message}`,
+      )
+      .join('\n');
+    await expect(`${counts}\n`).toMatchFileSnapshot(
+      path.join(GOLDEN, 'doctor-doc-counts.txt'),
+    );
   });
 
   it('no stable command family gains an icon-set subcommand or kind', () => {
