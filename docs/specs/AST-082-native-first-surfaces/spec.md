@@ -197,9 +197,10 @@ depends only on runtimes it can maintain.
   follows the platform's text-size setting. A native platform is supported only
   when it meets the FR12 criteria on its oldest and newest supported OS versions.
 - **FR12 — Approaches are compared on one scorecard.** Every candidate way of
-  building a native platform, such as native components generated from Astryx
-  contracts or Astryx's web React components run through a native renderer, is
-  measured the same way:
+  building a native platform is measured the same way. Candidates include
+  platform views on generated contracts, React Native components, component
+  logic in TypeScript running in a JavaScript engine that drives platform views,
+  and Astryx's web React components run through a native renderer:
   - **Scenarios:** one shared set of scripted user flows over representative
     components and templates, each step defined once by the person's gesture
     and its expected state, and replayed unchanged on every candidate and on
@@ -217,7 +218,10 @@ depends only on runtimes it can maintain.
   - **Accessibility:** parity with the core contract for names, roles, states,
     focus order, and announcements under each platform's screen reader.
   - **Maintenance:** the work one Astryx release and one new OS version require
-    on that platform, and whether core contract changes reach it automatically.
+    on that platform, whether core contract changes reach it automatically, and
+    the time from an OS release to shipping one of its new features.
+  - **Developer speed:** time from an edit to seeing it on a device, and the
+    share of an app's code reused across platforms.
   - **Dependencies:** every required runtime dependency, classified under FR13.
 
   A candidate that fails FR13 or falls below the OQ1 thresholds is not
