@@ -402,7 +402,7 @@ async function probe(page, target) {
   return page.evaluate(expectedDirection => {
     const outcome = window.__storyOutcome;
     if (expectedDirection != null) {
-      const directionRoot = document.querySelector('#storybook-root > [dir]');
+      const directionRoot = document.querySelector('#storybook-root [dir]');
       if (directionRoot == null) {
         outcome.errors.push(
           `direction mismatch — expected ${expectedDirection}, but the story direction wrapper is missing`,
