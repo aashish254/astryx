@@ -1,0 +1,7 @@
+---
+'@astryxdesign/cli': patch
+---
+
+[feat] `astryx doctor integration validate` now also warns, from source and without a build, when an import names something its module does not export, so `astryx integration check --strict` fails on it. Each is a warning, so `doctor integration validate` and a plain `integration check` keep their exit codes. It warns when a component's import (the doc's `import`, or the one the CLI derives when the doc has none) leads to a module that does not export the component, naming the subpath that does or the `exports` entry to add; when a component example or a template imports a name the package does not export; and when a template source has no default export (`astryx template` still copies it, but its public import and anything that renders it get nothing). A name is judged only when a file the `exports` entry names is there to read in full: `export *` is followed, cycles included, and `export import Alias = Inner.Value` counts as an export. A module whose list cannot be read in full (an `exports` target not built yet, a CommonJS module) is listed in the `publicImports` report instead of warned on. An example that imports only inline `type` names from a `types`-only subpath is told to write `import type`.
+
+@josephfarina

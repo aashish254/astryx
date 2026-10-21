@@ -9,9 +9,7 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
-import {spawnSync} from 'node:child_process';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {
   validateIntegration,
@@ -24,15 +22,18 @@ import {
   integrationAddTemplate,
 } from '../../api/integration/add-contribution.mjs';
 import {integrationCheck} from '../../api/integration/check/check.mjs';
-import {CLI_ROOT} from '../fs/paths.mjs';
 
 const CODES = new Set([
   'component_import_not_exported',
   'component_import_other_package',
+  'component_import_missing_name',
   'example_import_not_exported',
+  'example_import_missing_name',
   'template_import_not_exported',
   'template_import_outside_root',
   'template_private_import',
+  'template_import_missing_name',
+  'template_no_default_export',
 ]);
 
 let dir;
@@ -278,6 +279,17 @@ describe('public imports: component doc import', () => {
 });
 
 describe('public imports: component examples', () => {
+  it('flags a name the package does not export', async () => {
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeGadget} from '@acme/widgets/components/AcmeWidget';\\n<AcmeGadget />",
+      ),
+    );
+    expect(await codes()).toEqual(['example_import_missing_name']);
+  });
+
   it('flags a subpath exports does not declare', async () => {
     write(
       'components/AcmeWidget.doc.mjs',
@@ -287,6 +299,22 @@ describe('public imports: component examples', () => {
       ),
     );
     expect(await codes()).toEqual(['example_import_not_exported']);
+  });
+
+  it('points an undeclared example import at the doc import when that is declared', async () => {
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeWidget} from '@acme/widgets/src/AcmeWidget';\\n<AcmeWidget />",
+      ),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'example_import_not_exported',
+    );
+    expect(issue?.message).toContain(
+      "Fix: import from '@acme/widgets/components/AcmeWidget' in the example, as the doc's import does.",
+    );
   });
 
   it('never points an example back at the same undeclared doc import', async () => {
@@ -321,6 +349,46 @@ describe('public imports: component examples', () => {
     expect(issue?.message).toContain(
       'add "./components/useAcmeTheme": "./components/useAcmeTheme.ts" to package.json "exports"',
     );
+  });
+
+  it('points an example at the subpath the source is already exported under', async () => {
+    pkg(p => {
+      delete p.exports['./components/AcmeWidget'];
+      p.exports['./widget'] = './components/AcmeWidget.tsx';
+    });
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        '@acme/widgets/nope',
+        "import {AcmeWidget} from '@acme/widgets/nope';\\n<AcmeWidget />",
+      ),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'example_import_not_exported',
+    );
+    expect(issue?.message).toContain(
+      "Fix: import from '@acme/widgets/widget' in the example (already exported).",
+    );
+  });
+
+  it('leaves a CommonJS target unjudged for names', async () => {
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeGadget} from '@acme/widgets/components/AcmeWidget';\\n<AcmeGadget />",
+      ),
+    );
+    write(
+      'components/AcmeWidget.tsx',
+      'module.exports = {AcmeWidget: () => null, AcmeGadget: () => null};\n',
+    );
+    expect(await codes()).toEqual([]);
+    pkg(p => {
+      p.exports['./components/AcmeWidget'] = './components/AcmeWidget.cjs';
+    });
+    write('components/AcmeWidget.cjs', 'export const Other = 1;\n');
+    expect(await codes()).toEqual([]);
   });
 
   it('accepts aliased, type-only and other-package imports', async () => {
@@ -374,6 +442,60 @@ describe('public imports: template sources', () => {
     expect(await codes()).toEqual([]);
   });
 
+  it('flags a name its own package does not export', async () => {
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
+    );
+    expect(await codes()).toEqual(['template_import_missing_name']);
+  });
+
+  it('leaves a built CommonJS dist file reached through exports unjudged for names', async () => {
+    pkg(p => {
+      p.exports['./components/AcmeWidget'] = {
+        types: './dist/AcmeWidget.d.ts',
+        default: './dist/AcmeWidget.js',
+      };
+    });
+    write(
+      'dist/AcmeWidget.js',
+      "'use strict';\nObject.defineProperty(exports, '__esModule', {value: true});\nexports.AcmeWidget = void 0;\nconst AcmeWidget = () => null;\nexports.AcmeWidget = AcmeWidget;\n",
+    );
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
+    );
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeGadget} from '@acme/widgets/components/AcmeWidget';\\n<AcmeGadget />",
+      ),
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('leaves a module that also assigns exports.* unjudged for names', async () => {
+    write(
+      'components/AcmeWidget.tsx',
+      'export function AcmeWidget() {\n  return null;\n}\nexports.AcmeGadget = AcmeWidget;\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('leaves a CommonJS target of a template import unjudged for names', async () => {
+    write('components/AcmeWidget.tsx', 'exports.AcmeWidget = () => null;\n');
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
+    );
+    expect(await codes()).toEqual([]);
+  });
+
   it('flags a template whose public import exports does not declare', async () => {
     pkg(p => delete p.exports['./templates/account-card']);
     const issue = (await found()).find(
@@ -382,6 +504,28 @@ describe('public imports: template sources', () => {
     expect(issue?.message).toContain(
       '"./templates/account-card": "./templates/account-card.tsx"',
     );
+  });
+});
+
+describe('template default export', () => {
+  it('warns on a template source with no default export, naming the export to add', async () => {
+    write(
+      'templates/account-card.tsx',
+      'export function AccountCard() {\n  return <div>Account</div>;\n}\n',
+    );
+    const issues = await found();
+    expect(issues.map(i => [i.code, i.severity])).toEqual([
+      ['template_no_default_export', 'warning'],
+    ]);
+    expect(issues[0].message).toContain('export default AccountCard;');
+  });
+
+  it('accepts a re-exported or type-annotated default', async () => {
+    write(
+      'templates/account-card.tsx',
+      'function AccountCard() {\n  return <div>Account</div>;\n}\nexport {AccountCard as default};\n',
+    );
+    expect(await codes()).toEqual([]);
   });
 });
 
@@ -418,6 +562,24 @@ describe('derived component imports', () => {
 };
 `;
 
+  it('warns when the derived root import does not export the component, naming the subpath that does', async () => {
+    write('components/AcmeWidget.doc.mjs', NO_IMPORT);
+    write('index.js', 'export const Other = 1;\n');
+    pkg(p => {
+      p.exports['.'] = './index.js';
+    });
+    const issues = (await found()).filter(
+      i => i.code === 'component_import_missing_name',
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain(
+      'has no import, so apps are told to import from "@acme/widgets"',
+    );
+    expect(issues[0].message).toContain(
+      "set import: '@acme/widgets/components/AcmeWidget' in the doc",
+    );
+  });
+
   it('warns when the derived root import is not declared', async () => {
     write('components/AcmeWidget.doc.mjs', NO_IMPORT);
     const issue = (await found()).find(
@@ -426,6 +588,36 @@ describe('derived component imports', () => {
     expect(issue?.message).toContain(
       'has no import, so apps are told to import from "@acme/widgets"',
     );
+  });
+
+  it('warns when a written import does not export the component', async () => {
+    write('index.js', 'export const Other = 1;\n');
+    pkg(p => {
+      p.exports['.'] = './index.js';
+    });
+    write('components/AcmeWidget.doc.mjs', DOC('@acme/widgets'));
+    expect(await codes()).toContain('component_import_missing_name');
+  });
+
+  it('lists a derived import whose target is not built as not checked', async () => {
+    write('components/AcmeWidget.doc.mjs', NO_IMPORT);
+    pkg(p => {
+      p.exports['.'] = {types: './dist/index.d.ts', import: './dist/index.js'};
+    });
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(
+      result.data.issues.filter(i => i.code.startsWith('component_import')),
+    ).toEqual([]);
+    expect(result.data.publicImports?.unchecked).toEqual([
+      expect.objectContaining({
+        file: 'components/AcmeWidget.doc.mjs',
+        specifier: '@acme/widgets',
+        reason: expect.stringContaining('build output'),
+      }),
+    ]);
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.unchecked).toBe(1);
+    expect(check.data.failed).toBe(false);
   });
 });
 
@@ -461,6 +653,25 @@ describe('fixes for two components in one folder', () => {
     );
     for (const fix of fixes) expect(fix).not.toContain('".":');
   });
+
+  it('gives each a per-component entry when the derived folder subpath lacks it', async () => {
+    write('components/index.js', 'export const Other = 1;\n');
+    pkg(p => {
+      p.exports['./components'] = './components/index.js';
+      p.exports['.'] = './components/index.js';
+    });
+    const fixes = (await found())
+      .filter(i => i.code === 'component_import_missing_name')
+      .map(i => i.message.split('Fix: ')[1]);
+    expect(fixes).toHaveLength(2);
+    expect(fixes[0]).toContain(
+      `add "./components/AcmeAlpha": "./components/AcmeAlpha.tsx" to package.json "exports" and set import: '@acme/widgets/components/AcmeAlpha' in the doc`,
+    );
+    expect(fixes[1]).toContain(
+      '"./components/AcmeBeta": "./components/AcmeBeta.tsx"',
+    );
+    for (const fix of fixes) expect(fix).not.toContain('"./components":');
+  });
 });
 
 describe('type-only imports', () => {
@@ -479,6 +690,27 @@ describe('type-only imports', () => {
     expect(await codes()).toEqual([]);
   });
 
+  it('tells an example with only inline type names to use import type', async () => {
+    pkg(p => {
+      p.exports['./types'] = {types: './types.d.ts'};
+    });
+    write('types.d.ts', 'export type AcmeWidgetSize = "sm" | "md";\n');
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {type AcmeWidgetSize} from '@acme/widgets/types';\\nimport {AcmeWidget} from '@acme/widgets/components/AcmeWidget';\\n<AcmeWidget />",
+      ),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'example_import_not_exported',
+    );
+    expect(issue?.message).toContain(
+      "write it as `import type {AcmeWidgetSize} from '@acme/widgets/types'`",
+    );
+    expect(issue?.message).not.toContain('as the doc');
+  });
+
   it('still warns on a value import from a types-only subpath, and on an undeclared one', async () => {
     pkg(p => {
       p.exports['./types'] = {types: './types.d.ts'};
@@ -494,6 +726,47 @@ describe('type-only imports', () => {
       'example_import_not_exported',
       'example_import_not_exported',
     ]);
+  });
+});
+
+describe('imports listed as not checked', () => {
+  it('lists template and example imports whose names cannot be judged', async () => {
+    pkg(p => {
+      p.exports['./built'] = './dist/built.js';
+      p.exports['./cjs'] = './cjs.cjs';
+    });
+    write('cjs.cjs', 'module.exports = {A: 1};\n');
+    write(
+      'templates/account-card.tsx',
+      "import {Built} from '@acme/widgets/built';\nimport {A} from '@acme/widgets/cjs';\nimport {AcmeWidget} from '@acme/widgets/components/AcmeWidget';\nexport default function C() {\n  return <AcmeWidget label=\"x\" />;\n}\n",
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(result.data.issues).toEqual([]);
+    expect(
+      result.data.publicImports?.unchecked.map(u => [u.file, u.specifier]),
+    ).toEqual([
+      ['templates/account-card.tsx', '@acme/widgets/built'],
+      ['templates/account-card.tsx', '@acme/widgets/cjs'],
+    ]);
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.unchecked).toBe(2);
+    expect(check.data.failed).toBe(false);
+  });
+});
+
+describe('a root import in a package with no exports', () => {
+  it('says the package has no exports map', async () => {
+    pkg(p => delete p.exports);
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeWidget} from \'@acme/widgets\';\nexport default function C() {\n  return <AcmeWidget label="x" />;\n}\n',
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    const entry = result.data.publicImports?.unchecked.find(
+      u => u.file === 'templates/account-card.tsx',
+    );
+    expect(entry?.reason).toContain('package.json has no "exports"');
+    expect(entry?.reason).not.toContain('build output');
   });
 });
 
@@ -520,58 +793,75 @@ describe('a fresh scaffold passes the checks', () => {
   }
 });
 
-describe('imports listed as not checked', () => {
-  it('lists a template import of Core when Core is not installed', () => {
-    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-no-core-'));
-    try {
-      const put = (/** @type {string} */ rel, /** @type {string} */ text) => {
-        fs.mkdirSync(path.dirname(path.join(out, rel)), {recursive: true});
-        fs.writeFileSync(path.join(out, rel), text);
-      };
-      put(
-        'package.json',
-        JSON.stringify({
-          name: '@acme/widgets',
-          version: '1.0.0',
-          type: 'module',
-          exports: {'./templates/account-card': './templates/account-card.tsx'},
-        }),
-      );
-      put(
-        'astryx.integration.mjs',
-        "export default {templates: './templates'};\n",
-      );
-      put('templates/account-card.doc.mjs', BLOCK());
-      put(
-        'templates/account-card.tsx',
-        "import {Button} from '@astryxdesign/core/src/Button';\nexport default function A() {\n  return <Button />;\n}\n",
-      );
-      const run = spawnSync(
-        process.execPath,
-        [
-          path.join(CLI_ROOT, 'clients/cli/bin/astryx.mjs'),
-          '--json',
-          'doctor',
-          'integration',
-          'validate',
-        ],
-        {cwd: out, encoding: 'utf-8', timeout: 60_000},
-      );
-      const {data} = JSON.parse(run.stdout);
-      expect(
-        data.issues.filter(
-          (/** @type {{code: string}} */ i) =>
-            i.code === 'template_private_import',
-        ),
-      ).toEqual([]);
-      expect(data.publicImports.unchecked).toEqual([
-        expect.objectContaining({
-          file: 'templates/account-card.tsx',
-          specifier: '@astryxdesign/core/src/Button',
-        }),
-      ]);
-    } finally {
-      fs.rmSync(out, {recursive: true, force: true});
-    }
-  }, 60_000);
+describe('export * cycles and repeated checks', () => {
+  beforeEach(() => {
+    pkg(p => {
+      p.exports['./a'] = './lib/a.ts';
+      p.exports['./b'] = './lib/b.ts';
+    });
+    write('lib/a.ts', "export const A = 1;\nexport * from './b';\n");
+    write('lib/b.ts', "export * from './a';\nexport const B = 2;\n");
+  });
+
+  it('reads every name through an export * cycle, from either side', async () => {
+    write(
+      'templates/account-card.tsx',
+      "import {A, B} from '@acme/widgets/a';\nimport {A as A2, B as B2} from '@acme/widgets/b';\nimport {AcmeWidget} from '@acme/widgets/components/AcmeWidget';\nexport default function C() {\n  return <AcmeWidget label={String(A + B + A2 + B2)} />;\n}\n",
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('rereads a re-exported module on a second check in the same process', async () => {
+    write('lib/b.ts', 'export const B = 2;\n');
+    write('lib/c.ts', "export * from './b';\n");
+    pkg(p => {
+      p.exports['./c'] = './lib/c.ts';
+    });
+    write(
+      'templates/account-card.tsx',
+      "import {C} from '@acme/widgets/c';\nexport default function T() {\n  return <div>{C}</div>;\n}\n",
+    );
+    expect(await codes()).toEqual(['template_import_missing_name']);
+    // Fix only the re-exported module: c.ts itself does not change.
+    write('lib/b.ts', 'export const B = 2;\nexport const C = 3;\n');
+    expect(await codes()).toEqual([]);
+  });
+});
+
+describe('export import declarations', () => {
+  it('counts `export import Alias = Inner.Value` as an exported name', async () => {
+    pkg(p => {
+      p.exports['./ns'] = './lib/ns.ts';
+    });
+    write(
+      'lib/ns.ts',
+      'namespace Inner {\n  export const Value = 1;\n}\nexport const Other = 2;\nexport import Alias = Inner.Value;\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      "import {Alias} from '@acme/widgets/ns';\nexport default function C() {\n  return <div>{Alias}</div>;\n}\n",
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('leaves a module with a type-only export import unjudged', async () => {
+    pkg(p => {
+      p.exports['./ns'] = './lib/ns.ts';
+    });
+    write(
+      'lib/ns.ts',
+      "export const Kept = 1;\nexport import type Alias = require('./other');\n",
+    );
+    write(
+      'templates/account-card.tsx',
+      "import {Other} from '@acme/widgets/ns';\nexport default function C() {\n  return <div>{Other}</div>;\n}\n",
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(
+      result.data.issues.filter(i => i.code === 'template_import_missing_name'),
+    ).toEqual([]);
+    expect(
+      result.data.publicImports?.unchecked.map(u => u.specifier),
+    ).toContain('@acme/widgets/ns');
+  });
 });
