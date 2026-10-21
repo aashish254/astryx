@@ -2,7 +2,7 @@
 '@astryxdesign/cli': patch
 ---
 
-[fix] `astryx search` ranks the entry you are after higher, most of all for multi-word queries, and a query that is an entry's exact name still answers with that entry first.
+[fix] `astryx search` orders matches of the same strength so the entry you are after comes first more often; every result keeps its match score and reason, and a query that is an entry's exact name still answers with that entry first.
 `astryx build` names the right block first more often; its page call, start template, and alternatives are unchanged.
 
 @josephfarina
