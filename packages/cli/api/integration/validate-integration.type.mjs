@@ -72,8 +72,8 @@
  * the package nor Core has, and the template does not import, is an
  * `unknown_block_component` issue, so `findings` is always empty;
  * `unchecked` lists each name that cannot be judged: one the template may
- * render through a namespace import, members of an imported binding, a
- * dynamic import(), or a local module this check cannot read, or, without Core installed, any name Core would have to resolve: `file` (the template doc, package-relative),
+ * render through a namespace import, members of an imported binding,
+ * require() or a dynamic import(), or a local module this check cannot read, or, without Core installed, any name Core would have to resolve: `file` (the template doc, package-relative),
  * `name`, and `reason`.
  *
  * @typedef {{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}} BlockComponentsReport

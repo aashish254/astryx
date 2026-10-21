@@ -655,6 +655,26 @@ describe('block component names', () => {
       'account-card.tsx renders members of UI (imported from "@acme/ui"), whose names this check does not read.',
     ],
     [
+      'members destructured off a default import',
+      "import UI from '@acme/ui';\nconst {Panel} = UI;\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx reads members of UI (imported from "@acme/ui"), whose names this check does not read.',
+    ],
+    [
+      'a member read off a default import',
+      "import UI from '@acme/ui';\nconst Panel = UI.Panel;\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx reads members of UI (imported from "@acme/ui"), whose names this check does not read.',
+    ],
+    [
+      'createElement with a member',
+      "import {createElement} from 'react';\nimport UI from '@acme/ui';\nexport default function A() {\n  return createElement(UI.Panel);\n}\n",
+      'account-card.tsx reads members of UI (imported from "@acme/ui"), whose names this check does not read.',
+    ],
+    [
+      'require()',
+      "const {Panel} = require('@acme/ui');\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx loads "@acme/ui" with require(), whose component names this check does not read.',
+    ],
+    [
       'a lazy dynamic import',
       "import {lazy} from 'react';\nconst Panel = lazy(() => import('@acme/ui/Panel'));\nexport default function A() {\n  return <Panel />;\n}\n",
       'account-card.tsx loads "@acme/ui/Panel" with a dynamic import(), whose component names this check does not read.',
@@ -691,7 +711,7 @@ describe('block component names', () => {
     ]);
   });
 
-  it('lists names only Core could resolve as not checked when Core is not installed', async () => {
+  it('judges names against the Core the CLI carries outside any project', async () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-no-core-'));
     try {
       fs.writeFileSync(
@@ -705,7 +725,7 @@ describe('block component names', () => {
       fs.mkdirSync(path.join(outside, 'templates'));
       fs.writeFileSync(
         path.join(outside, 'templates', 'account-card.doc.mjs'),
-        block(" componentsUsed: ['Chat', 'Layout']"),
+        block(" componentsUsed: ['Chat', 'Layout', 'AcmeGizmo']"),
       );
       fs.writeFileSync(
         path.join(outside, 'templates', 'account-card.tsx'),
@@ -714,18 +734,11 @@ describe('block component names', () => {
 
       const {data} = await validateIntegration(undefined, {cwd: outside});
       expect(
-        data.issues.filter(issue => issue.code === 'unknown_block_component'),
-      ).toEqual([]);
-      const reason =
-        'Core is not installed, so its component names cannot be checked.';
-      expect(data.blockComponents).toEqual({
-        status: 'checked',
-        findings: [],
-        unchecked: [
-          {file: 'templates/account-card.doc.mjs', name: 'Chat', reason},
-          {file: 'templates/account-card.doc.mjs', name: 'Layout', reason},
-        ],
-      });
+        data.issues
+          .filter(issue => issue.code === 'unknown_block_component')
+          .map(issue => issue.message),
+      ).toEqual([expect.stringContaining('names "AcmeGizmo"')]);
+      expect(data.blockComponents?.unchecked).toEqual([]);
     } finally {
       fs.rmSync(outside, {recursive: true, force: true});
     }

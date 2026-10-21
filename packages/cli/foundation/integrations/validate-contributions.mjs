@@ -515,7 +515,9 @@ const LOCAL_MODULE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs'];
  * `parts/index.ts` counts). `unread` says why a name it renders might still
  * be missing from `names`: a namespace import, members rendered through an
  * imported binding (`<UI.Panel />`), a dynamic `import()`, an `export *`
- * from another package, or a local module it could not read.
+ * from another package, members read off an imported binding outside JSX
+ * (`const {Panel} = UI`, `UI.Panel`), `require()`, or a local module it
+ * could not read.
  * @param {string} file
  * @returns {{names: Set<string>, unread: string[]}}
  */
@@ -624,6 +626,35 @@ function importedNames(file) {
       ) {
         unread.push(
           `${shown} renders members of ${node.object.name} (imported from "${bindings.get(node.object.name)}"), whose names this check does not read.`,
+        );
+      } else if (
+        // `UI.Panel`, `createElement(UI.Panel)`, `const {Panel} = UI`: a
+        // member read off an imported binding outside JSX.
+        (node.type === 'MemberExpression' &&
+          node.object?.type === 'Identifier' &&
+          bindings.has(node.object.name)) ||
+        (node.type === 'VariableDeclarator' &&
+          node.id?.type === 'ObjectPattern' &&
+          node.init?.type === 'Identifier' &&
+          bindings.has(node.init.name))
+      ) {
+        const name =
+          node.type === 'MemberExpression' ? node.object.name : node.init.name;
+        unread.push(
+          `${shown} reads members of ${name} (imported from "${bindings.get(name)}"), whose names this check does not read.`,
+        );
+      } else if (
+        node.type === 'CallExpression' &&
+        node.callee?.type === 'Identifier' &&
+        node.callee.name === 'require'
+      ) {
+        const argument = node.arguments?.[0];
+        const spec =
+          argument?.type === 'StringLiteral'
+            ? `"${argument.value}"`
+            : 'a module';
+        unread.push(
+          `${shown} loads ${spec} with require(), whose component names this check does not read.`,
         );
       } else if (
         node.type === 'ImportExpression' ||
