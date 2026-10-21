@@ -445,9 +445,11 @@ async function checkTemplates(integration, issues) {
  * and `componentsUsed`, judged against the components `astryx component`
  * finds: the package's own, and every doc it resolves in Core. A name the
  * template imports needs no doc of its own. A name neither has is an
- * `unknown_block_component` warning, since no component lists the block
- * under it; without Core installed, a name the package does not have cannot
- * be judged and is listed in `unchecked` instead.
+ * `unknown_block_component` warning, since the template list and the
+ * block's search keywords then give a name no one can look up. A name the
+ * template may reach through a namespace import or a local module it could
+ * not read, and, without Core installed, a name the package does not have,
+ * cannot be judged and is listed in `unchecked` instead.
  * @param {LoadedIntegration} integration
  * @returns {Promise<{issues: Issue[], unchecked: Array<{docPath: string, name: string, reason: string}>}>}
  */
@@ -504,7 +506,17 @@ async function judgeBlockComponents(integration) {
     if (fields.length === 0) continue;
     const imported = importedNames(template.filePath);
     for (const {field, name} of fields) {
-      if (own.has(name) || imported.has(name)) continue;
+      if (own.has(name) || imported.names.has(name)) continue;
+      // A name the template may reach through a namespace import, or
+      // through a local module this read could not follow, is not judged.
+      if (imported.unread.length > 0) {
+        unchecked.push({
+          docPath: template.docPath,
+          name,
+          reason: imported.unread[0],
+        });
+        continue;
+      }
       if (!coreDir) {
         unchecked.push({
           docPath: template.docPath,
@@ -518,7 +530,7 @@ async function judgeBlockComponents(integration) {
       issues.push(
         issueWarning(
           'unknown_block_component',
-          `Template "${template.dirName}" names "${name}" in ${field}, but neither this package nor Core has a component by that name and the template does not import it, so no component lists the block under that name. Fix: use the component's exact name, or remove "${name}" from ${field}.`,
+          `Template "${template.dirName}" names "${name}" in ${field}, but neither this package nor Core has a component by that name and the template does not import it, so \`astryx template --list\` and the block's search keywords give a component name no one can look up. Fix: use the component's exact name, or remove "${name}" from ${field}.`,
         ),
       );
     }
@@ -526,38 +538,90 @@ async function judgeBlockComponents(integration) {
   return {issues, unchecked};
 }
 
+/** The extensions a local import may leave off, in the order tried. */
+const LOCAL_MODULE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs'];
+
 /**
- * Every name a module imports, as imported and as bound locally, read
- * without running it; empty when it cannot be read.
+ * Every name a template imports, as imported and as bound locally, read
+ * without running it, with the names its local helper modules import (a
+ * relative import is followed).
+ * `unread` says why a name it renders might still be missing from `names`:
+ * a namespace import, whose members this read does not list, or a local
+ * module it could not read.
  * @param {string} file
- * @returns {Set<string>}
+ * @returns {{names: Set<string>, unread: string[]}}
  */
 function importedNames(file) {
   /** @type {Set<string>} */
   const names = new Set();
-  let ast;
-  try {
-    ast = parseModule(fs.readFileSync(file, 'utf8'), {
-      sourceType: 'module',
-      plugins: ['typescript', 'jsx'],
-      errorRecovery: true,
-    });
-  } catch {
-    return names;
-  }
-  for (const node of ast.program.body) {
-    if (node.type !== 'ImportDeclaration') continue;
-    for (const specifier of node.specifiers) {
-      names.add(specifier.local.name);
-      if (specifier.type === 'ImportSpecifier') {
-        const imported = specifier.imported;
-        names.add(
-          imported.type === 'Identifier' ? imported.name : imported.value,
+  /** @type {string[]} */
+  const unread = [];
+  const top = path.dirname(file);
+  const shownTop = path.basename(file);
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @param {string} current */
+  const visit = current => {
+    if (seen.has(current)) return;
+    seen.add(current);
+    const shown = slash(path.relative(top, current)) || shownTop;
+    let ast;
+    try {
+      ast = parseModule(fs.readFileSync(current, 'utf8'), {
+        sourceType: 'module',
+        plugins: ['typescript', 'jsx'],
+        errorRecovery: true,
+      });
+    } catch {
+      unread.push(
+        `${shown} could not be read, so the components it renders are not known.`,
+      );
+      return;
+    }
+    for (const node of ast.program.body) {
+      if (node.type !== 'ImportDeclaration') continue;
+      const source = String(node.source.value);
+      for (const specifier of node.specifiers) {
+        if (specifier.type === 'ImportNamespaceSpecifier') {
+          unread.push(
+            `${shown} imports "${source}" as a namespace (${specifier.local.name}), whose component names this check does not read.`,
+          );
+          continue;
+        }
+        names.add(specifier.local.name);
+        if (specifier.type === 'ImportSpecifier') {
+          const imported = specifier.imported;
+          names.add(
+            imported.type === 'Identifier' ? imported.name : imported.value,
+          );
+        }
+      }
+      if (!source.startsWith('.')) continue;
+      const base = path.resolve(path.dirname(current), source);
+      const target = [
+        base,
+        ...LOCAL_MODULE_EXTENSIONS.map(extension => `${base}${extension}`),
+        ...LOCAL_MODULE_EXTENSIONS.map(extension =>
+          path.join(base, `index${extension}`),
+        ),
+      ].find(candidate => {
+        try {
+          return fs.statSync(candidate).isFile();
+        } catch {
+          return false;
+        }
+      });
+      if (!target) {
+        unread.push(
+          `${shown} imports "${source}", which resolves to no file this check can read.`,
         );
+      } else if (LOCAL_MODULE_EXTENSIONS.includes(path.extname(target))) {
+        visit(target);
       }
     }
-  }
-  return names;
+  };
+  visit(file);
+  return {names, unread};
 }
 
 /**
@@ -898,14 +962,16 @@ async function judgeComponentDocNames(
       unchecked?.push({docPath: record.docPath, name, reason: judged.reason});
       continue;
     }
-    // A module whose only export is a default: the package's entry may
-    // publish it under any name, so the name is not judged.
+    // A source whose only export is a default, read because no printed
+    // import could be resolved: the package's entry may publish it under
+    // any name, so the name is not judged. A printed import that names a
+    // default-only module does not export the name, which is a mismatch.
     const exportedNames = moduleExportNames(module);
-    if (
+    const defaultOnly =
       exportedNames != null &&
       exportedNames.length === 1 &&
-      exportedNames[0] === 'default'
-    ) {
+      exportedNames[0] === 'default';
+    if (defaultOnly && printed === undefined) {
       unchecked?.push({
         docPath: record.docPath,
         name,
@@ -918,7 +984,9 @@ async function judgeComponentDocNames(
     // The name to propose: the file name when the module exports it, else
     // the one component the module exports.
     let fix;
-    if (moduleExportsName(module, record.name)) {
+    if (defaultOnly) {
+      fix = `Fix: export it by name from ${shown} (\`export {default as ${name}}\`), or set the doc's import to the module that publishes it as ${name}.`;
+    } else if (moduleExportsName(module, record.name)) {
       fix = `Fix: set name: '${record.name}' in ${file}.`;
     } else {
       const exported = (exportedNames ?? []).filter(each =>
