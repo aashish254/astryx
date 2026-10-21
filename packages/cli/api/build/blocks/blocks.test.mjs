@@ -1,10 +1,10 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file Unit tests for build's block picker on two small hand-written weight
- * files: the linear word scores, the candidates (search's blocks, then the
- * blocks the words score highest), the combiner, the tie-breaks, and build's
- * own count.
+ * @file Unit tests for build's block picker on small hand-written weights: it
+ * only re-orders the blocks build names (never another block, never more), a
+ * block the request names keeps its slot, as does a block the weights do not
+ * know or an integration ships, and ties keep build's order.
  */
 
 import {describe, expect, it} from 'vitest';
@@ -13,8 +13,8 @@ import {pickBlocks} from './blocks.mjs';
 /** @type {import('./blocks.mjs').BlockPickerWeights} */
 const WORDS = {
   vocab: {chart: 1024, table: 2048, sales: 1536, 'sales chart': 3072, row: 512},
-  classes: ['ChartBar', 'TableBasic', 'CardStat', 'ListPlain'],
-  bias: [10, -20, 0, -64],
+  classes: ['ChartBar', 'TableBasic', 'CardStat', 'ListPlain', 'CalendarBasic'],
+  bias: [10, -20, 0, -64, 0],
   words: {
     chart: [0, 90, 2, 30],
     table: [1, 120, 3, -40],
@@ -23,19 +23,12 @@ const WORDS = {
   },
   theta: [0.5, 0.25, 0.5, 0.4, 1.5],
 };
-const CATALOG = [
-  'ChartBar',
-  'TableBasic',
-  'CardStat',
-  'ListPlain',
-  'DrawerOnly',
-];
 /** @type {[string, number, number, number][]} */
 const SEARCHED = [
   ['TableBasic', 96, 1, 3],
-  ['DrawerOnly', 80, 1, 3],
   ['ListPlain', 64, 1, 3],
   ['ChartBar', 50, 1, 3],
+  ['CardStat', 40, 1, 3],
 ];
 
 /** @type {import('./blocks.mjs').BlockPickerWeights} */
@@ -43,150 +36,73 @@ const TIES = {
   vocab: {alpha: 1024},
   classes: ['X', 'Y', 'Z'],
   bias: [0, 0, 0],
-  words: {alpha: [1, 64, 2, 64]},
+  words: {},
   theta: [0, 0, 0, 0, 1],
 };
 
+/**
+ * @param {string[]} kitBlocks
+ * @param {string[]} [foreign]
+ */
+const signals = (kitBlocks, foreign = []) => ({
+  kitBlocks,
+  searched: SEARCHED,
+  foreign,
+});
+
 describe('pickBlocks', () => {
-  it('re-ranks search blocks with the words and keeps build’s count', () => {
+  it('re-orders only the blocks build names, never adding one', () => {
+    const own = ['TableBasic', 'ListPlain', 'CardStat'];
+    const picks = pickBlocks('sales chart with a row', signals(own), WORDS);
+    expect([...picks].sort()).toEqual([...own].sort());
+    expect(picks).toEqual(['CardStat', 'TableBasic', 'ListPlain']);
+  });
+
+  it('never names a block the words score highly that build did not name', () => {
     const picks = pickBlocks(
-      'Sales chart with a table row',
-      {
-        kitBlocks: ['TableBasic', 'DrawerOnly', 'ListPlain'],
-        searched: SEARCHED,
-        foreign: [],
-      },
-      CATALOG,
+      'sales chart chart chart',
+      signals(['TableBasic', 'ListPlain']),
       WORDS,
     );
-    expect(picks).toEqual(['TableBasic', 'DrawerOnly', 'ChartBar']);
+    expect(picks).not.toContain('ChartBar');
+    expect(picks).toHaveLength(2);
   });
 
-  it('adds a block search did not return when the words lead to it', () => {
-    expect(
-      pickBlocks(
-        'sales chart',
-        {kitBlocks: ['TableBasic'], searched: SEARCHED, foreign: []},
-        CATALOG,
-        WORDS,
-      ),
-    ).toEqual(['ChartBar']);
+  it('keeps a block the request names in its slot', () => {
+    const own = ['TableBasic', 'CalendarBasic', 'CardStat'];
+    for (const request of [
+      'sales chart with a calendar',
+      'sales chart with two calendars',
+      'sales chart, calendar basic',
+    ]) {
+      expect(pickBlocks(request, signals(own), WORDS)[1]).toBe('CalendarBasic');
+    }
   });
 
-  it('keeps the slot of a block of build’s own the weights do not score', () => {
-    expect(
-      pickBlocks(
-        'sales chart',
-        {
-          kitBlocks: ['TableBasic', 'DrawerOnly', 'ListPlain'],
-          searched: SEARCHED,
-          foreign: [],
-        },
-        CATALOG,
-        WORDS,
-      ),
-    ).toEqual(['ChartBar', 'DrawerOnly', 'CardStat']);
-  });
-
-  it('keeps the slot of a block of build’s own an integration ships', () => {
-    const signals = {
-      kitBlocks: ['TableBasic', 'DrawerOnly', 'ListPlain'],
-      searched: SEARCHED,
-    };
-    expect(
-      pickBlocks(
-        'sales chart',
-        {...signals, foreign: ['ListPlain']},
-        CATALOG,
-        WORDS,
-      ),
-    ).toEqual(['ChartBar', 'DrawerOnly', 'ListPlain']);
-    expect(
-      pickBlocks(
-        'sales chart',
-        {...signals, foreign: ['TableBasic', 'ListPlain']},
-        CATALOG,
-        WORDS,
-      ),
-    ).toEqual(['TableBasic', 'DrawerOnly', 'ListPlain']);
-  });
-
-  it('never adds a block the weights do not score', () => {
+  it('keeps a block the weights do not know or an integration ships in its slot', () => {
+    const own = ['TableBasic', 'AcmeCallout', 'CardStat', 'ListPlain'];
     const picks = pickBlocks(
-      'Sales chart with a table row',
-      {kitBlocks: ['TableBasic', 'ListPlain'], searched: SEARCHED, foreign: []},
-      CATALOG,
+      'sales chart with a row',
+      signals(own, ['ListPlain']),
       WORDS,
     );
-    expect(picks).not.toContain('DrawerOnly');
+    expect(picks[1]).toBe('AcmeCallout');
+    expect(picks[3]).toBe('ListPlain');
+    expect([...picks].sort()).toEqual([...own].sort());
   });
 
-  it('scores a request with no known words by search alone', () => {
+  it('keeps build’s order on ties and when no word is known', () => {
+    const own = ['X', 'Y', 'Z'];
     expect(
-      pickBlocks(
-        '??',
-        {
-          kitBlocks: ['TableBasic', 'ListPlain'],
-          searched: SEARCHED,
-          foreign: [],
-        },
-        CATALOG,
-        WORDS,
-      ),
-    ).toEqual(['TableBasic', 'ChartBar']);
+      pickBlocks('??', {kitBlocks: own, searched: [], foreign: []}, TIES),
+    ).toEqual(own);
   });
 
-  it('names no block when build names none', () => {
-    expect(
-      pickBlocks(
-        'chart',
-        {kitBlocks: [], searched: SEARCHED, foreign: []},
-        CATALOG,
-        WORDS,
-      ),
-    ).toEqual([]);
-  });
-
-  it('breaks ties by class order for the word candidates and by candidate order at the end', () => {
-    /** @type {[string, number, number, number][]} */
-    const searched = [['Z', 70, 1, 1]];
-    const signals = {kitBlocks: ['Z'], searched, foreign: []};
-    expect(pickBlocks('alpha', signals, ['X', 'Y', 'Z'], TIES)).toEqual(['Z']);
-    expect(
-      pickBlocks(
-        'alpha',
-        {...signals, kitBlocks: ['Z', 'Y']},
-        ['X', 'Y', 'Z'],
-        TIES,
-      ),
-    ).toEqual(['Z', 'Y']);
-    expect(
-      pickBlocks(
-        'beta',
-        {
-          kitBlocks: ['Z', 'Y'],
-          foreign: [],
-          searched: [
-            ['Z', 70, 1, 1],
-            ['Y', 60, 1, 1],
-          ],
-        },
-        ['X', 'Y', 'Z'],
-        TIES,
-      ),
-    ).toEqual(['Z', 'Y']);
-  });
-
-  it('is deterministic and leaves its inputs alone', () => {
-    const signals = {
-      kitBlocks: ['TableBasic', 'ListPlain'],
-      searched: SEARCHED,
-      foreign: [],
-    };
-    const before = JSON.stringify({signals, WORDS});
-    const a = pickBlocks('sales chart row', signals, CATALOG, WORDS);
-    const b = pickBlocks('sales chart row', signals, CATALOG, WORDS);
-    expect(a).toEqual(b);
-    expect(JSON.stringify({signals, WORDS})).toBe(before);
+  it('returns nothing when build names no block, and does not change its input', () => {
+    expect(pickBlocks('sales chart', signals([]), WORDS)).toEqual([]);
+    const own = ['TableBasic', 'ListPlain'];
+    const copy = [...own];
+    pickBlocks('sales chart', signals(own), WORDS);
+    expect(own).toEqual(copy);
   });
 });

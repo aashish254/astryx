@@ -59,21 +59,21 @@ const PINNED = [
   [
     'analytics dashboard with a KPI row and a sortable table',
     [
-      'TableSortableTable',
-      'TableRichCellTable',
-      'TableShowcase',
+      'PaginationPageSize',
+      'GridDashboardLayout',
+      'TableBulkActionsTable',
       'TableGridDividersTable',
-      'TableRowStatusTable',
+      'TableRowExpansionTable',
     ],
   ],
   [
     'settings page with notification toggles and a save bar',
     [
-      'SwitchSettingsPanel',
-      'CardWithInnerLayout',
-      'SwitchWithDescription',
-      'CheckboxListItemBasic',
-      'FormLayoutHorizontalLabels',
+      'ToggleButtonColor',
+      'ToggleButtonGroup',
+      'ToggleButtonGroupShowcase',
+      'ToggleButtonGroupVertical',
+      'ToggleButtonIconSwap',
     ],
   ],
   [
@@ -83,22 +83,32 @@ const PINNED = [
       'EmptyStateCompact',
       'EmptyStateContainer',
       'EmptyStateShowcase',
-      'CenterInsideACard',
+      'ToolbarTableFilter',
     ],
   ],
   [
     'login form with single sign-on buttons',
     [
-      'FormLayoutMixedControls',
-      'FormLayoutShowcase',
-      'DialogFormDialog',
       'CardWithInnerLayout',
+      'BottomSheetMobileKeyboard',
       'ButtonGroupBasic',
+      'CollapsibleControlledAccordion',
+      'BottomSheetSwitcherReviewFlow',
+    ],
+  ],
+  [
+    'calendar for booking appointments',
+    [
+      'CalendarRangeWithValue',
+      'CalendarSingle',
+      'CalendarTwoMonths',
+      'CalendarConstraints',
+      'CalendarShowcase',
     ],
   ],
   [
     'kanban board for sprint tasks with a filter bar',
-    ['ToolbarTableFilter', 'PowerSearchFullFeatured'],
+    ['ToolbarTableFilter', 'PowerSearchShowcase'],
   ],
 ];
 
@@ -115,6 +125,18 @@ afterAll(() => {
 });
 
 describe('build tree', () => {
+  it('keeps the blocks a request names in build’s slots', async () => {
+    const phrase = 'calendar for booking appointments';
+    const answer = await build(phrase, {cwd: REPO});
+    const own = await withListingCache(() => buildKit(phrase, {cwd: REPO}));
+    if (answer?.type !== 'build.kit' || own.type !== 'build.kit')
+      throw new Error('expected a kit');
+    own.data.blocks.forEach((b, k) => {
+      if (b.name.startsWith('Calendar'))
+        expect(answer.data.blocks[k].name).toBe(b.name);
+    });
+  });
+
   it('runs with the network and subprocesses blocked', async () => {
     const cp = await import('node:child_process');
     const https = await import('node:https');
@@ -144,7 +166,11 @@ describe('build tree', () => {
       expect(answer.data.start?.alternatives).toEqual(
         own.data.start?.alternatives,
       );
+      // The picker only re-orders build's own blocks: each keeps build's
+      // entry (its real score and reason), none is added, none is dropped.
       expect(answer.data.blocks.length).toBe(own.data.blocks.length);
+      for (const b of answer.data.blocks)
+        expect(own.data.blocks.find(o => o.name === b.name)).toEqual(b);
       expect(answer.data.blocks.map(b => b.name)).toEqual(blocks);
     });
   }

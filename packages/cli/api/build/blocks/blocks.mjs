@@ -16,15 +16,19 @@
  *
  * How it scores. The request's words and adjacent word pairs, each weighted
  * (1 + ln count) x its vocabulary weight and scaled to unit length, give every
- * block a linear score (its bias plus the weighted words' rows). The
- * candidates are search's blocks (the kit's first, at most 30), then the ten
- * blocks the words score highest. Each candidate's final score combines five
- * numbers: search's score / 100, the share of the request search matched,
- * whether the kit names it, 1 / (1 + its place in search's list), and the
- * block's log-share of the linear scores. Ties keep the candidate order. A
- * block of build's own that the weights do not know, or whose package is not
- * Core's, keeps the slot build gave it; the picker fills the rest.
+ * block a linear score (its bias plus the weighted words' rows). Only the
+ * blocks build already names are re-ranked: never another block, never more.
+ * Each one's final score combines five numbers: search's score / 100, the
+ * share of the request search matched, whether the kit names it, 1 / (1 + its
+ * place in build's list), and the block's log-share of the linear scores.
+ * Ties keep build's order. A block the request names (its name, or the
+ * component its name starts with, written out, joined, or plural), a block the
+ * weights do not know, and a block whose package is not Core's keep the slot
+ * build gave them; the picker re-orders the rest within the other slots.
  */
+
+import {pluralOf} from '../../search/_query.mjs';
+import {wordsOf} from '../../search/_words.mjs';
 
 /**
  * @typedef {object} BlockPickerWeights
@@ -37,10 +41,6 @@
  * @typedef {import('../kit/signals.mjs').BlockScore} BlockScore
  */
 
-/** How many of search's blocks are candidates. */
-const SEARCH_CANDIDATES = 30;
-/** How many blocks the words add. */
-const WORD_CANDIDATES = 10;
 /** The linear score of a block the words do not score. */
 const UNSCORED = -30;
 
@@ -101,84 +101,69 @@ function linearScores(request, weights) {
 }
 
 /**
+ * Whether a request names a block: a run of one to three adjacent words of
+ * the request, joined, is the block's name, the start of its name that names
+ * its component (at least four letters, whole words), or the plural of either.
+ * @param {string[]} words the request's lowercase words
+ * @param {string} block
+ * @returns {boolean}
+ */
+function names(words, block) {
+  const parts = wordsOf(block);
+  /** @type {Set<string>} */
+  const forms = new Set();
+  for (let n = 1; n <= parts.length; n++) {
+    const form = parts.slice(0, n).join('');
+    if (form.length >= 4) forms.add(form);
+  }
+  for (let i = 0; i < words.length; i++) {
+    let run = '';
+    for (let n = 0; n < 3 && i + n < words.length; n++) {
+      run += words[i + n];
+      for (const form of forms)
+        if (run === form || pluralOf(run, form)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * The blocks build names for a request, re-ranked by the picker.
  * @param {string} request
  * @param {{kitBlocks: string[], searched: BlockScore[], foreign: string[]}} signals
  *   build's signals: the kit's blocks, search's block results [id, score,
  *   matched, total] in order, and the blocks whose package is not Core's
- * @param {readonly string[]} catalog the block ids the project can scaffold
  * @param {BlockPickerWeights} weights
- * @returns {string[]} block ids, as many as `signals.kitBlocks`: a block of
- *   build's own the picker must not move keeps its slot, and the picker's
- *   blocks, best first, fill the others
+ * @returns {string[]} the kit's blocks in a new order: a block the request
+ *   names, one the weights do not know, or one an integration ships keeps its
+ *   slot; the others, best first, fill the remaining slots
  */
-export function pickBlocks(request, signals, catalog, weights) {
-  const count = signals.kitBlocks.length;
-  if (count === 0) return [];
-  // The picker names only blocks it has weights for that the project can
-  // scaffold, and reads search's first 30 blocks.
-  const weighed = new Set(weights.classes);
-  const known = new Set(catalog.filter(b => weighed.has(b)));
-  const searched = signals.searched.slice(0, SEARCH_CANDIDATES);
+export function pickBlocks(request, signals, weights) {
+  const own = signals.kitBlocks;
+  if (own.length === 0) return [];
   const {z, lse} = linearScores(request, weights);
   const classIndex = new Map(weights.classes.map((c, i) => [c, i]));
-  const kit = new Set(signals.kitBlocks.filter(b => known.has(b)));
   /** @type {Map<string, BlockScore>} */
   const found = new Map();
-  for (const s of searched)
-    if (known.has(s[0]) && !found.has(s[0])) found.set(s[0], s);
-  /** @type {Map<string, number>} */
-  const place = new Map();
-  for (const b of [
-    ...kit,
-    ...searched.map(s => s[0]).filter(b => known.has(b)),
-  ])
-    if (!place.has(b)) place.set(b, place.size);
-  const order = [...place.keys()];
-  const top = weights.classes
-    .map((_, c) => c)
-    .sort((a, b) => z[b] - z[a] || a - b)
-    .slice(0, WORD_CANDIDATES);
-  /** @type {string[]} */
-  const candidates = [];
-  const seen = new Set();
-  for (const b of [
-    ...order.slice(0, SEARCH_CANDIDATES),
-    ...top.map(c => weights.classes[c]).filter(b => known.has(b)),
-  ]) {
-    if (!seen.has(b)) {
-      seen.add(b);
-      candidates.push(b);
-    }
-  }
-  const [t0, t1, t2, t3, t4] = weights.theta;
-  const scored = candidates.map((b, pos) => {
-    const s = found.get(b);
-    const c = classIndex.get(b);
-    const at = place.get(b);
-    const f0 = s ? s[1] / 100 : 0;
-    const f1 = s ? (s[2] ?? 0) / Math.max(s[3] ?? 0, 1) : 0;
-    const f2 = kit.has(b) ? 1 : 0;
-    const f3 = at === undefined ? 0 : 1 / (1 + at);
-    const f4 = (c === undefined ? UNSCORED : z[c]) - lse;
-    return {b, pos, s: t0 * f0 + t1 * f1 + t2 * f2 + t3 * f3 + t4 * f4};
-  });
-  scored.sort((a, b) => b.s - a.s || a.pos - b.pos);
-  // A block of build's own that the weights do not know, or that an
-  // integration ships (its own block or a replacement), keeps the slot build
-  // gave it: the weights cannot judge it. The picker's blocks, best first,
-  // fill the other slots.
+  for (const s of signals.searched) if (!found.has(s[0])) found.set(s[0], s);
   const foreign = new Set(signals.foreign);
-  const own = signals.kitBlocks;
-  const keeps = own.map(b => !classIndex.has(b) || foreign.has(b));
-  const pinned = new Set(own.filter((_, k) => keeps[k]));
-  const fill = scored.map(x => x.b).filter(b => !pinned.has(b));
-  /** @type {string[]} */
-  const out = [];
+  const words = wordsOf(request);
+  const keeps = own.map(
+    b => !classIndex.has(b) || foreign.has(b) || names(words, b),
+  );
+  const [t0, t1, t2, t3, t4] = weights.theta;
+  const scored = own
+    .map((b, pos) => ({b, pos}))
+    .filter((_, k) => !keeps[k])
+    .map(({b, pos}) => {
+      const s = found.get(b);
+      const c = classIndex.get(b);
+      const f0 = s ? s[1] / 100 : 0;
+      const f1 = s ? (s[2] ?? 0) / Math.max(s[3] ?? 0, 1) : 0;
+      const f4 = (c === undefined ? UNSCORED : z[c]) - lse;
+      return {b, pos, s: t0 * f0 + t1 * f1 + t2 + t3 / (1 + pos) + t4 * f4};
+    })
+    .sort((a, b) => b.s - a.s || a.pos - b.pos);
   let next = 0;
-  own.forEach((b, k) => {
-    if (keeps[k]) out.push(b);
-    else if (next < fill.length) out.push(fill[next++]);
-  });
-  return out;
+  return own.map((b, k) => (keeps[k] ? b : scored[next++].b));
 }

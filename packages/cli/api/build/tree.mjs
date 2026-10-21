@@ -31,15 +31,11 @@ const {defineSearcher, defineClassifier, defineTree} = routeKit;
 const main = defineSearcher({
   id: 'main',
   summary:
-    'Ranks page templates, blocks, and components by the words of the request, starts from the best page template, and lists the blocks the block picker ranks first.',
+    'Ranks page templates, blocks, and components by the words of the request, starts from the best page template, and lists its blocks in the order the block picker ranks them.',
   run: async (request, ctx) => {
     const signals = await kitSignals(request.query, request.options);
     if (!ctx.blocks) return kitAnswer(signals);
-    const ids = signals.blockCatalog.map(b => b.name);
-    return kitAnswer(
-      signals,
-      pickBlocks(request.query, signals, ids, ctx.blocks),
-    );
+    return kitAnswer(signals, pickBlocks(request.query, signals, ctx.blocks));
   },
 });
 

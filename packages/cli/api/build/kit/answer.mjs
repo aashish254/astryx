@@ -22,48 +22,20 @@ import {FOUNDATION, FRAME} from './signals.mjs';
  */
 const THIN_KIT = 3;
 
-/** The reason a block search did not return carries. */
-const PICKED = 'fits the words of the idea';
-
 /**
- * @typedef {import('../../search/search.type.mjs').SearchResultEntry} SearchResultEntry
- */
-
-/**
- * A block search did not return, named the way search names a block.
- * @param {import('../_adapter.mjs').BlockTemplate} b
- * @returns {SearchResultEntry}
- */
-const asBlock = b => ({
-  domain: 'template',
-  name: b.name,
-  package: b.package,
-  score: 0,
-  reason: PICKED,
-  description: b.description,
-  displayName: b.displayName,
-  kind: 'block',
-  command: b.command,
-});
-
-/**
- * The kit for a request. `blocks` names the blocks to list, best first: at
- * most as many as build names itself are kept, and a name that is not a block
- * the project can scaffold is dropped. A block in the slot build gave it
- * keeps build's entry; another block search returned keeps search's.
+ * The kit for a request. `blocks` re-orders the blocks build names itself:
+ * each keeps build's own entry (its score and reason), and a name build did
+ * not give is dropped, so the kit never lists more blocks than build's own.
  *
  * @param {import('./signals.mjs').KitSignals} signals
  * @param {string[]} [blocks] block names; build's own when omitted
  * @returns {import('../build.type.mjs').BuildKitResponse}
  */
 export function kitAnswer(signals, blocks = signals.kitBlocks) {
-  const named = blocks.slice(0, signals.blocks.length).flatMap((name, k) => {
-    // A block in the slot build gave it keeps build's own entry.
-    if (signals.blocks[k]?.name === name) return [signals.blocks[k]];
-    const found = signals.searchedEntries.get(name);
-    if (found) return [found];
-    const b = signals.blockCatalog.find(t => t.name === name);
-    return b ? [asBlock(b)] : [];
+  const own = new Map(signals.blocks.map(b => [b.name, b]));
+  const named = [...new Set(blocks)].flatMap(name => {
+    const entry = own.get(name);
+    return entry ? [entry] : [];
   });
 
   // What to try when the kit comes back thin. Keyword search over a design

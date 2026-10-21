@@ -101,9 +101,7 @@ const ALWAYS = new Set([...FRAME, ...FOUNDATION]);
  * @property {SearchResultEntry[]} domain
  * @property {string[]} kitBlocks the names of `blocks`
  * @property {BlockScore[]} searched every block search returned, in its order
- * @property {Map<string, SearchResultEntry>} searchedEntries the same blocks by name (the first of a name)
- * @property {string[]} foreign the blocks, searched or scaffoldable, whose package is not Core's
- * @property {import('../_adapter.mjs').BlockTemplate[]} blockCatalog every block the project can scaffold
+ * @property {string[]} foreign the blocks, named, searched or scaffoldable, whose package is not Core's
  */
 
 /**
@@ -282,16 +280,12 @@ export async function kitSignals(query, options = {}) {
     domain: domainKept,
     kitBlocks: blocksKept.map(r => r.name),
     searched: searchedBlocks.map(blockScore),
-    searchedEntries: new Map(
-      [...searchedBlocks].reverse().map(r => [r.name, r]),
-    ),
     foreign: [
       ...new Set(
-        [...searchedBlocks, ...templates.blocks]
+        [...blocksKept, ...searchedBlocks, ...templates.blocks]
           .filter(b => b.package !== CORE_PROVIDER_ID)
           .map(b => b.name),
       ),
     ],
-    blockCatalog: templates.blocks,
   };
 }
