@@ -19,7 +19,10 @@ import {Command} from 'commander';
 import {discoverCoreTemplates} from '../../../foundation/discovery/template-adapter.mjs';
 import {discoverOwnedComponents} from '../../../foundation/discovery/component-discovery.mjs';
 import {discoverBuiltinTopics} from '../../../foundation/discovery/docs-discovery.mjs';
-import {findCoreDir, findProjectCoreDir} from '../../../foundation/fs/paths.mjs';
+import {
+  findCoreDir,
+  findProjectCoreDir,
+} from '../../../foundation/fs/paths.mjs';
 import {registerDoctor} from './doctor.mjs';
 import {expectRecordsCarry} from '../../../test-utils/text-projection.mjs';
 
@@ -672,6 +675,29 @@ describe('doctor integration — command', () => {
       process.chdir(previousCwd);
       fs.rmSync(outside, {recursive: true, force: true});
     }
+  });
+
+  it('validate says, in one visible line, that imports were not checked when package.json has no name', async () => {
+    writeIntegration({id: 'hero', name: 'Hero', type: 'block'});
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({version: '1.2.3'}),
+    );
+    process.chdir(tmpDir);
+
+    await createProgram().parseAsync([
+      'node',
+      'astryx',
+      'doctor',
+      'integration',
+      'validate',
+    ]);
+
+    const output = logCalls.join('\n');
+    expect(output).toMatch(
+      /\[skip\] Imports not checked: package\.json has no "name"/,
+    );
+    expect(process.exitCode).toBeUndefined();
   });
 
   it('templates warns on a Core id and writes the exact --package command', async () => {
