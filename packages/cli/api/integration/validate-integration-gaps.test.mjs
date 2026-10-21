@@ -618,6 +618,64 @@ describe('block component names', () => {
     expect(data.blockComponents?.unchecked).toEqual([]);
   });
 
+  it.each([
+    ['a named re-export', "export {Body} from './Body';\n"],
+    ['an export *', "export * from './Body';\n"],
+  ])(
+    'follows a helper barrel with %s like an import',
+    async (_label, barrel) => {
+      const dir = writePackage({
+        [MANIFEST]: manifest({templates: './templates'}),
+        'templates/account-card/account-card.doc.mjs': block(
+          " componentsUsed: ['Panel', 'AcmeGizmo']",
+        ),
+        'templates/account-card/account-card.tsx':
+          "import {Body} from './parts';\nexport default function A() {\n  return <Body />;\n}\n",
+        'templates/account-card/parts/index.ts': barrel,
+        'templates/account-card/parts/Body.tsx':
+          "import {Panel} from '@acme/ui';\nexport function Body() {\n  return <Panel />;\n}\n",
+      });
+
+      const {data} = await validateIntegration(undefined, {cwd: dir});
+      expect(
+        data.issues
+          .filter(issue => issue.code === 'unknown_block_component')
+          .map(issue => issue.message),
+      ).toEqual([
+        expect.stringContaining('names "AcmeGizmo" in componentsUsed'),
+      ]);
+      expect(data.blockComponents?.unchecked).toEqual([]);
+    },
+  );
+
+  it.each([
+    [
+      'a default import used as a namespace',
+      "import UI from '@acme/ui';\nexport default function A() {\n  return <UI.Panel />;\n}\n",
+      'account-card.tsx renders members of UI (imported from "@acme/ui"), whose names this check does not read.',
+    ],
+    [
+      'a lazy dynamic import',
+      "import {lazy} from 'react';\nconst Panel = lazy(() => import('@acme/ui/Panel'));\nexport default function A() {\n  return <Panel />;\n}\n",
+      'account-card.tsx loads "@acme/ui/Panel" with a dynamic import(), whose component names this check does not read.',
+    ],
+  ])(
+    'lists a name the template may render through %s as not checked',
+    async (_label, source, reason) => {
+      const dir = writePackage({
+        [MANIFEST]: manifest({templates: './templates'}),
+        'templates/account-card.doc.mjs': block(" componentsUsed: ['Panel2']"),
+        'templates/account-card.tsx': source,
+      });
+
+      const {data} = await validateIntegration(undefined, {cwd: dir});
+      expect(data.issues).toEqual([]);
+      expect(data.blockComponents?.unchecked).toEqual([
+        {file: 'templates/account-card.doc.mjs', name: 'Panel2', reason},
+      ]);
+    },
+  );
+
   it('lists a name behind a local helper it cannot read as not checked', async () => {
     const dir = writePackage({
       [MANIFEST]: manifest({templates: './templates'}),
@@ -731,7 +789,6 @@ describe('component doc files', () => {
     });
     expect(await issuesOf(fixed)).toEqual([]);
   });
-
 });
 
 describe('roots', () => {

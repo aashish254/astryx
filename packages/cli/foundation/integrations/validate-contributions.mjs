@@ -475,16 +475,44 @@ async function judgeBlockComponents(integration) {
   return {issues, unchecked};
 }
 
+/**
+ * Visit every node under `node`, depth first.
+ * @param {any} node
+ * @param {(node: any) => void} visit
+ */
+function walkNodes(node, visit) {
+  if (node == null || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const each of node) walkNodes(each, visit);
+    return;
+  }
+  if (typeof node.type === 'string') visit(node);
+  for (const [key, value] of Object.entries(node)) {
+    if (
+      key === 'loc' ||
+      key === 'start' ||
+      key === 'end' ||
+      key === 'extra' ||
+      key === 'leadingComments' ||
+      key === 'trailingComments'
+    ) {
+      continue;
+    }
+    if (value && typeof value === 'object') walkNodes(value, visit);
+  }
+}
+
 /** The extensions a local import may leave off, in the order tried. */
 const LOCAL_MODULE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs'];
 
 /**
  * Every name a template imports, as imported and as bound locally, read
  * without running it, with the names its local helper modules import (a
- * relative import is followed).
- * `unread` says why a name it renders might still be missing from `names`:
- * a namespace import, whose members this read does not list, or a local
- * module it could not read.
+ * relative import or re-export is followed, so a barrel such as
+ * `parts/index.ts` counts). `unread` says why a name it renders might still
+ * be missing from `names`: a namespace import, members rendered through an
+ * imported binding (`<UI.Panel />`), a dynamic `import()`, an `export *`
+ * from another package, or a local module it could not read.
  * @param {string} file
  * @returns {{names: Set<string>, unread: string[]}}
  */
@@ -515,23 +543,50 @@ function importedNames(file) {
       );
       return;
     }
+    /** @type {Map<string, string>} local binding -> the module it came from */
+    const bindings = new Map();
     for (const node of ast.program.body) {
-      if (node.type !== 'ImportDeclaration') continue;
-      const source = String(node.source.value);
-      for (const specifier of node.specifiers) {
-        if (specifier.type === 'ImportNamespaceSpecifier') {
-          unread.push(
-            `${shown} imports "${source}" as a namespace (${specifier.local.name}), whose component names this check does not read.`,
-          );
-          continue;
+      const reexport =
+        (node.type === 'ExportNamedDeclaration' && node.source != null) ||
+        node.type === 'ExportAllDeclaration';
+      if (node.type !== 'ImportDeclaration' && !reexport) continue;
+      const source = String(/** @type {any} */ (node).source.value);
+      if (node.type === 'ImportDeclaration') {
+        for (const specifier of node.specifiers) {
+          if (specifier.type === 'ImportNamespaceSpecifier') {
+            unread.push(
+              `${shown} imports "${source}" as a namespace (${specifier.local.name}), whose component names this check does not read.`,
+            );
+            continue;
+          }
+          names.add(specifier.local.name);
+          bindings.set(specifier.local.name, source);
+          if (specifier.type === 'ImportSpecifier') {
+            const imported = specifier.imported;
+            names.add(
+              imported.type === 'Identifier' ? imported.name : imported.value,
+            );
+          }
         }
-        names.add(specifier.local.name);
-        if (specifier.type === 'ImportSpecifier') {
-          const imported = specifier.imported;
-          names.add(
-            imported.type === 'Identifier' ? imported.name : imported.value,
-          );
+      } else if (node.type === 'ExportNamedDeclaration') {
+        // A barrel: `export {Body} from './Body'` passes Body on, and what
+        // Body renders comes from the module it names.
+        for (const specifier of node.specifiers) {
+          for (const each of [
+            /** @type {any} */ (specifier).local,
+            specifier.exported,
+          ]) {
+            if (each == null) continue;
+            names.add(each.type === 'Identifier' ? each.name : each.value);
+          }
         }
+      } else if (!source.startsWith('.')) {
+        // `export * from` another package passes on names this check
+        // does not list.
+        unread.push(
+          `${shown} re-exports everything from "${source}", whose component names this check does not read.`,
+        );
+        continue;
       }
       if (!source.startsWith('.')) continue;
       const base = path.resolve(path.dirname(current), source);
@@ -556,6 +611,31 @@ function importedNames(file) {
         visit(target);
       }
     }
+    // What the module renders through a binding or loads at runtime, which
+    // its import statements do not name.
+    walkNodes(ast.program, node => {
+      if (
+        node.type === 'JSXMemberExpression' &&
+        node.object?.type === 'JSXIdentifier' &&
+        bindings.has(node.object.name)
+      ) {
+        unread.push(
+          `${shown} renders members of ${node.object.name} (imported from "${bindings.get(node.object.name)}"), whose names this check does not read.`,
+        );
+      } else if (
+        node.type === 'ImportExpression' ||
+        (node.type === 'CallExpression' && node.callee?.type === 'Import')
+      ) {
+        const argument = node.source ?? node.arguments?.[0];
+        const spec =
+          argument?.type === 'StringLiteral'
+            ? `"${argument.value}"`
+            : 'a module';
+        unread.push(
+          `${shown} loads ${spec} with a dynamic import(), whose component names this check does not read.`,
+        );
+      }
+    });
   };
   visit(file);
   return {names, unread};
