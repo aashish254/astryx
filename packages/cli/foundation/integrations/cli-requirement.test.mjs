@@ -9,6 +9,7 @@ import {
   KEYWORDS_CLI,
   NAMESPACE_DOCS_CLI,
   SECTION_IDS_CLI,
+  STABILITY_CLI,
   TEMPLATE_REPLACES_CLI,
   cliRangeProblem,
   componentReplacesCliProblem,
@@ -321,6 +322,7 @@ describe('every feature check names its CLI floor', () => {
     keywordsCliProblem: KEYWORDS_CLI,
     sectionIdsCliProblem: '0.6.4',
     themesCliProblem: '0.6.4',
+    stabilityCliProblem: STABILITY_CLI,
   };
 
   it('asks each feature for the CLI release this table names', () => {
@@ -348,6 +350,9 @@ describe('every feature check names its CLI floor', () => {
       // `replaces`, and 0.6.6 reads its `keywords`.
       replacesCliProblem: '0.6.4',
       keywordsCliProblem: '0.6.6',
+      // Tied to the next patch slot: published 0.7.1 refuses `stability` on
+      // a template or namespace doc.
+      stabilityCliProblem: '0.7.2',
     });
   });
 });
