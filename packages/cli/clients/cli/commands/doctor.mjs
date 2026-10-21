@@ -199,6 +199,10 @@ function printIntegrationValidation(data) {
         `${warnings} warning${warnings === 1 ? '' : 's'}`,
     ),
     ...docTypesBlocks(data.docTypes, errors > 0),
+    // Listed only: these never count as warnings or fail a check.
+    ...(data.peerRanges?.findings ?? []).map(finding =>
+      text(`[info] ${finding.code}: ${finding.message} Fix: ${finding.fix}`),
+    ),
   );
 }
 

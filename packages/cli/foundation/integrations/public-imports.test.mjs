@@ -12,7 +12,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {validateLocalIntegration} from '../../api/integration/validate-integration.mjs';
-import {readImports, validRange} from './public-imports.mjs';
+import {readImports} from './public-imports.mjs';
+import {validRange} from './peer-ranges.mjs';
+import {validateIntegration} from '../../api/integration/validate-integration.mjs';
 import {subpathDeclaration} from './exports-subpaths.mjs';
 import {
   integrationAddComponent,
@@ -197,10 +199,30 @@ describe('public imports: component doc import', () => {
     pkg(p => delete p.exports['./components/AcmeWidget']);
     const issues = await found();
     const issue = issues.find(i => i.code === 'component_import_not_exported');
-    expect(issue?.severity).toBe('error');
+    expect(issue?.severity).toBe('warning');
     expect(issue?.message).toContain(
       '"./components/AcmeWidget": "./components/AcmeWidget.tsx"',
     );
+  });
+
+  it('adds only warnings: validate keeps its exit, only --strict fails', async () => {
+    pkg(p => {
+      delete p.exports['./components/AcmeWidget'];
+      p.peerDependencies['@astryxdesign/cli'] = 'latest-ish';
+      p.dependencies = {'@astryxdesign/core': '^0.7.0'};
+    });
+    write(
+      'templates/account-card.tsx',
+      "import {X} from '../components/AcmeWidget';\nexport function A() {\n  return <X />;\n}\n",
+    );
+    const issues = await found();
+    expect(issues.length).toBeGreaterThan(4);
+    expect(issues.every(i => i.severity === 'warning')).toBe(true);
+    const plain = await integrationCheck({cwd: dir});
+    expect(plain.data.errors).toBe(0);
+    expect(plain.data.failed).toBe(false);
+    const strict = await integrationCheck({cwd: dir, strict: true});
+    expect(strict.data.failed).toBe(true);
   });
 
   it('flags a require-only condition', async () => {
@@ -212,7 +234,18 @@ describe('public imports: component doc import', () => {
     const issue = (await found()).find(
       i => i.code === 'component_import_not_exported',
     );
-    expect(issue?.message).toContain('only a "require" target');
+    expect(issue?.message).toContain('only the "require" condition');
+  });
+
+  it('names the conditions a types-only entry has', async () => {
+    pkg(p => {
+      p.exports['./components/AcmeWidget'] = {types: './a.d.ts'};
+    });
+    const issue = (await found()).find(
+      i => i.code === 'component_import_not_exported',
+    );
+    expect(issue?.message).toContain('only the "types" condition');
+    expect(issue?.message).not.toContain('require');
   });
 
   it('flags a bare-string exports field', async () => {
@@ -279,6 +312,26 @@ describe('public imports: component examples', () => {
     expect(await codes()).toEqual(['example_import_not_exported']);
   });
 
+  it('leaves a CommonJS target unjudged for names', async () => {
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeGadget} from '@acme/widgets/components/AcmeWidget';\\n<AcmeGadget />",
+      ),
+    );
+    write(
+      'components/AcmeWidget.tsx',
+      'module.exports = {AcmeWidget: () => null, AcmeGadget: () => null};\n',
+    );
+    expect(await codes()).toEqual([]);
+    pkg(p => {
+      p.exports['./components/AcmeWidget'] = './components/AcmeWidget.cjs';
+    });
+    write('components/AcmeWidget.cjs', 'export const Other = 1;\n');
+    expect(await codes()).toEqual([]);
+  });
+
   it('accepts aliased, type-only and other-package imports', async () => {
     write(
       'components/AcmeWidget.doc.mjs',
@@ -336,6 +389,15 @@ describe('public imports: template sources', () => {
       'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
     );
     expect(await codes()).toEqual(['template_import_missing_name']);
+  });
+
+  it('leaves a CommonJS target of a template import unjudged for names', async () => {
+    write('components/AcmeWidget.tsx', 'exports.AcmeWidget = () => null;\n');
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeGadget} from \'@acme/widgets/components/AcmeWidget\';\nexport default function A() {\n  return <AcmeGadget label="x" />;\n}\n',
+    );
+    expect(await codes()).toEqual([]);
   });
 
   it('flags a template whose public import exports does not declare', async () => {
@@ -400,33 +462,58 @@ describe('public imports: block component names', () => {
 });
 
 describe('public imports: peer ranges', () => {
-  it('reports, as info only, a CLI peer range that excludes the running CLI', async () => {
+  it('lists a CLI peer range that excludes the running CLI in peerRanges, never counted', async () => {
     pkg(p => {
       p.peerDependencies['@astryxdesign/cli'] = '>=99.0.0';
     });
-    const issue = (await found()).find(i => i.code === 'cli_peer_excludes_cli');
-    expect(issue?.severity).toBe('info');
-    expect(issue?.message).toContain(`">=${CLI_VERSION}"`);
+    const validated = await validateIntegration(undefined, {cwd: dir});
+    expect(validated.data.issues).toEqual([]);
+    expect(validated.data.peerRanges?.status).toBe('checked');
+    const [finding] = validated.data.peerRanges?.findings ?? [];
+    expect(finding).toMatchObject({
+      code: 'cli_peer_excludes_cli',
+      severity: 'info',
+    });
+    expect(finding.fix).toContain(`">=${CLI_VERSION}"`);
     const check = await integrationCheck({cwd: dir, strict: true});
     expect(check.data.failed).toBe(false);
     expect(check.data.warnings).toBe(0);
+    expect(check.data.skipped).toEqual([]);
     expect(check.data.failures).toEqual([]);
-    expect(check.data.checks[0].response.data.issues).toContainEqual(issue);
+    expect(check.data.checks[0].response.data.peerRanges).toEqual(
+      validated.data.peerRanges,
+    );
   });
 
-  it('reports, as info only, a Core peer range that excludes the installed Core', async () => {
+  it('lists a Core peer range that excludes the installed Core in peerRanges, never counted', async () => {
     pkg(p => {
       p.peerDependencies['@astryxdesign/core'] = '^0.0.1';
     });
-    const issues = await found();
-    expect(issues.map(i => [i.code, i.severity])).toEqual([
-      ['core_peer_excludes_core', 'info'],
-    ]);
+    const validated = await validateIntegration(undefined, {cwd: dir});
+    expect(validated.data.issues).toEqual([]);
+    expect(
+      validated.data.peerRanges?.findings.map(f => [f.code, f.severity]),
+    ).toEqual([['core_peer_excludes_core', 'info']]);
     const check = await integrationCheck({cwd: dir, strict: true});
     expect(check.data.failed).toBe(false);
     expect(check.data.errors).toBe(0);
     expect(check.data.warnings).toBe(0);
-    expect(check.data.checks[0].response.data.issues).toContainEqual(issues[0]);
+  });
+
+  it("leaves the rest of validate's JSON as it was", async () => {
+    const validated = await validateIntegration(undefined, {cwd: dir});
+    expect(Object.keys(validated.data).sort()).toEqual([
+      'docTypes',
+      'issues',
+      'name',
+      'peerRanges',
+      'validated',
+      'version',
+    ]);
+    expect(validated.data.peerRanges).toEqual({
+      status: 'checked',
+      findings: [],
+    });
   });
 
   it('flags an invalid range and leaves protocol specs alone', async () => {
@@ -481,7 +568,7 @@ describe('subpathDeclaration', () => {
     );
     expect(subpathDeclaration({'./a': null}, './a').state).toBe('blocked');
     expect(subpathDeclaration({'./a': {require: './a.cjs'}}, './a').state).toBe(
-      'require_only',
+      'not_importable',
     );
     expect(subpathDeclaration({'./*': './src/*.ts'}, './a').state).toBe(
       'declared',
@@ -501,16 +588,24 @@ describe('integration add declares its public subpath', () => {
     fs.mkdirSync(dir);
     write(
       'package.json',
-      JSON.stringify({
-        name: '@acme/fresh',
-        version: '1.0.0',
-        type: 'module',
-        main: './index.js',
-      }),
+      JSON.stringify({name: '@acme/fresh', version: '1.0.0', type: 'module'}),
     );
   });
 
-  it('creates the exports entries a fresh scaffold needs, keeping main as "."', async () => {
+  it('never creates exports; a fresh scaffold still passes', async () => {
+    const before = fs.readFileSync(path.join(dir, 'package.json'), 'utf-8');
+    await integrationAddComponent('AcmeThing', {cwd: dir});
+    await integrationAddTemplate('acme-page', {cwd: dir});
+    expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).toBe(
+      before,
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('adds the entry when the package already has an exports map', async () => {
+    pkg(p => {
+      p.exports = {'.': './index.js'};
+    });
     await integrationAddComponent('AcmeThing', {cwd: dir});
     await integrationAddTemplate('acme-page', {cwd: dir});
     const p = JSON.parse(

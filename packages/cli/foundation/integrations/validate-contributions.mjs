@@ -70,14 +70,6 @@ export function issueWarning(code, message) {
 }
 
 /**
- * An issue that is reported, never counted or failed on.
- * @param {string} code @param {string} message @returns {Issue}
- */
-export function issueInfo(code, message) {
-  return {code, severity: 'info', message};
-}
-
-/**
  * Report the manifest keys this CLI does not know.
  *
  * A WARNING, deliberately: an integration is published once and installed

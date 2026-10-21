@@ -143,12 +143,6 @@ export function packageJsonFilesUpdate(
     let exportsMap;
     if (authored === undefined) {
       exportsMap = {};
-      // A new map makes every path it does not list private: keep the root
-      // entry the package already resolves through `module`/`main`.
-      const root = [pkg.module, pkg.main].find(
-        value => typeof value === 'string' && value !== '',
-      );
-      if (root != null) exportsMap['.'] = `./${normalize(root)}`;
     } else if (
       authored == null ||
       typeof authored !== 'object' ||

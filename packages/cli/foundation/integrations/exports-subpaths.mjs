@@ -49,7 +49,7 @@ export function allTargets(value, out = []) {
 
 /**
  * @typedef {object} SubpathDeclaration
- * @property {'declared'|'no_exports'|'root_only'|'missing'|'blocked'|'require_only'} state
+ * @property {'declared'|'no_exports'|'root_only'|'missing'|'blocked'|'not_importable'} state
  * @property {unknown} [value] the matched export value
  * @property {string} [wildcard] what a `*` key matched
  */
@@ -71,7 +71,7 @@ export function subpathDeclaration(exportsField, subpath) {
     if (subpath !== '.') return {state: 'root_only'};
     return importable(exportsField)
       ? {state: 'declared', value: exportsField}
-      : {state: 'require_only'};
+      : {state: 'not_importable', value: exportsField};
   }
   const map = /** @type {Record<string, unknown>} */ (exportsField);
   /** @type {{value: unknown, wildcard: string} | null} */
@@ -104,7 +104,8 @@ export function subpathDeclaration(exportsField, subpath) {
   }
   if (!hit) return {state: 'missing'};
   if (hit.value == null) return {state: 'blocked'};
-  if (!importable(hit.value)) return {state: 'require_only', value: hit.value};
+  if (!importable(hit.value))
+    return {state: 'not_importable', value: hit.value};
   return {state: 'declared', value: hit.value, wildcard: hit.wildcard};
 }
 

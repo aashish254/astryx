@@ -126,14 +126,6 @@ describe('integration authoring CLI', () => {
       tmpDir,
     );
     expect(added.status).toBe(0);
-    // Add declares the subpath; drop the map to see the no-map package.
-    const pkgFile = path.join(tmpDir, 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf-8'));
-    expect(pkg.exports).toEqual({
-      './components/AcmeWidget': './components/AcmeWidget.tsx',
-    });
-    delete pkg.exports;
-    fs.writeFileSync(pkgFile, `${JSON.stringify(pkg)}\n`);
 
     const checked = await runCli(['integration', 'verify', '--json'], tmpDir);
     // Without an exports map, the extensionless import cannot resolve —

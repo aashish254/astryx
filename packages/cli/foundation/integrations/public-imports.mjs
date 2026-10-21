@@ -28,18 +28,14 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {parse} from '@babel/parser';
 import {CLI_ROOT, findCoreDir} from '../fs/paths.mjs';
-import {satisfiesRange} from '../env/semver.mjs';
 import {
   discoverIntegrationComponents,
   discoverOwnedComponents,
 } from '../discovery/component-discovery.mjs';
 import {loadComponentDoc} from '../discovery/component-loader.mjs';
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
-import {
-  issueError,
-  issueInfo,
-  issueWarning,
-} from './validate-contributions.mjs';
+import {issueWarning} from './validate-contributions.mjs';
+import {validRange, versionAt} from './peer-ranges.mjs';
 import {
   allTargets,
   importable,
@@ -304,11 +300,29 @@ function subpathFor(exportsField, packageDir, file) {
 }
 
 /**
+ * The condition names an export value uses, at any depth, in order.
+ * @param {unknown} value
+ * @param {string[]} [out]
+ * @returns {string[]}
+ */
+function conditionNames(value, out = []) {
+  if (Array.isArray(value)) for (const v of value) conditionNames(v, out);
+  else if (isRecord(value)) {
+    for (const [key, v] of Object.entries(value)) {
+      if (!out.includes(key)) out.push(key);
+      conditionNames(v, out);
+    }
+  }
+  return out;
+}
+
+/**
  * Why a declared state is not importable, in words.
- * @param {SubpathDeclaration['state']} state
+ * @param {SubpathDeclaration} declaration
  * @param {string} subpath
  */
-function whyUndeclared(state, subpath) {
+function whyUndeclared(declaration, subpath) {
+  const {state} = declaration;
   switch (state) {
     case 'no_exports':
       return `package.json has no "exports" and no file exists at "${subpath}"`;
@@ -316,8 +330,13 @@ function whyUndeclared(state, subpath) {
       return `package.json "exports" names only the package root, which blocks every subpath`;
     case 'blocked':
       return `package.json "exports" maps "${subpath}" to null`;
-    case 'require_only':
-      return `package.json "exports" gives "${subpath}" only a "require" target, so an ES module import cannot load it`;
+    case 'not_importable': {
+      const names = conditionNames(declaration.value);
+      const listed = names.map(name => `"${name}"`).join(', ');
+      return names.length === 0
+        ? `package.json "exports" gives "${subpath}" no target an ES module import can load`
+        : `package.json "exports" gives "${subpath}" only the ${listed} condition${names.length === 1 ? '' : 's'}, none of which an ES module import loads`;
+    }
     default:
       return `package.json "exports" does not declare "${subpath}"`;
   }
@@ -338,7 +357,7 @@ function exportsFix(exportsField, state, subpath, target) {
   if (state === 'root_only') {
     return `make "exports" a subpath map: {".": ${JSON.stringify(exportsField)}, ${entry}}.`;
   }
-  if (state === 'require_only') {
+  if (state === 'not_importable') {
     return `add an ES module condition to "${subpath}" in package.json "exports", e.g. "default": ${JSON.stringify(target)} (or the built file).`;
   }
   if (state === 'blocked') {
@@ -392,6 +411,9 @@ export function moduleExportNames(file, seen = new Set()) {
   }
   const cached = exportNameCache.get(file);
   if (cached?.stamp === stamp) return cached.value;
+  // A CommonJS module's exports cannot be read from declarations: leave it
+  // unjudged rather than read it as exporting nothing.
+  if (/\.c[jt]s$/u.test(file)) return {names, complete: false};
   let complete = true;
   let ast;
   try {
@@ -400,6 +422,15 @@ export function moduleExportNames(file, seen = new Set()) {
   } catch {
     return {names, complete: false};
   }
+  const esm = ast.program.body.some(
+    (/** @type {any} */ node) =>
+      node.type === 'ImportDeclaration' ||
+      node.type === 'ExportNamedDeclaration' ||
+      node.type === 'ExportDefaultDeclaration' ||
+      node.type === 'ExportAllDeclaration' ||
+      node.type === 'TSExportAssignment',
+  );
+  if (!esm) return {names, complete: false};
   for (const node of ast.program.body) {
     if (node.type === 'ExportDefaultDeclaration') names.add('default');
     else if (node.type === 'TSExportAssignment') complete = false;
@@ -463,41 +494,11 @@ function missingNames(statement, files) {
 
 // ── Peer ranges ─────────────────────────────────────────────────────
 
-const PARTIAL = String.raw`v?(?:\d+|[xX*])(?:\.(?:\d+|[xX*])){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?`;
-const COMPARATOR_RE = new RegExp(`^(?:<=|>=|<|>|=|~>|~|\\^)?${PARTIAL}$`);
-const HYPHEN_RE = new RegExp(`^${PARTIAL}\\s+-\\s+${PARTIAL}$`);
-
-/**
- * Whether a dependency range is a semver range a package manager can match.
- * A protocol spec (`workspace:`, `npm:`, `file:`, a URL) is not judged.
- * @param {string} range
- * @returns {boolean | null} null when not judged
- */
-export function validRange(range) {
-  if (typeof range !== 'string') return false;
-  const text = range.trim();
-  if (text.includes(':')) return null;
-  if (text === '') return true;
-  return text.split('||').every(alternative => {
-    const set = alternative.trim().replace(/(<=|>=|<|>|=|~>|~|\^)\s+/g, '$1');
-    if (set === '') return true;
-    if (HYPHEN_RE.test(set)) return true;
-    return set.split(/\s+/).every(token => COMPARATOR_RE.test(token));
-  });
-}
-
-/** @param {string} dir */
-function versionAt(dir) {
-  const version = readJson(path.join(dir, 'package.json'))?.version;
-  return typeof version === 'string' ? version : null;
-}
-
 /**
  * @param {any} pkg
- * @param {string} packageDir
  * @returns {Issue[]}
  */
-function peerIssues(pkg, packageDir) {
+function peerIssues(pkg) {
   /** @type {Issue[]} */
   const issues = [];
   if (!isRecord(pkg)) return issues;
@@ -508,7 +509,7 @@ function peerIssues(pkg, packageDir) {
     if (!name.startsWith('@astryxdesign/')) continue;
     if (validRange(/** @type {string} */ (range)) === false) {
       issues.push(
-        issueError(
+        issueWarning(
           'invalid_peer_range',
           `peerDependencies["${name}"] is "${String(range)}", which is not a semver range, so a package manager cannot match any ${name} version to it. Fix: use a range such as ">=${name === CLI ? (versionAt(CLI_ROOT) ?? '0.7.0') : '0.7.0'}" or "^0.7.0".`,
         ),
@@ -519,59 +520,13 @@ function peerIssues(pkg, packageDir) {
   if (pkg.name !== CORE && Object.hasOwn(deps, CORE)) {
     const range = String(deps[CORE]);
     issues.push(
-      issueError(
+      issueWarning(
         'core_not_peer',
         `package.json lists ${CORE} in "dependencies", so an app that installs this package can get a second copy of Core beside its own: two theme contexts and duplicated styles. Fix: move it to "peerDependencies": {"${CORE}": ${JSON.stringify(Object.hasOwn(peers, CORE) ? String(peers[CORE]) : range)}} (and to "devDependencies" for local development).`,
       ),
     );
   }
-
-  // A range that excludes the CLI or Core in use is reported only: a package
-  // that pins its peers exactly while it builds on a newer canary is correct.
-  const cliRange = peers[CLI];
-  const cliVersion = versionAt(CLI_ROOT);
-  if (
-    typeof cliRange === 'string' &&
-    cliVersion &&
-    validRange(cliRange) === true &&
-    !satisfiesRange(cliVersion, cliRange)
-  ) {
-    issues.push(
-      issueInfo(
-        'cli_peer_excludes_cli',
-        `peerDependencies["${CLI}"] is "${cliRange}", which excludes the running CLI ${cliVersion}, so installing this package beside it reports a peer conflict. Fix: use a range that admits ${cliVersion}, e.g. "${CLI}": ">=${floorFor(cliRange, cliVersion)}".`,
-      ),
-    );
-  }
-
-  const coreRange = peers[CORE];
-  const coreDir = pkg.name === CORE ? null : findCoreDir(packageDir);
-  const coreVersion = coreDir ? versionAt(coreDir) : null;
-  if (
-    typeof coreRange === 'string' &&
-    coreVersion &&
-    validRange(coreRange) === true &&
-    !satisfiesRange(coreVersion, coreRange)
-  ) {
-    issues.push(
-      issueInfo(
-        'core_peer_excludes_core',
-        `peerDependencies["${CORE}"] is "${coreRange}", which excludes the installed Core ${coreVersion}: the package is built and checked against a Core its range rejects, and apps on that Core get a peer conflict. Fix: set it to a range that includes ${coreVersion}, e.g. "${CORE}": "^${coreVersion}", or install a Core the range admits.`,
-      ),
-    );
-  }
   return issues;
-}
-
-/**
- * The lower bound to suggest: the range's own floor when it is below the
- * running version (only an upper bound excluded it), else the running version.
- * @param {string} range
- * @param {string} version
- */
-function floorFor(range, version) {
-  const m = /(?:>=|\^|~|=)?\s*v?(\d+\.\d+\.\d+)/.exec(range);
-  return m && satisfiesRange(m[1], `<=${version}`) ? m[1] : version;
 }
 
 // ── Checks ──────────────────────────────────────────────────────────
@@ -652,7 +607,7 @@ async function componentIssues(ctx, integration) {
       (sourceTarget ? sourceTarget.replace(/\.[cm]?[jt]sx?$/u, '') : null);
     if (split && split.pkg !== ctx.name) {
       issues.push(
-        issueError(
+        issueWarning(
           'component_import_other_package',
           `Component doc "${shownDoc}" gives import "${specifier}", which names package "${split.pkg}", not this package "${ctx.name}", so apps are told to import the component from somewhere it is not. Fix: set import: '${ctx.name}${suggested ? suggested.slice(1) : ''}' in the doc.`,
         ),
@@ -669,9 +624,9 @@ async function componentIssues(ctx, integration) {
             ? `set import: '${ctx.name}${declared.slice(1)}' (already exported), or `
             : '';
         issues.push(
-          issueError(
+          issueWarning(
             'component_import_not_exported',
-            `Component doc "${shownDoc}" gives import "${specifier}", but ${whyUndeclared(declaration.state, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
+            `Component doc "${shownDoc}" gives import "${specifier}", but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
           ),
         );
       }
@@ -694,14 +649,14 @@ async function componentIssues(ctx, integration) {
         );
         if (undeclared) {
           issues.push(
-            issueError(
+            issueWarning(
               'example_import_not_exported',
-              `Component doc "${shownDoc}" example ${label} imports "${statement.source}", but ${whyUndeclared(undeclared.state, parts.subpath)}, so the example fails when an app copies it. Fix: import from '${authored && splitSpecifier(authored)?.pkg === ctx.name ? authored : `${ctx.name}${suggested ? suggested.slice(1) : ''}`}' in the example, or declare the subpath in package.json "exports".`,
+              `Component doc "${shownDoc}" example ${label} imports "${statement.source}", but ${whyUndeclared(undeclared, parts.subpath)}, so the example fails when an app copies it. Fix: import from '${authored && splitSpecifier(authored)?.pkg === ctx.name ? authored : `${ctx.name}${suggested ? suggested.slice(1) : ''}`}' in the example, or declare the subpath in package.json "exports".`,
             ),
           );
         } else if (missing && missing.length > 0) {
           issues.push(
-            issueError(
+            issueWarning(
               'example_import_missing_name',
               `Component doc "${shownDoc}" example ${label} imports ${missing.map(n => `"${n}"`).join(', ')} from "${statement.source}", which does not export ${missing.length === 1 ? 'it' : 'them'}, so the example fails when an app copies it. Fix: import a name that module exports (${[...list.map(r => r.name)].map(n => `"${n}"`).join(', ')} for this doc), or export the name from it.`,
             ),
@@ -766,9 +721,9 @@ async function templateIssues(ctx, integration) {
     );
     if (declaration.state !== 'declared') {
       issues.push(
-        issueError(
+        issueWarning(
           'template_import_not_exported',
-          `Template "${id}" has public import "${ctx.name}${subpath.slice(1)}", but ${whyUndeclared(declaration.state, subpath)}, so it cannot be imported once published. Fix: ${exportsFix(ctx.exportsField, declaration.state, subpath, sourceTarget)}`,
+          `Template "${id}" has public import "${ctx.name}${subpath.slice(1)}", but ${whyUndeclared(declaration, subpath)}, so it cannot be imported once published. Fix: ${exportsFix(ctx.exportsField, declaration.state, subpath, sourceTarget)}`,
         ),
       );
     }
@@ -802,7 +757,7 @@ async function templateIssues(ctx, integration) {
         const target = path.resolve(path.dirname(file), spec);
         if (target !== root && !target.startsWith(root + path.sep)) {
           issues.push(
-            issueError(
+            issueWarning(
               'template_import_outside_root',
               `Template "${id}" (${shown}) imports "${spec}", a path outside the templates root; \`astryx template\` copies only the template into an app, where that path does not exist. Fix: import it through the package's public name (e.g. '${ctx.name}/…' declared in package.json "exports"), or move the code into the template.`,
             ),
@@ -820,14 +775,14 @@ async function templateIssues(ctx, integration) {
         );
         if (undeclared) {
           issues.push(
-            issueError(
+            issueWarning(
               'template_private_import',
-              `Template "${id}" (${shown}) imports "${spec}", but ${whyUndeclared(undeclared.state, parts.subpath)}, so the template breaks in an app. Fix: import from a subpath package.json "exports" declares, or add one for it.`,
+              `Template "${id}" (${shown}) imports "${spec}", but ${whyUndeclared(undeclared, parts.subpath)}, so the template breaks in an app. Fix: import from a subpath package.json "exports" declares, or add one for it.`,
             ),
           );
         } else if (missing && missing.length > 0) {
           issues.push(
-            issueError(
+            issueWarning(
               'template_import_missing_name',
               `Template "${id}" (${shown}) imports ${missing.map(n => `"${n}"`).join(', ')} from "${spec}", which does not export ${missing.length === 1 ? 'it' : 'them'}, so the template breaks in an app. Fix: import a name that module exports, or export the name from it.`,
             ),
@@ -850,7 +805,7 @@ async function templateIssues(ctx, integration) {
               ? `'${CORE}/${top}'`
               : `a subpath Core's package.json "exports" declares`;
           issues.push(
-            issueError(
+            issueWarning(
               'template_private_import',
               `Template "${id}" (${shown}) imports "${spec}", a path Core's package.json "exports" does not declare, so the template breaks in an app. Fix: import from ${hint}.`,
             ),
@@ -911,7 +866,7 @@ export async function publicImportIssues(packageDir, integration) {
     corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
   };
   return [
-    ...peerIssues(pkg, packageDir),
+    ...peerIssues(pkg),
     ...(await componentIssues(ctx, integration)),
     ...(await templateIssues(ctx, integration)),
   ];

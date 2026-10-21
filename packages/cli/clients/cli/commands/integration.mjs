@@ -81,7 +81,7 @@ async function verifyPackage(program) {
         list(
           issues.map(
             issue =>
-              `[${issue.severity === 'error' ? 'fail' : issue.severity === 'info' ? 'info' : 'warn'}] ${issue.message}`,
+              `[${issue.severity === 'error' ? 'fail' : 'warn'}] ${issue.message}`,
           ),
         ),
       );
