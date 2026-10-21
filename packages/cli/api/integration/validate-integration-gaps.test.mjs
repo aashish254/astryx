@@ -461,6 +461,31 @@ describe('package.json', () => {
     }
   });
 
+  it('completes --strict for a package without a name whose component docs hold links, reporting none', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({components: './components'}),
+        'components/AcmeWidget.doc.mjs':
+          "export default {type: 'component', name: 'AcmeWidget', displayName: 'AcmeWidget', usage: {description: 'Read {@link generic:x} first.'}, props: []};\n",
+        'components/AcmeWidget.tsx': componentSource('AcmeWidget'),
+      },
+      {version: '1.0.0'},
+    );
+
+    const result = await integrationCheck({cwd: dir, strict: true});
+    const components = result.data.checks.find(
+      check => check.check === 'components',
+    );
+    expect(components?.response.data.issues.map(issue => issue.code)).toEqual([
+      'invalid_package_json',
+    ]);
+    expect(
+      result.data.failures.filter(
+        failure => failure.code === 'invalid_doc_graph',
+      ),
+    ).toEqual([]);
+  });
+
   it('checks the docs of a package without a name, naming them by path', async () => {
     const dir = writePackage(
       {
