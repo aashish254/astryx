@@ -22,7 +22,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
 import {
-  findCoreDir,
+  requireCoreDir as requireAnswerCoreDir,
   discoverExternalPackages,
 } from '../../foundation/fs/paths.mjs';
 import {
@@ -44,7 +44,7 @@ import {Project} from '../../foundation/config/project.mjs';
 import {loadComponentDoc as loadValidatedComponentDoc} from '../../foundation/discovery/component-loader.mjs';
 import {resolveComponentReplacements} from '../../foundation/discovery/component-replacement.mjs';
 import {searchComponents} from '../../foundation/text/string-utils.mjs';
-import {AstryxError} from '../error.mjs';
+import {AstryxError, coreDirOrThrow} from '../error.mjs';
 import {
   componentLinkProvider,
   linkComponentDoc,
@@ -121,15 +121,7 @@ export {CORE_PACKAGE, unscopedComponentOwners};
  * @returns {string}
  */
 export function requireCoreDir(cwd) {
-  const coreDir = findCoreDir(cwd);
-  if (!coreDir) {
-    throw new AstryxError(
-      'Could not find @astryxdesign/core package',
-      undefined,
-      ERROR_CODES.ERR_CORE_NOT_FOUND,
-    );
-  }
-  return coreDir;
+  return coreDirOrThrow(requireAnswerCoreDir, cwd);
 }
 
 /**

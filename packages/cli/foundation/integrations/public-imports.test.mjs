@@ -174,6 +174,48 @@ describe('public imports: clean packages', () => {
     );
   });
 
+  it('lists a deep path into build output not built yet as not checked', async () => {
+    pkg(p => {
+      delete p.exports;
+      p.files = ['dist', 'components', 'templates'];
+    });
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        '@acme/widgets/dist/AcmeWidget.js',
+        "import {AcmeWidget} from '@acme/widgets/dist/AcmeWidget.js';\\n<AcmeWidget />",
+      ),
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(
+      result.data.issues.filter(i => i.code.includes('_not_exported')),
+    ).toEqual([]);
+    expect(result.data.publicImports?.unchecked).toEqual([
+      expect.objectContaining({
+        file: 'components/AcmeWidget.doc.mjs',
+        specifier: '@acme/widgets/dist/AcmeWidget.js',
+        reason: expect.stringContaining('build output'),
+      }),
+      expect.objectContaining({
+        specifier: '@acme/widgets/dist/AcmeWidget.js',
+      }),
+    ]);
+  });
+
+  it('never maps a built .js path to the .tsx source in a fix', async () => {
+    pkg(p => delete p.exports);
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC('@acme/widgets/components/AcmeWidget.js'),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'component_import_not_exported',
+    );
+    expect(issue?.message).not.toContain(
+      '"./components/AcmeWidget.js": "./components/AcmeWidget.tsx"',
+    );
+  });
+
   it('never requires an exports target to exist (build output)', async () => {
     pkg(p => {
       p.exports['./components/AcmeWidget'] = {

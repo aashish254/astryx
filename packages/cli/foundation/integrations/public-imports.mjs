@@ -25,7 +25,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {parse} from '@babel/parser';
-import {findCoreDir} from '../fs/paths.mjs';
+import {findProjectCoreDir} from '../fs/paths.mjs';
 import {
   discoverIntegrationComponents,
   resolveIntegrationImportPath,
@@ -552,7 +552,62 @@ function uncheckedReason(files) {
  * @property {any} corePkg
  * @property {PublicImportUnchecked[]} unchecked what could not be judged
  * @property {ExportNameCache} exportNames export lists read in this check
+ * @property {string[]} files the package.json `files` entries, normalized
+ * @property {string[]} roots the integration's contribution roots, absolute
  */
+
+const BUILT_EXTENSION_RE = /\.[cm]?jsx?$/u;
+
+/**
+ * Whether an undeclared deep path, in a package with no `exports`, points
+ * into build output that is not built yet: its top folder is missing, or is
+ * a `files` folder that holds no contribution root. Such an import cannot be
+ * judged from source.
+ * @param {Context} ctx
+ * @param {string} subpath
+ * @param {SubpathDeclaration} declaration
+ */
+function unbuiltOutput(ctx, subpath, declaration) {
+  if (declaration.state !== 'no_exports' || subpath === '.') return false;
+  const top = subpath.slice(2).split('/')[0];
+  if (!top) return false;
+  const topDir = path.resolve(ctx.packageDir, top);
+  if (!fs.existsSync(topDir)) return true;
+  return (
+    ctx.files.includes(top) &&
+    !ctx.roots.some(
+      root => root === topDir || root.startsWith(topDir + path.sep),
+    )
+  );
+}
+
+/**
+ * The reason an import into unbuilt output is listed as not checked.
+ * @param {string} subpath
+ */
+function unbuiltReason(subpath) {
+  return `package.json has no "exports", and "${subpath}" is build output that is not built yet, so it was not checked`;
+}
+
+/**
+ * The target a fix maps `subpath` to: the component's source for a source
+ * path, never a TypeScript source for a built `.js` path.
+ * @param {string} subpath
+ * @param {string | null} sourceTarget
+ */
+function fixTarget(subpath, sourceTarget) {
+  if (
+    sourceTarget &&
+    !(
+      BUILT_EXTENSION_RE.test(subpath) && !BUILT_EXTENSION_RE.test(sourceTarget)
+    )
+  ) {
+    return sourceTarget;
+  }
+  return BUILT_EXTENSION_RE.test(subpath)
+    ? `<the built file "${subpath}" names>`
+    : `./${subpath.slice(2)}.tsx`;
+}
 
 /** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportUnchecked} PublicImportUnchecked */
 /** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportsReport} PublicImportsReport */
@@ -701,7 +756,13 @@ async function componentIssues(ctx, integration) {
         ctx.packageDir,
         split.subpath,
       );
-      if (
+      if (unbuiltOutput(ctx, split.subpath, declaration)) {
+        ctx.unchecked.push({
+          file: shownDoc,
+          specifier,
+          reason: unbuiltReason(split.subpath),
+        });
+      } else if (
         declaration.state === 'declared' &&
         split.subpath === '.' &&
         declaration.value == null
@@ -748,7 +809,7 @@ async function componentIssues(ctx, integration) {
         issues.push(
           issueWarning(
             'component_import_not_exported',
-            `Component doc "${shownDoc}" ${gives}, but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${split.subpath === '.' && perComponent ? `${perComponent}.` : exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
+            `Component doc "${shownDoc}" ${gives}, but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${split.subpath === '.' && perComponent ? `${perComponent}.` : exportsFix(ctx.exportsField, declaration.state, split.subpath, fixTarget(split.subpath, sourceTarget))}`,
           ),
         );
       }
@@ -828,7 +889,7 @@ async function componentIssues(ctx, integration) {
       const target = atSubpath
         ? `./${rel(ctx.packageDir, atSubpath)}`
         : sourceHasAll && sourceTarget
-          ? sourceTarget
+          ? fixTarget(subpath, sourceTarget)
           : `<the file that exports ${values.join(', ') || 'them'}>`;
       return exportsFix(ctx.exportsField, undeclared.state, subpath, target);
     };
@@ -855,7 +916,13 @@ async function componentIssues(ctx, integration) {
             reason: `example ${label}: ${reason}`,
           });
         }
-        if (undeclared) {
+        if (undeclared && unbuiltOutput(ctx, parts.subpath, undeclared)) {
+          ctx.unchecked.push({
+            file: shownDoc,
+            specifier: statement.source,
+            reason: `example ${label}: ${unbuiltReason(parts.subpath)}`,
+          });
+        } else if (undeclared) {
           issues.push(
             issueWarning(
               'example_import_not_exported',
@@ -960,7 +1027,13 @@ async function templateIssues(ctx, integration) {
         if (reason) {
           ctx.unchecked.push({file: shown, specifier: spec, reason});
         }
-        if (undeclared) {
+        if (undeclared && unbuiltOutput(ctx, parts.subpath, undeclared)) {
+          ctx.unchecked.push({
+            file: shown,
+            specifier: spec,
+            reason: unbuiltReason(parts.subpath),
+          });
+        } else if (undeclared) {
           issues.push(
             issueWarning(
               'template_private_import',
@@ -1024,7 +1097,10 @@ export async function publicImportIssues(packageDir, integration) {
   const pkg = readJson(path.join(packageDir, 'package.json'));
   if (!isRecord(pkg) || typeof pkg.name !== 'string')
     return {issues: [], report};
-  const coreDir = pkg.name === CORE ? packageDir : findCoreDir(packageDir);
+  // The Core installed beside the package, which its templates' imports
+  // resolve against; never the CLI's own copy, which may be another release.
+  const coreDir =
+    pkg.name === CORE ? packageDir : findProjectCoreDir(packageDir);
   /** @type {Context} */
   const ctx = {
     packageDir,
@@ -1034,6 +1110,20 @@ export async function publicImportIssues(packageDir, integration) {
     corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
     unchecked: report.unchecked,
     exportNames: new Map(),
+    files: Array.isArray(pkg.files)
+      ? pkg.files
+          .filter(entry => typeof entry === 'string')
+          .map(entry => entry.replace(/^\.\//u, '').replace(/\/+$/u, ''))
+      : [],
+    roots: [
+      integration.components,
+      integration.templates,
+      integration.docs,
+      integration.themes,
+      integration.codemods,
+    ]
+      .filter(root => typeof root === 'string')
+      .map(root => path.resolve(root)),
   };
   const issues = [
     ...(await componentIssues(ctx, integration)),
