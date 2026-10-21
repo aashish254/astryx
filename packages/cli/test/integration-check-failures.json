@@ -13,7 +13,6 @@
   "codes": [
     "ambiguous_component_replacement",
     "ambiguous_template_replacement",
-    "cli_peer_excludes_cli",
     "codemod_outside_version",
     "component_import_not_exported",
     "component_import_other_package",
@@ -21,7 +20,6 @@
     "copied_passage",
     "core_not_found",
     "core_not_peer",
-    "core_peer_excludes_core",
     "doc_types_skipped",
     "duplicate_doc",
     "duplicate_provider",

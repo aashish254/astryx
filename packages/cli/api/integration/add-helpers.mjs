@@ -16,7 +16,10 @@ import {randomUUID} from 'node:crypto';
 import {AstryxError} from '../error.mjs';
 import {publishNewFile} from '../../foundation/fs/publish-file.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
-import {subpathDeclaration} from '../../foundation/integrations/exports-subpaths.mjs';
+import {
+  insertExportEntries,
+  subpathDeclaration,
+} from '../../foundation/integrations/exports-subpaths.mjs';
 
 /** @param {string} value */
 export function projectPath(value) {
@@ -128,6 +131,12 @@ export function packageJsonFilesUpdate(
     }
   }
 
+  // Exports entries added to a subpath map the package already has: written
+  // into the text as they are, so no other byte of package.json changes.
+  /** @type {Array<[string, string]>} */
+  const insertedExports = [];
+  let authoredMap = false;
+  const changedBeforeExports = changed;
   if ((pkg.exports !== undefined || createExports) && publicExports.length > 0) {
     const authored = pkg.exports;
     /** @type {Record<string, unknown>} */
@@ -158,6 +167,7 @@ export function packageJsonFilesUpdate(
         );
       }
       exportsMap = hasConditions ? {'.': authored} : {...authored};
+      authoredMap = !hasConditions && keys.length > 0;
     }
 
     for (const {subpath, target} of publicExports) {
@@ -176,14 +186,17 @@ export function packageJsonFilesUpdate(
       // A wildcard the package already declares (`./components/*`) covers it.
       if (subpathDeclaration(exportsMap, key).state === 'declared') continue;
       exportsMap[key] = value;
+      insertedExports.push([key, value]);
       changed = true;
     }
     if (changed || exportsMap !== authored) pkg.exports = exportsMap;
   }
 
+  let sideEffectsChanged = false;
   if (sideEffects.length > 0 && pkg.sideEffects !== undefined) {
     if (pkg.sideEffects === false) {
       pkg.sideEffects = [...sideEffects];
+      sideEffectsChanged = true;
       changed = true;
     } else if (Array.isArray(pkg.sideEffects)) {
       if (
@@ -200,6 +213,7 @@ export function packageJsonFilesUpdate(
       for (const pattern of sideEffects) {
         if (pkg.sideEffects.includes(pattern)) continue;
         pkg.sideEffects.push(pattern);
+        sideEffectsChanged = true;
         changed = true;
       }
     } else if (pkg.sideEffects !== true) {
@@ -212,6 +226,20 @@ export function packageJsonFilesUpdate(
   }
 
   if (!changed) return null;
+  if (
+    authoredMap &&
+    insertedExports.length > 0 &&
+    !changedBeforeExports &&
+    !sideEffectsChanged
+  ) {
+    const inserted = insertExportEntries(original, insertedExports);
+    if (
+      inserted != null &&
+      JSON.stringify(JSON.parse(inserted)) === JSON.stringify(pkg)
+    ) {
+      return {contents: inserted, expectedOriginal};
+    }
+  }
   const indent = original.match(/\n([ \t]+)"/u)?.[1] ?? '  ';
   return {
     contents:

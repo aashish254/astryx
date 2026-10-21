@@ -107,6 +107,8 @@ function codesIn(text) {
       ),
     ].map(m => [m[1], m[2]]),
   );
+  // `issueInfo` is not a raiser: an info issue is reported, never counted or
+  // failed on, so its codes cannot fail a build.
   const raisers = ['issueError', 'issueWarning'];
   for (const m of text.matchAll(/\bissue(?:Error|Warning)\s+as\s+(\w+)/g)) {
     raisers.push(m[1]);

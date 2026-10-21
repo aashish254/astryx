@@ -19,6 +19,8 @@ import {
   integrationAddTemplate,
 } from '../../api/integration/add-contribution.mjs';
 import {CLI_ROOT} from '../fs/paths.mjs';
+import {integrationCheck} from '../../api/integration/check/check.mjs';
+import {runCli} from '../../test-utils/run-cli.mjs';
 
 const CODES = new Set([
   'component_import_not_exported',
@@ -398,19 +400,33 @@ describe('public imports: block component names', () => {
 });
 
 describe('public imports: peer ranges', () => {
-  it('flags a CLI peer range that excludes the running CLI', async () => {
+  it('reports, as info only, a CLI peer range that excludes the running CLI', async () => {
     pkg(p => {
       p.peerDependencies['@astryxdesign/cli'] = '>=99.0.0';
     });
     const issue = (await found()).find(i => i.code === 'cli_peer_excludes_cli');
+    expect(issue?.severity).toBe('info');
     expect(issue?.message).toContain(`">=${CLI_VERSION}"`);
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.failed).toBe(false);
+    expect(check.data.warnings).toBe(0);
+    expect(check.data.failures).toEqual([]);
+    expect(check.data.checks[0].response.data.issues).toContainEqual(issue);
   });
 
-  it('flags a Core peer range that excludes the installed Core', async () => {
+  it('reports, as info only, a Core peer range that excludes the installed Core', async () => {
     pkg(p => {
       p.peerDependencies['@astryxdesign/core'] = '^0.0.1';
     });
-    expect(await codes()).toEqual(['core_peer_excludes_core']);
+    const issues = await found();
+    expect(issues.map(i => [i.code, i.severity])).toEqual([
+      ['core_peer_excludes_core', 'info'],
+    ]);
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.failed).toBe(false);
+    expect(check.data.errors).toBe(0);
+    expect(check.data.warnings).toBe(0);
+    expect(check.data.checks[0].response.data.issues).toContainEqual(issues[0]);
   });
 
   it('flags an invalid range and leaves protocol specs alone', async () => {
@@ -517,5 +533,74 @@ describe('integration add declares its public subpath', () => {
       fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'),
     );
     expect(p.exports).toEqual({'./components/*': './components/*.tsx'});
+  });
+});
+
+describe('integration add only inserts the missing exports entry', () => {
+  const ORIGINAL =
+    '{\n' +
+    '    "version": "1.0.0",\n' +
+    '    "name": "@acme/kept",\n' +
+    '    "exports": {\n' +
+    '        "./zeta": "./zeta.js",\n' +
+    '        ".": {"types": "./index.d.ts",   "import": "./index.js"},\n' +
+    '        "./alpha": [ "./alpha.js" ]\n' +
+    '    },\n' +
+    '    "type": "module"\n' +
+    '}\n';
+
+  beforeEach(() => {
+    fs.rmSync(dir, {recursive: true, force: true});
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'package.json'), ORIGINAL);
+  });
+
+  it('keeps every existing byte of package.json for component and template add', async () => {
+    await integrationAddComponent('AcmeThing', {cwd: dir});
+    await integrationAddTemplate('acme-page', {cwd: dir});
+    const after = fs.readFileSync(path.join(dir, 'package.json'), 'utf-8');
+    expect(after).toBe(
+      ORIGINAL.replace(
+        '        "./alpha": [ "./alpha.js" ]\n',
+        '        "./alpha": [ "./alpha.js" ],\n' +
+          '        "./components/AcmeThing": "./components/AcmeThing.tsx",\n' +
+          '        "./templates/acme-page": "./templates/acme-page.tsx"\n',
+      ),
+    );
+  });
+
+  it('keeps a one-line exports map on one line', async () => {
+    const oneLine =
+      '{"name": "@acme/kept", "exports": {".": "./i.js"}, "type": "module"}';
+    fs.writeFileSync(path.join(dir, 'package.json'), oneLine);
+    await integrationAddComponent('AcmeThing', {cwd: dir});
+    expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).toBe(
+      '{"name": "@acme/kept", "exports": {".": "./i.js", "./components/AcmeThing": "./components/AcmeThing.tsx"}, "type": "module"}',
+    );
+  });
+
+  it('keeps the JSON output shape of the add commands', async () => {
+    for (const args of [
+      ['integration', 'add', 'component', 'AcmeThing', '--json'],
+      ['integration', 'add', 'template', 'acme-page', '--json'],
+    ]) {
+      const result = await runCli(args, dir);
+      expect(result.status).toBe(0);
+      const envelope = JSON.parse(result.stdout);
+      expect(Object.keys(envelope).sort()).toEqual([
+        'apiVersion',
+        'data',
+        'type',
+      ]);
+      expect(Object.keys(envelope.data).sort()).toEqual([
+        'dryRun',
+        'files',
+        'kind',
+        'manifest',
+        'name',
+        'root',
+        'written',
+      ]);
+    }
   });
 });

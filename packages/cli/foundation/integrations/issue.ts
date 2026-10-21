@@ -13,6 +13,7 @@
 /** An issue surfaced while loading or validating an integration. */
 export interface AstryxIntegrationIssue {
   code: string;
-  severity: 'warning' | 'error';
+  /** `info`: reported, never counted or failed on. */
+  severity: 'warning' | 'error' | 'info';
   message: string;
 }

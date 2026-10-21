@@ -35,7 +35,11 @@ import {
 } from '../discovery/component-discovery.mjs';
 import {loadComponentDoc} from '../discovery/component-loader.mjs';
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
-import {issueError, issueWarning} from './validate-contributions.mjs';
+import {
+  issueError,
+  issueInfo,
+  issueWarning,
+} from './validate-contributions.mjs';
 import {
   allTargets,
   importable,
@@ -522,6 +526,8 @@ function peerIssues(pkg, packageDir) {
     );
   }
 
+  // A range that excludes the CLI or Core in use is reported only: a package
+  // that pins its peers exactly while it builds on a newer canary is correct.
   const cliRange = peers[CLI];
   const cliVersion = versionAt(CLI_ROOT);
   if (
@@ -531,7 +537,7 @@ function peerIssues(pkg, packageDir) {
     !satisfiesRange(cliVersion, cliRange)
   ) {
     issues.push(
-      issueWarning(
+      issueInfo(
         'cli_peer_excludes_cli',
         `peerDependencies["${CLI}"] is "${cliRange}", which excludes the running CLI ${cliVersion}, so installing this package beside it reports a peer conflict. Fix: use a range that admits ${cliVersion}, e.g. "${CLI}": ">=${floorFor(cliRange, cliVersion)}".`,
       ),
@@ -548,7 +554,7 @@ function peerIssues(pkg, packageDir) {
     !satisfiesRange(coreVersion, coreRange)
   ) {
     issues.push(
-      issueWarning(
+      issueInfo(
         'core_peer_excludes_core',
         `peerDependencies["${CORE}"] is "${coreRange}", which excludes the installed Core ${coreVersion}: the package is built and checked against a Core its range rejects, and apps on that Core get a peer conflict. Fix: set it to a range that includes ${coreVersion}, e.g. "${CORE}": "^${coreVersion}", or install a Core the range admits.`,
       ),
