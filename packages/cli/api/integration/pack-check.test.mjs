@@ -503,7 +503,7 @@ describe('a theme module that loads its own styles', () => {
       {
         code: 'theme_module_stale',
         severity: 'error',
-        message: `Theme "ocean" module is not the module \`astryx theme build themes/ocean/oceanTheme.ts\` writes and does not only wrap it: ${reason}. A module that wraps the built module may only import the theme's own stylesheet and font stylesheet for their side effects and re-export from the built module either everything or only its theme, as oceanTheme.`,
+        message: `Theme "ocean" module is not the module \`${formatCliCommand('theme build themes/ocean/oceanTheme.ts', tmpDir)}\` writes and does not only wrap it: ${reason}. A module that wraps the built module may only import the theme's own stylesheet and font stylesheet for their side effects and re-export from the built module either everything or only its theme, as oceanTheme.`,
       },
     ]);
   });
@@ -523,8 +523,7 @@ describe('a theme module that loads its own styles', () => {
       {
         code: 'theme_module_stale',
         severity: 'error',
-        message:
-          'Theme "ocean" module re-exports ../themes/ocean/ocean.js, which does not match themes/ocean/oceanTheme.ts. Run `astryx theme build themes/ocean/oceanTheme.ts` before packing.',
+        message: `Theme "ocean" module re-exports ../themes/ocean/ocean.js, which does not match themes/ocean/oceanTheme.ts. Run \`${formatCliCommand('theme build themes/ocean/oceanTheme.ts', tmpDir)}\` before packing.`,
       },
     ]);
   });
@@ -540,8 +539,7 @@ describe('a theme module that loads its own styles', () => {
       {
         code: 'theme_module_stale',
         severity: 'error',
-        message:
-          'Theme "ocean" module does not match themes/ocean/oceanTheme.ts. Run `astryx theme build themes/ocean/oceanTheme.ts` before packing.',
+        message: `Theme "ocean" module does not match themes/ocean/oceanTheme.ts. Run \`${formatCliCommand('theme build themes/ocean/oceanTheme.ts', tmpDir)}\` before packing.`,
       },
     ]);
   });

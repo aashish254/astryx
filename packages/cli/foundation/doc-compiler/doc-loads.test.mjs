@@ -248,6 +248,10 @@ const RUNNERS = {
     runs: 'astryx.config, through the config parser',
     sites: ['loadModuleWithParser(..., parseConfig)'],
   },
+  'foundation/fs/file-protection.mjs': {
+    runs: 'the ignore matcher (CommonJS), loaded when a resolver first reads an ignore file',
+    sites: ['require(ignore)'],
+  },
   'foundation/discovery/component-discovery.mjs': {
     runs: '@babel/parser, on first use, to read the members a family doc lists in its components without running the doc',
     sites: ['require(@babel/parser)'],

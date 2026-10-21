@@ -1094,10 +1094,10 @@ async function validatePackedThemeExports(
             error(
               output.staleCode,
               localWrapper && !localWrapper.ok && !localWrapper.rebuild
-                ? `Theme "${localTheme.slug}" module is not the module \`astryx theme build ${sourceRelative}\` writes and does not only wrap it: ${localWrapper.reason}. A module that wraps the built module may only import the theme's own stylesheet and font stylesheet for their side effects and re-export from the built module either everything or only its theme, as ${localTheme.exportName}.`
+                ? `Theme "${localTheme.slug}" module is not the module \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` writes and does not only wrap it: ${localWrapper.reason}. A module that wraps the built module may only import the theme's own stylesheet and font stylesheet for their side effects and re-export from the built module either everything or only its theme, as ${localTheme.exportName}.`
                 : localWrapper && !localWrapper.ok
-                  ? `Theme "${localTheme.slug}" module re-exports ${localWrapper.reason}, which does not match ${sourceRelative}. Run \`astryx theme build ${sourceRelative}\` before packing.`
-                  : `Theme "${localTheme.slug}" ${output.kind} does not match ${sourceRelative}. Run \`astryx theme build ${sourceRelative}\` before packing.`,
+                  ? `Theme "${localTheme.slug}" module re-exports ${localWrapper.reason}, which does not match ${sourceRelative}. Run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` before packing.`
+                  : `Theme "${localTheme.slug}" ${output.kind} does not match ${sourceRelative}. Run \`${formatCliCommand(`theme build ${sourceRelative}`, localIntegration.__packageDir)}\` before packing.`,
             ),
           );
         }

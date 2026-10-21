@@ -478,7 +478,6 @@ export class Project {
    * and loads the configured integrations. Discovery is NOT run here — it is
    * lazy and memoized on the returned instance.
    *
-   * @param {string} [cwd]
    * `core: 'project'` reads only the project's installed Core, never the Core
    * the answering release carries: the commands that judge or change a
    * project (`doctor`, `swizzle`, `upgrade`) load it so (spec AST-081 FR3).
