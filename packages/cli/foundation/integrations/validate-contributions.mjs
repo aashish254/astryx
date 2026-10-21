@@ -27,6 +27,7 @@ import {parse as parseModule} from '@babel/parser';
 import {isValidSemver} from '../env/semver.mjs';
 import {KNOWN_INTEGRATION_KEYS} from '../../authoring/integration/schema.mjs';
 import {
+  contributionFiles,
   findSourceOnlyCandidates,
   findTemplateSourceOnlyCandidates,
 } from './contribution-inventory.mjs';
@@ -54,7 +55,7 @@ import {loadComponentDoc} from '../discovery/component-loader.mjs';
 import {
   moduleExportNames,
   moduleExportsName,
-  moduleLacksExport,
+  moduleExportVerdict,
 } from '../discovery/module-exports.mjs';
 import {discoverIntegrationDocs} from '../discovery/docs-discovery.mjs';
 import {discoverIntegrationThemes} from '../discovery/theme-discovery.mjs';
@@ -668,9 +669,31 @@ function componentDocFiles(root) {
  * @param {Map<string, string>} skip docs already reported, by path
  */
 async function checkComponentDocNames(components, issues, root, skip) {
+  await judgeComponentDocNames(components, root, skip, issues, null);
+}
+
+/**
+ * Judge each component doc's `name` against its source: a warning when the
+ * source provably does not export it, and an entry in `unchecked` when the
+ * source's exports cannot all be read, so it is listed rather than judged.
+ * @param {Array<{name: string, docPath: string, sourcePath: string|null}>} components
+ * @param {string} root the components root
+ * @param {Map<string, string>} skip docs already reported, by path
+ * @param {Issue[] | null} issues where findings go, or null to drop them
+ * @param {Array<{docPath: string, name: string, reason: string}> | null} unchecked
+ */
+async function judgeComponentDocNames(
+  components,
+  root,
+  skip,
+  issues,
+  unchecked,
+) {
   for (const record of components) {
     if (componentDiscovery.isIntegrationMember(record)) continue;
     if (skip.has(record.docPath)) continue;
+    // A doc with no source is its own error.
+    if (record.sourcePath == null) continue;
     let doc;
     try {
       doc = await loadComponentDoc(record.docPath);
@@ -680,14 +703,14 @@ async function checkComponentDocNames(components, issues, root, skip) {
     const name = doc?.name;
     if (typeof name !== 'string' || name === record.name) continue;
     // Only what the code contradicts: the source must provably not export
-    // the name the doc gives. A re-export from another package, or one this
-    // read cannot follow, leaves the import unjudged.
-    if (
-      record.sourcePath == null ||
-      !moduleLacksExport(record.sourcePath, name)
-    ) {
+    // the name the doc gives.
+    const judged = moduleExportVerdict(record.sourcePath, name);
+    if (judged.verdict === 'exports') continue;
+    if (judged.verdict === 'unknown') {
+      unchecked?.push({docPath: record.docPath, name, reason: judged.reason});
       continue;
     }
+    if (issues == null) continue;
     const file = path.basename(record.docPath);
     const source = path.basename(record.sourcePath);
     // The name to propose: the file name when the source exports it, else
@@ -696,13 +719,13 @@ async function checkComponentDocNames(components, issues, root, skip) {
     if (moduleExportsName(record.sourcePath, record.name)) {
       fix = `Fix: set name: '${record.name}' in ${file}.`;
     } else {
-      const components = (moduleExportNames(record.sourcePath) ?? []).filter(
+      const exported = (moduleExportNames(record.sourcePath) ?? []).filter(
         each => /^[A-Z][A-Za-z0-9]*$/u.test(each),
       );
       fix =
-        components.length === 1
-          ? `Fix: set name: '${components[0]}' in ${file}, the component ${source} exports.`
-          : `Fix: set name in ${file} to the component ${source} exports${components.length > 1 ? ` (${components.join(', ')})` : ''}.`;
+        exported.length === 1
+          ? `Fix: set name: '${exported[0]}' in ${file}, the component ${source} exports.`
+          : `Fix: set name in ${file} to the component ${source} exports${exported.length > 1 ? ` (${exported.join(', ')})` : ''}.`;
     }
     issues.push(
       issueWarning(
@@ -711,6 +734,48 @@ async function checkComponentDocNames(components, issues, root, skip) {
       ),
     );
   }
+}
+
+/**
+ * The component doc names the check could not judge, shaped like the doc type
+ * report so `integration check` counts them as not compared: each doc whose
+ * `name` differs from the name it is listed under and whose source's exports
+ * cannot all be read without running it. Its findings are always empty: a
+ * name the source provably lacks is a `doc_name_mismatch` issue instead.
+ * @param {LoadedIntegration} integration
+ * @returns {Promise<{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}>}
+ */
+export async function componentDocNamesReport(integration) {
+  /** @type {Array<{docPath: string, name: string, reason: string}>} */
+  const unchecked = [];
+  const root = integration.components;
+  if (root && !rootProblem(root)) {
+    try {
+      const {components} =
+        await componentDiscovery.discoverValidIntegrationComponents(
+          integration,
+        );
+      await judgeComponentDocNames(
+        components,
+        root,
+        componentDocFiles(root).caseMismatch,
+        null,
+        unchecked,
+      );
+    } catch {
+      // A components root discovery cannot read is reported as an issue.
+    }
+  }
+  const base = integration.__packageDir ?? root ?? '';
+  return {
+    status: 'checked',
+    findings: [],
+    unchecked: unchecked.map(entry => ({
+      file: slash(path.relative(base, entry.docPath)),
+      name: entry.name,
+      reason: entry.reason,
+    })),
+  };
 }
 
 /**
@@ -832,58 +897,29 @@ export function literalThemeName(file, exportName) {
 }
 
 /**
- * A warning for each file under a readable root that the user running
- * astryx cannot read: Astryx cannot check it, and npm pack stops on it. A
+ * A warning for each contribution file a reader reads (the docs and sources
+ * `integration verify` expects in the tarball) that the user running astryx
+ * cannot read; files no reader takes, such as `.DS_Store`, are not looked at: Astryx cannot check it, and npm pack stops on it. A
  * warning, so validate keeps its exit code; `integration verify` fails on the
  * pack itself.
  * @param {LoadedIntegration} integration
  * @param {Issue[]} issues
  */
 function checkUnreadableFiles(integration, issues) {
-  const kinds = /** @type {const} */ ([
-    'components',
-    'templates',
-    'codemods',
-    'docs',
-    'themes',
-  ]);
-  const seen = new Set();
-  /** @param {string} dir */
-  const walk = dir => {
-    let entries;
+  const packageDir = integration.__packageDir;
+  if (!packageDir) return;
+  for (const shown of contributionFiles(integration, packageDir)) {
     try {
-      entries = fs.readdirSync(dir, {withFileTypes: true});
-    } catch {
-      return;
+      fs.accessSync(path.join(packageDir, shown), fs.constants.R_OK);
+    } catch (err) {
+      const code = String(/** @type {any} */ (err)?.code ?? 'unknown error');
+      issues.push(
+        issueWarning(
+          'unreadable_file',
+          `Could not read "${shown}" (${code}), so Astryx cannot check it and npm pack fails on it. Fix: make it readable (chmod a+r ${shown}), or delete it if it does not belong in the package.`,
+        ),
+      );
     }
-    for (const entry of entries) {
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-        continue;
-      }
-      if (!entry.isFile() || seen.has(full)) continue;
-      seen.add(full);
-      try {
-        fs.accessSync(full, fs.constants.R_OK);
-      } catch (err) {
-        const code = String(/** @type {any} */ (err)?.code ?? 'unknown error');
-        const shown = slash(
-          path.relative(integration.__packageDir ?? dir, full),
-        );
-        issues.push(
-          issueWarning(
-            'unreadable_file',
-            `Could not read "${shown}" (${code}), so Astryx cannot check it and npm pack fails on it. Fix: make it readable (chmod a+r ${shown}), or delete it if it does not belong in the package.`,
-          ),
-        );
-      }
-    }
-  };
-  for (const kind of kinds) {
-    const root = integration[kind];
-    if (root && !rootProblem(root)) walk(root);
   }
 }
 

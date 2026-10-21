@@ -137,6 +137,29 @@ const ROOT_KINDS = /** @type {const} */ ([
   'docs',
 ]);
 
+/**
+ * The contribution files readers read under each declared root that is a
+ * readable folder, package-relative, without importing anything. A folder
+ * inside a root that cannot be listed is skipped.
+ * @param {{components?: string, templates?: string, codemods?: string, docs?: string, themes?: string}} loaded
+ * @param {string} pkgDir
+ * @returns {string[]}
+ */
+export function contributionFiles(loaded, pkgDir) {
+  /** @type {Set<string>} */
+  const files = new Set();
+  for (const kind of ROOT_KINDS) {
+    const root = loaded[kind];
+    if (!root || !isFolder(root)) continue;
+    try {
+      for (const file of ENUMERATORS[kind](root, pkgDir)) files.add(file);
+    } catch {
+      // An unreadable folder inside the root.
+    }
+  }
+  return [...files].sort();
+}
+
 // ── Public: static file inventory ────────────────────────────────
 
 /**

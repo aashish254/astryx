@@ -310,25 +310,6 @@ export function moduleExportSource(file, exportName, seen = new Set()) {
 }
 
 /**
- * Whether an exported declaration provably does not bind `exportName`: every
- * name it binds is read, and none is it. A pattern (`export const {a} = b`)
- * or a declaration whose name this read cannot see proves nothing.
- * @param {any} declaration
- * @param {string} exportName
- */
-function declarationLacks(declaration, exportName) {
-  if (declaration == null) return true;
-  if (declaration.type === 'VariableDeclaration') {
-    return declaration.declarations.every(
-      (/** @type {any} */ item) =>
-        item.id?.type === 'Identifier' && item.id.name !== exportName,
-    );
-  }
-  const name = declaration.id?.name;
-  return typeof name === 'string' && name !== exportName;
-}
-
-/**
  * Every runtime name a module exports that this read can see, or null when
  * it cannot see them all: an `export *`, `export =`, CommonJS exports, or a
  * file that does not parse.
@@ -377,68 +358,171 @@ export function moduleExportNames(file) {
 }
 
 /**
- * Whether a module provably does not export `exportName` at runtime, read
- * without executing it. True only when every export the module writes can be
- * followed: an `export ... from` another package, a specifier that resolves
- * to no local file, a destructured or otherwise unreadable declaration,
- * `export =`, CommonJS exports, or a file that does not parse leaves it
- * unproven, and the answer is false.
+ * @typedef {{verdict: 'exports'} | {verdict: 'lacks'} | {verdict: 'unknown', reason: string}} ExportVerdict
+ */
+
+/**
+ * Whether a module exports `exportName` at runtime, read without executing
+ * it: `exports` when a declaration or a followed re-export binds it, `lacks`
+ * only when every export the module writes was read and none binds it, and
+ * `unknown`, with the first reason, when some export could not be read: a
+ * re-export from another package or from a specifier that resolves to no
+ * file, a destructured binding, a namespace, an ambient or const enum
+ * declaration, `export =`, CommonJS exports, or a file that does not parse.
  * @param {string} file
  * @param {string} exportName
  * @param {Set<string>} [seen]
- * @returns {boolean}
+ * @returns {ExportVerdict}
  */
-export function moduleLacksExport(file, exportName, seen = new Set()) {
+export function moduleExportVerdict(file, exportName, seen = new Set()) {
   const identity = `${file}\0${exportName}`;
   // A cycle adds nothing a module's own exports have not already said.
-  if (seen.has(identity)) return true;
+  if (seen.has(identity)) return {verdict: 'lacks'};
   seen.add(identity);
+  const shown = path.basename(file);
   let text;
   let ast;
   try {
-    if (!fs.statSync(file).isFile()) return false;
+    if (!fs.statSync(file).isFile()) {
+      return {verdict: 'unknown', reason: `${shown} is not a file.`};
+    }
     text = moduleText(file);
     ast = parseModule(file);
   } catch {
-    return false;
+    return {
+      verdict: 'unknown',
+      reason: `${shown} could not be read or parsed.`,
+    };
   }
-  if (/\bmodule\.exports\b|\bexports\.[$\w]/u.test(text)) return false;
-  // `export =` hands the module to one value this read does not follow.
-  if (nodesOfType(ast.program, 'TSExportAssignment').length > 0) return false;
+  /** @type {string[]} */
+  const unknown = [];
+  if (/\bmodule\.exports\b|\bexports\.[$\w]/u.test(text)) {
+    unknown.push(
+      `${shown} uses CommonJS exports, whose names this check does not read.`,
+    );
+  }
+  if (nodesOfType(ast.program, 'TSExportAssignment').length > 0) {
+    unknown.push(`${shown} uses \`export =\`, whose names this check does not read.`);
+  }
+  /**
+   * Follow a re-export of `imported` from `specifier`.
+   * @param {string} specifier
+   * @param {string} imported
+   * @param {string} what how the reason names what is re-exported
+   * @returns {boolean} true when it proves the export
+   */
+  const follow = (specifier, imported, what) => {
+    if (!specifier.startsWith('.')) {
+      unknown.push(
+        `${shown} re-exports ${what} from "${specifier}", another package this check does not read.`,
+      );
+      return false;
+    }
+    const target = resolveLocalModule(specifier, file);
+    if (!target) {
+      unknown.push(
+        `${shown} re-exports ${what} from "${specifier}", which resolves to no file this check can read.`,
+      );
+      return false;
+    }
+    const inner = moduleExportVerdict(target, imported, seen);
+    if (inner.verdict === 'exports') return true;
+    if (inner.verdict === 'unknown') unknown.push(inner.reason);
+    return false;
+  };
   for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
     if (node.exportKind === 'type') continue;
-    if (!declarationLacks(node.declaration, exportName)) return false;
+    const declaration = node.declaration;
+    if (declaration?.type === 'VariableDeclaration') {
+      for (const item of declaration.declarations) {
+        if (item.id?.type !== 'Identifier') {
+          unknown.push(
+            `${shown} exports a destructured binding, whose names this check does not read.`,
+          );
+        } else if (item.id.name === exportName) {
+          if (declaration.declare === true) {
+            unknown.push(
+              `${shown} declares ${exportName} with \`declare\`, which has no runtime value this check can see.`,
+            );
+          } else {
+            return {verdict: 'exports'};
+          }
+        }
+      }
+    } else if (declaration != null && declaration.id?.name === exportName) {
+      if (
+        ['TSInterfaceDeclaration', 'TSTypeAliasDeclaration'].includes(
+          declaration.type,
+        )
+      ) {
+        // A type only: no runtime export.
+      } else if (declaration.type === 'TSModuleDeclaration') {
+        unknown.push(
+          `${shown} exports ${exportName} as a TypeScript namespace, which has a runtime value only when it holds one.`,
+        );
+      } else if (declaration.declare === true || declaration.const === true) {
+        unknown.push(
+          `${shown} declares ${exportName} as an ambient or const declaration, which has no runtime value this check can see.`,
+        );
+      } else if (runtimeDefault(declaration)) {
+        return {verdict: 'exports'};
+      }
+    }
     for (const specifier of node.specifiers ?? []) {
       if (specifier.exportKind === 'type') continue;
       const exported = specifier.exported?.name ?? specifier.exported?.value;
       if (exported !== exportName) continue;
-      if (!node.source) return false;
-      if (specifier.type !== 'ExportSpecifier') return false;
-      const target = resolveLocalModule(node.source.value, file);
+      if (!node.source || specifier.type === 'ExportNamespaceSpecifier') {
+        return {verdict: 'exports'};
+      }
+      if (specifier.type !== 'ExportSpecifier') {
+        unknown.push(`${shown} re-exports ${exportName} in a form this check does not read.`);
+        continue;
+      }
       const imported =
         specifier.local?.name ?? specifier.local?.value ?? exportName;
-      if (!target || !moduleLacksExport(target, imported, seen)) return false;
+      if (follow(String(node.source.value), imported, exportName)) {
+        return {verdict: 'exports'};
+      }
     }
   }
   if (exportName === 'default') {
     const defaults = nodesOfType(ast.program, 'ExportDefaultDeclaration');
-    if (defaults.some((/** @type {any} */ node) => runtimeDefault(node.declaration))) {
-      return false;
+    if (
+      defaults.some((/** @type {any} */ node) =>
+        runtimeDefault(node.declaration),
+      )
+    ) {
+      return {verdict: 'exports'};
     }
   }
   for (const node of nodesOfType(ast.program, 'ExportAllDeclaration')) {
     if (node.exportKind === 'type') continue;
     const exported = node.exported?.name ?? node.exported?.value;
     if (exported != null) {
-      if (exported === exportName) return false;
+      if (exported === exportName) return {verdict: 'exports'};
       continue;
     }
     // `export *` never re-exports a default.
     if (exportName === 'default') continue;
-    const target = resolveLocalModule(node.source?.value, file);
-    if (!target || !moduleLacksExport(target, exportName, seen)) return false;
+    if (follow(String(node.source?.value ?? ''), exportName, 'everything')) {
+      return {verdict: 'exports'};
+    }
   }
-  return true;
+  return unknown.length > 0
+    ? {verdict: 'unknown', reason: unknown[0]}
+    : {verdict: 'lacks'};
+}
+
+/**
+ * Whether a module provably does not export `exportName` at runtime: see
+ * {@link moduleExportVerdict}.
+ * @param {string} file
+ * @param {string} exportName
+ * @returns {boolean}
+ */
+export function moduleLacksExport(file, exportName) {
+  return moduleExportVerdict(file, exportName).verdict === 'lacks';
 }
 
 /**

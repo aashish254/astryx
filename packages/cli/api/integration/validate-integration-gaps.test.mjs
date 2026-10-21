@@ -15,11 +15,25 @@
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {validateLocalIntegration} from './validate-integration.mjs';
+import {spawnSync} from 'node:child_process';
+import {
+  validateIntegration,
+  validateLocalIntegration,
+} from './validate-integration.mjs';
 import {integrationCheck} from './check/check.mjs';
 
 let tmpDir;
 let copies = 0;
+
+const CLI = path.join(
+  process.cwd(),
+  'packages',
+  'cli',
+  'clients',
+  'cli',
+  'bin',
+  'astryx.mjs',
+);
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-validate-gaps-'));
@@ -134,31 +148,78 @@ describe('a name that differs from its file name', () => {
     [
       'a re-export from another package',
       "export {AcmeWidgets} from '@acme/ui';\n",
+      'AcmeWidget.tsx re-exports AcmeWidgets from "@acme/ui", another package this check does not read.',
     ],
     [
       'a .js specifier this read cannot follow',
       "export {AcmeWidgets} from './impl/widgets.js';\n",
+      'AcmeWidget.tsx re-exports AcmeWidgets from "./impl/widgets.js", which resolves to no file this check can read.',
     ],
     [
-      'a source that exports both names',
-      'export function AcmeWidget() { return null; }\nexport const AcmeWidgets = AcmeWidget;\n',
+      'an export * from another package',
+      "export * from '@acme/ui';\n",
+      'AcmeWidget.tsx re-exports everything from "@acme/ui", another package this check does not read.',
     ],
-    ['an export * from another package', "export * from '@acme/ui';\n"],
     [
       'a destructured export',
       'const parts = {AcmeWidgets: () => null};\nexport const {AcmeWidgets} = parts;\n',
+      'AcmeWidget.tsx exports a destructured binding, whose names this check does not read.',
     ],
     [
       'a TypeScript namespace export',
       'export namespace AcmeWidgets {\n  export const Root = () => null;\n}\n',
+      'AcmeWidget.tsx exports AcmeWidgets as a TypeScript namespace, which has a runtime value only when it holds one.',
     ],
-    ['a TypeScript enum export', 'export enum AcmeWidgets {\n  Small,\n}\n'],
     [
       'an export assignment',
       'const AcmeWidgets = () => null;\nexport = {AcmeWidgets};\n',
+      'AcmeWidget.tsx uses `export =`, whose names this check does not read.',
     ],
   ])(
-    'reports no name mismatch when the code does not contradict the doc: %s',
+    'lists a doc name the code cannot judge as not checked, with no finding: %s',
+    async (_label, source, reason) => {
+      const dir = writePackage({
+        [MANIFEST]: manifest({components: './components'}),
+        'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidgets'),
+        'components/AcmeWidget.tsx': source,
+      });
+
+      const {data} = await validateIntegration(undefined, {cwd: dir});
+      expect(
+        data.issues.filter(issue => issue.code === 'doc_name_mismatch'),
+      ).toEqual([]);
+      expect(data.docNames).toEqual({
+        status: 'checked',
+        findings: [],
+        unchecked: [
+          {file: 'components/AcmeWidget.doc.mjs', name: 'AcmeWidgets', reason},
+        ],
+      });
+      // Counted as not compared, never as a failure, even under --strict.
+      const checked = await integrationCheck({cwd: dir, strict: true});
+      const propsNotCompared = checked.data.checks
+        .map(check => check.response.data.propDrift?.unchecked?.length ?? 0)
+        .reduce((a, b) => a + b, 0);
+      expect(checked.data.unchecked).toBe(1 + propsNotCompared);
+      expect(
+        checked.data.failures.filter(
+          failure => failure.code === 'doc_names_skipped',
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([
+    [
+      'a source that exports both names',
+      'export function AcmeWidget() { return null; }\nexport const AcmeWidgets = AcmeWidget;\n',
+    ],
+    [
+      'an enum, a runtime value',
+      'export function AcmeWidget() { return null; }\nexport enum AcmeWidgets {\n  Small,\n}\n',
+    ],
+  ])(
+    'checks a doc name the source exports, with nothing listed: %s',
     async (_label, source) => {
       const dir = writePackage({
         [MANIFEST]: manifest({components: './components'}),
@@ -166,13 +227,37 @@ describe('a name that differs from its file name', () => {
         'components/AcmeWidget.tsx': source,
       });
 
-      expect(
-        (await issuesOf(dir)).filter(
-          issue => issue.code === 'doc_name_mismatch',
-        ),
-      ).toEqual([]);
+      const {data} = await validateIntegration(undefined, {cwd: dir});
+      expect(data.issues).toEqual([]);
+      expect(data.docNames).toEqual({
+        status: 'checked',
+        findings: [],
+        unchecked: [],
+      });
     },
   );
+
+  it('prints the doc names it could not check', () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({components: './components'}),
+      'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidgets'),
+      'components/AcmeWidget.tsx': "export {AcmeWidgets} from '@acme/ui';\n",
+    });
+
+    const run = spawnSync(
+      process.execPath,
+      [CLI, 'doctor', 'integration', 'validate'],
+      {cwd: dir, encoding: 'utf-8', timeout: 60_000},
+    );
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stdout).toContain(
+      '[info] Component names not checked: 1 doc(s) whose source exports this check cannot read:',
+    );
+    expect(run.stdout).toContain('components/AcmeWidget.doc.mjs');
+    expect(run.stdout).toContain(
+      'AcmeWidget.tsx re-exports AcmeWidgets from "@acme/ui", another package this check does not read.',
+    );
+  });
 
   it('follows a local re-export that does not export the documented name', async () => {
     const dir = writePackage({
@@ -647,6 +732,28 @@ describe('unreadable files and theme names', () => {
         fs.chmodSync(file, 0o644);
       }
       expect(await issuesOf(dir)).toEqual([]);
+    },
+  );
+
+  it.skipIf(asRoot)(
+    'ignores an unreadable file no reader and no pack reads, such as .DS_Store',
+    async () => {
+      const dir = writePackage({
+        [MANIFEST]: manifest({components: './components'}),
+        'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidget'),
+        'components/AcmeWidget.tsx': componentSource('AcmeWidget'),
+        'components/.DS_Store': 'x',
+        'components/notes.txt': 'x',
+      });
+      const files = ['.DS_Store', 'notes.txt'].map(name =>
+        path.join(dir, 'components', name),
+      );
+      for (const file of files) fs.chmodSync(file, 0);
+      try {
+        expect(await issuesOf(dir)).toEqual([]);
+      } finally {
+        for (const file of files) fs.chmodSync(file, 0o644);
+      }
     },
   );
 
