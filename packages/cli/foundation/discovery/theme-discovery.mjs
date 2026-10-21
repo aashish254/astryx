@@ -978,6 +978,30 @@ function isBuiltThemeModule(file) {
   );
 }
 
+/**
+ * The fix when a descriptor's stem names both a theme source and the module
+ * `astryx theme build` writes beside it (`brand.ts` and its built `brand.js`):
+ * the build names its output after the theme, so the source and descriptor
+ * take the `<name>Theme` stem instead. Null when no built module is among
+ * the matches, or the stem already ends in `Theme`.
+ * @param {string} sourceDir
+ * @param {string[]} sources same-stem module file names
+ * @param {string} doc the descriptor's file name
+ * @param {string} exportName the descriptor's stem
+ * @returns {string | null}
+ */
+function builtThemeSourceFix(sourceDir, sources, doc, exportName) {
+  if (exportName.endsWith('Theme')) return null;
+  const built = sources.filter(file =>
+    isBuiltThemeModule(path.join(sourceDir, file)),
+  );
+  const source = sources.filter(file => !built.includes(file));
+  if (built.length === 0 || source.length !== 1) return null;
+  const extension = source[0].slice(exportName.length);
+  const stem = `${exportName}Theme`;
+  return `Fix: ${built.map(file => `"${file}"`).join(', ')} is the module \`astryx theme build\` writes, which takes the theme's name; rename ${source[0]} to ${stem}${extension} and ${doc} to ${stem}${THEME_DOC_SUFFIX}, export \`${stem}\` from it, and build again.`;
+}
+
 /** A module named for the theme it exports, such as `oceanTheme.ts`. */
 const THEME_SOURCE_RE = /^[$A-Z_a-z][$\w]*Theme\.(?:mjs|js|mts|ts|tsx|jsx)$/u;
 
@@ -1320,7 +1344,8 @@ export function discoverThemeDirectory(
     if (sources.length !== 1) {
       const fix =
         sources.length > 1
-          ? `Fix: keep one of them; the theme's source is a single module.`
+          ? (builtThemeSourceFix(sourceDir, sources, docs[0], exportName) ??
+            `Fix: keep one of them; the theme's source is a single module.`)
           : `Fix: add ${exportName}.ts beside ${docs[0]}, exporting \`${exportName}\` from defineTheme.`;
       throw new Error(
         `${theme} must contain exactly one same-stem source for ${docs[0]}; found ${sources.length}${sources.length > 1 ? `: ${quoted(sources)}` : ''}. ${fix}`,
