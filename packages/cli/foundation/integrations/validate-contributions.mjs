@@ -434,10 +434,22 @@ async function checkComponents(integration, issues) {
     for (const [docPath, source] of files.caseMismatch) {
       const doc = path.basename(docPath);
       const renamed = `${source.slice(0, -'.tsx'.length)}${doc.slice(docStemOf(doc).length)}`;
+      const shown = slash(path.relative(root, docPath));
+      // A hidden doc lists nothing, so nothing goes missing: a warning, as
+      // validate exited 0 for it before.
+      if (componentDiscovery.isHiddenComponentDoc(docPath)) {
+        issues.push(
+          issueWarning(
+            'invalid_component',
+            `Hidden component doc "${shown}" and its source "${source}" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run. Fix: rename ${doc} to ${renamed}.`,
+          ),
+        );
+        continue;
+      }
       issues.push(
         issueError(
           'invalid_component',
-          `Component doc "${slash(path.relative(root, docPath))}" and its source "${source}" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run, so there the component is missing. Fix: rename ${doc} to ${renamed}.`,
+          `Component doc "${shown}" and its source "${source}" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run, so there the component is missing. Fix: rename ${doc} to ${renamed}.`,
         ),
       );
     }
