@@ -37,7 +37,7 @@ import {globalUpgradeCommand} from '../foundation/release/notices.mjs';
 import {relativeWithin, samePath} from '../foundation/fs/path-compare.mjs';
 import {userCacheDir} from '../foundation/env/user-dirs.mjs';
 import {astryxCommandsOnSearchPath} from '../foundation/env/search-path.mjs';
-import {tryLock} from '../foundation/release/cache.mjs';
+import {npmCommand, tryLock} from '../foundation/release/cache.mjs';
 import {LEASE_SILENCE_MS} from '../foundation/release/lock-lease.mjs';
 
 const POSIX = process.platform !== 'win32';
@@ -59,9 +59,15 @@ afterAll(() => {
 function computer(options = {}) {
   const home = tempDir('home');
   const cache = path.join(home, '.cache');
-  // A `node` command for scripts that start with `#!/usr/bin/env node`.
+  // A `node` command for scripts that start with `#!/usr/bin/env node`, and
+  // the runner's npm, linked to its entry file as distributions install it,
+  // so a run finds npm wherever this Node keeps it.
   const nodeBin = tempDir('node-bin');
   fs.symlinkSync(process.execPath, path.join(nodeBin, 'node'));
+  const npm = npmCommand();
+  if (POSIX && npm.prefix.length > 0) {
+    fs.symlinkSync(npm.prefix[0], path.join(nodeBin, 'npm'));
+  }
   return {
     home,
     cache,
@@ -79,7 +85,11 @@ function computer(options = {}) {
 function envOf(pc, env = {}) {
   const base = Object.fromEntries(
     Object.entries(process.env).filter(
-      ([k]) => !/^(?:npm_|XDG_|ASTRYX|CI$|NO_UPDATE_NOTIFIER$)/iu.test(k),
+      // A proxy would carry the request for the local test registry away.
+      ([k]) =>
+        !/^(?:npm_|XDG_|ASTRYX|CI$|NO_UPDATE_NOTIFIER$|(?:https?|all|no)_proxy$)/iu.test(
+          k,
+        ),
     ),
   );
   return {
