@@ -216,9 +216,9 @@ validate` MUST warn on a PascalCase `.tsx` at the top of the components root
   exactly `astryx docs <name>` for a doc that exists, in a topic's prose,
   description or summary or a component doc's text, where a `{@link}` to that
   doc would be checked; and a runner command, an Astryx command written with a
-  package runner in front, where docs write the bare `astryx <command>` that
-  the CLI shows with the reader's runner (the scoped `npx @astryxdesign/cli`,
-  for install steps, is not one). It also fails on doc structure a reader silently
+  package runner in front, in prose or a code block, where docs write the
+  bare `astryx <command>` that the CLI shows with the reader's runner (the
+  scoped `npx @astryxdesign/cli`, for install steps, is not one). It also fails on doc structure a reader silently
   drops: a prop documented twice, an overlay key that names no prop, two
   sections with one key, an overlay beside no topic, and an empty section.
   Its exit codes and JSON shape are a compatibility

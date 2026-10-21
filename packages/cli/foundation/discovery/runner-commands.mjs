@@ -6,12 +6,15 @@
  * reader's runner, so a written runner is wrong for every reader on another
  * package manager.
  *
- * - A download runner (`npx`, `pnpm dlx`, `yarn dlx`, `bunx`, `npm exec`)
- *   with the unscoped name `astryx` always counts, even with nothing after
- *   it: it fetches an unrelated package of that name.
- * - A project runner (`pnpm exec`, `pnpm`, `yarn`) counts when an Astryx
- *   command follows (`pnpm exec astryx docs`). Named alone, as when a guide
- *   explains the runners, it is left alone.
+ * - A download runner (`npx`, `pnpm dlx`, `yarn dlx`, `bunx`, `bun x`,
+ *   `npm exec`) with the unscoped name `astryx`, with or without an
+ *   `@<version>` after it, always counts, even with nothing after it: it
+ *   fetches an unrelated package of that name.
+ * - A project runner (`pnpm exec`, `pnpm`, `yarn`) counts when one of the
+ *   CLI's commands follows on the same line (`pnpm exec astryx docs`). Named
+ *   alone, or before a word that is not a command (`yarn astryx runs the
+ *   copy…`), it is left alone.
+ * - A runner and what follows it are read within one line.
  * - The scoped package (`npx @astryxdesign/cli init`) never counts: it is the
  *   one form that runs before the CLI is installed, for install steps.
  * - Other tools' commands (`npx prettier`) never count.
@@ -41,19 +44,51 @@ const DOWNLOAD_RUNNERS = [
   'npm exec',
   'npx',
   'bunx',
+  'bun x',
 ];
 const PROJECT_RUNNERS = ['pnpm exec', 'pnpm', 'yarn'];
 
-/** @param {string[]} runners */
-const alternatives = runners =>
-  runners.map(each => each.replace(/ /g, '\\s+')).join('|');
+/**
+ * The CLI's top-level commands, the words that make a project runner's
+ * `astryx <word>` a command; runner-commands.test.mjs keeps the list equal to
+ * the command docs.
+ */
+export const CLI_COMMANDS = Object.freeze([
+  'blog',
+  'build',
+  'component',
+  'discover',
+  'docs',
+  'doctor',
+  'gap-report',
+  'help',
+  'hook',
+  'init',
+  'integration',
+  'manifest',
+  'search',
+  'swizzle',
+  'template',
+  'theme',
+  'upgrade',
+]);
+
+/** Blanks within one line. */
+const BLANK = '[ \\t]+';
+
+/** @param {readonly string[]} words */
+const alternatives = words =>
+  words.map(each => each.replace(/ /g, BLANK)).join('|');
+
+/** After `astryx`: the name ends here (a sentence's period may follow). */
+const NAME_END = '(?![\\w@/-]|\\.\\w)';
 
 const DOWNLOAD_COMMAND = new RegExp(
-  `(?<![\\w@/.-])(?:${alternatives(DOWNLOAD_RUNNERS)})\\s+astryx(?![\\w@/.-])(?:\\s+([a-z][\\w-]*))?`,
+  `(?<![\\w@/.-])(?:${alternatives(DOWNLOAD_RUNNERS)})${BLANK}astryx(?:@[\\w^~-]+(?:\\.[\\w^~-]+)*)?${NAME_END}(?:${BLANK}(${alternatives(CLI_COMMANDS)})(?![\\w-]))?`,
   'g',
 );
 const PROJECT_COMMAND = new RegExp(
-  `(?<![\\w@/.-])(?:${alternatives(PROJECT_RUNNERS)})\\s+astryx\\s+([a-z][\\w-]*)`,
+  `(?<![\\w@/.-])(?:${alternatives(PROJECT_RUNNERS)})${BLANK}astryx${BLANK}(${alternatives(CLI_COMMANDS)})(?![\\w-])`,
   'g',
 );
 
