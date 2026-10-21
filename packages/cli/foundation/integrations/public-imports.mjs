@@ -370,13 +370,38 @@ function exportsFix(exportsField, state, subpath, target) {
 /**
  * Export lists read during one public-import check, by file. Scoped to that
  * check, so a later check in the same process rereads every module.
- * @typedef {Map<string, {names: Set<string>, complete: boolean}>} ExportNameCache
+ * @typedef {Map<string, {names: Set<string>, complete: boolean, types: Set<string>}>} ExportNameCache
  */
+
+const DECLARATION_RE = /\.d\.[cm]?ts$/u;
+const DECLARATION_EXTENSIONS = ['.d.ts', '.d.mts', '.d.cts'];
+
+/**
+ * The declaration file beside a built module (`x.js` → `x.d.ts`), if any.
+ * @param {string} file
+ * @returns {string | null}
+ */
+function declarationTwin(file) {
+  const m = /\.([cm]?)jsx?$/u.exec(file);
+  if (!m) return null;
+  const stem = file.slice(0, m.index);
+  return (
+    [`.d.${m[1]}ts`, '.d.ts'].map(ext => `${stem}${ext}`).find(isFile) ?? null
+  );
+}
 
 /** @param {string} specifier @param {string} fromFile */
 function resolveRelative(specifier, fromFile) {
   const base = path.resolve(path.dirname(fromFile), specifier);
   const stripped = base.replace(/\.(?:m?js|jsx|cjs)$/u, '');
+  // A declaration file's `export * from './x.js'` names `./x.d.ts`.
+  if (DECLARATION_RE.test(fromFile)) {
+    const twin = [
+      ...DECLARATION_EXTENSIONS.map(ext => `${stripped}${ext}`),
+      ...DECLARATION_EXTENSIONS.map(ext => path.join(base, `index${ext}`)),
+    ].find(isFile);
+    if (twin) return twin;
+  }
   const candidates = [
     base,
     ...MODULE_EXTENSIONS.map(ext => `${base}${ext}`),
@@ -392,11 +417,13 @@ function resolveRelative(specifier, fromFile) {
  * does not parse leaves it incomplete, and then no name is judged missing.
  * @param {string} file
  * @param {ExportNameCache} [cache] export lists already read in this check
- * @returns {{names: Set<string>, complete: boolean}}
+ * @returns {{names: Set<string>, complete: boolean, types: Set<string>}}
+ *   `types`: the names exported only as types (an interface, a type alias,
+ *   `export type`)
  */
 export function moduleExportNames(file, cache = new Map()) {
-  const {names, complete} = readExportNames(file, cache, []);
-  return {names, complete};
+  const {names, complete, types} = readExportNames(file, cache, []);
+  return {names, complete, types};
 }
 
 /**
@@ -407,23 +434,25 @@ export function moduleExportNames(file, cache = new Map()) {
  * @param {string} file
  * @param {ExportNameCache} cache
  * @param {string[]} stack
- * @returns {{names: Set<string>, complete: boolean, cycleTo: Set<string>}}
+ * @returns {{names: Set<string>, complete: boolean, types: Set<string>, cycleTo: Set<string>}}
  */
 function readExportNames(file, cache, stack) {
   /** @type {Set<string>} */
   const names = new Set();
   /** @type {Set<string>} */
+  const types = new Set();
+  /** @type {Set<string>} */
   const cycleTo = new Set();
   if (stack.includes(file)) {
     cycleTo.add(file);
-    return {names, complete: true, cycleTo};
+    return {names, complete: true, types, cycleTo};
   }
   const cached = cache.get(file);
   if (cached) return {...cached, cycleTo};
   /** @param {boolean} complete */
   const done = complete => {
     cycleTo.delete(file);
-    const value = {names, complete};
+    const value = {names, complete, types};
     if (cycleTo.size === 0) cache.set(file, value);
     return {...value, cycleTo};
   };
@@ -465,11 +494,24 @@ function readExportNames(file, cache, stack) {
       // type-only one names a value cannot be read, so the list is no longer
       // complete.
       names.add(/** @type {any} */ (node).id.name);
-      if (/** @type {any} */ (node).importKind === 'type') complete = false;
+      if (/** @type {any} */ (node).importKind === 'type') {
+        types.add(/** @type {any} */ (node).id.name);
+        complete = false;
+      }
     } else if (node.type === 'ExportNamedDeclaration') {
       const d = /** @type {any} */ (node.declaration);
+      const typeOnly = /** @type {any} */ (node).exportKind === 'type';
       if (d) {
-        if (d.id?.name) names.add(d.id.name);
+        if (d.id?.name) {
+          names.add(d.id.name);
+          if (
+            typeOnly ||
+            d.type === 'TSInterfaceDeclaration' ||
+            d.type === 'TSTypeAliasDeclaration'
+          ) {
+            types.add(d.id.name);
+          }
+        }
         for (const v of d.declarations ?? []) {
           if (v.id?.type === 'Identifier') names.add(v.id.name);
           else complete = false;
@@ -477,7 +519,9 @@ function readExportNames(file, cache, stack) {
       }
       for (const sp of /** @type {any[]} */ (node.specifiers ?? [])) {
         const exported = sp.exported?.name ?? sp.exported?.value;
-        if (exported) names.add(exported);
+        if (!exported) continue;
+        names.add(exported);
+        if (typeOnly || sp.exportKind === 'type') types.add(exported);
       }
     } else if (node.type === 'ExportAllDeclaration') {
       const n = /** @type {any} */ (node);
@@ -495,6 +539,7 @@ function readExportNames(file, cache, stack) {
       }
       const inner = readExportNames(target, cache, [...stack, file]);
       for (const name of inner.names) if (name !== 'default') names.add(name);
+      for (const name of inner.types) types.add(name);
       if (!inner.complete) complete = false;
       for (const each of inner.cycleTo) cycleTo.add(each);
     }
@@ -516,12 +561,22 @@ function missingNames(statement, files, cache) {
     .map(binding => binding.imported);
   if (wanted.length === 0) return [];
   if (files.length === 0) return null;
+  // A built module's declaration file is read beside it: a name it exports
+  // only as a type lives there.
+  const read = [
+    ...new Set(
+      files.flatMap(file => {
+        const twin = declarationTwin(file);
+        return twin ? [file, twin] : [file];
+      }),
+    ),
+  ];
   // Any condition's file (source or built) that has every name settles it;
   // a name is missing only when every file is read in full and lacks it.
   let incomplete = false;
   /** @type {Set<string>} */
   const seen = new Set();
-  for (const file of files) {
+  for (const file of read) {
     const {names, complete} = moduleExportNames(file, cache);
     if (wanted.every(name => names.has(name))) return [];
     if (!complete) incomplete = true;
@@ -894,6 +949,37 @@ async function componentIssues(ctx, integration) {
       return exportsFix(ctx.exportsField, undeclared.state, subpath, target);
     };
 
+    /**
+     * The fix for an example that imports names its module lacks: import
+     * this doc's components that module does export, else the doc's own
+     * import when it differs, else export the names from it.
+     * @param {ImportStatement} statement
+     * @param {string} subpath
+     * @param {string[]} missing
+     */
+    const missingNameFix = (statement, subpath, missing) => {
+      const declaration = declarationIn(
+        ctx.exportsField,
+        ctx.packageDir,
+        subpath,
+      );
+      /** @type {Set<string>} */
+      const there = new Set();
+      for (const file of existingTargets(ctx.packageDir, declaration)) {
+        for (const name of moduleExportNames(file, ctx.exportNames).names)
+          there.add(name);
+      }
+      const docNames = list.map(r => r.name).filter(name => there.has(name));
+      const exportIt = `export ${missing.length === 1 ? 'the name' : 'the names'} from it`;
+      if (docNames.length > 0) {
+        return `import a name that module exports (${docNames.map(n => `"${n}"`).join(', ')} for this doc), or ${exportIt}.`;
+      }
+      if (authored && authored !== statement.source) {
+        return `import from '${authored}', as the doc's import does, or ${exportIt}.`;
+      }
+      return `${exportIt[0].toUpperCase()}${exportIt.slice(1)}.`;
+    };
+
     const examples = Array.isArray(doc.examples) ? doc.examples : [];
     for (const [index, example] of examples.entries()) {
       if (!isRecord(example) || typeof example.code !== 'string') continue;
@@ -933,7 +1019,7 @@ async function componentIssues(ctx, integration) {
           issues.push(
             issueWarning(
               'example_import_missing_name',
-              `Component doc "${shownDoc}" example ${label} imports ${missing.map(n => `"${n}"`).join(', ')} from "${statement.source}", which does not export ${missing.length === 1 ? 'it' : 'them'}, so the example fails when an app copies it. Fix: import a name that module exports (${[...list.map(r => r.name)].map(n => `"${n}"`).join(', ')} for this doc), or export the name from it.`,
+              `Component doc "${shownDoc}" example ${label} imports ${missing.map(n => `"${n}"`).join(', ')} from "${statement.source}", which does not export ${missing.length === 1 ? 'it' : 'them'}, so the example fails when an app copies it. Fix: ${missingNameFix(statement, parts.subpath, missing)}`,
             ),
           );
         }
@@ -991,7 +1077,10 @@ async function templateIssues(ctx, integration) {
     // template import its default export.
     const exported = text ? moduleExportNames(file, ctx.exportNames) : null;
     if (exported?.complete && !exported.names.has('default')) {
-      const named = [...exported.names].find(name => /^[A-Z]/.test(name));
+      // Only a value can be the default export; a props type cannot.
+      const named = [...exported.names].find(
+        name => /^[A-Z]/.test(name) && !exported.types.has(name),
+      );
       const fix = named
         ? `add \`export default ${named};\` to ${shown}, or make ${named} the default export`
         : `export the template's component as the default export of ${shown} (\`export default function …\`)`;

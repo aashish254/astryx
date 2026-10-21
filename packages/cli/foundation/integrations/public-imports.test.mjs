@@ -9,7 +9,9 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {
   validateIntegration,
@@ -22,6 +24,7 @@ import {
   integrationAddTemplate,
 } from '../../api/integration/add-contribution.mjs';
 import {integrationCheck} from '../../api/integration/check/check.mjs';
+import {CLI_ROOT} from '../fs/paths.mjs';
 
 const CODES = new Set([
   'component_import_not_exported',
@@ -330,6 +333,33 @@ describe('public imports: component examples', () => {
       ),
     );
     expect(await codes()).toEqual(['example_import_missing_name']);
+    const issue = (await found()).find(
+      i => i.code === 'example_import_missing_name',
+    );
+    expect(issue?.message).toContain(
+      'import a name that module exports ("AcmeWidget" for this doc)',
+    );
+  });
+
+  it("points a missing-name example at the doc's import when that module has none of the doc's names", async () => {
+    pkg(p => {
+      p.exports['./other'] = './lib/other.ts';
+    });
+    write('lib/other.ts', 'export const Unrelated = 1;\n');
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeGadget} from '@acme/widgets/other';\\n<AcmeGadget />",
+      ),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'example_import_missing_name',
+    );
+    expect(issue?.message).not.toContain('for this doc');
+    expect(issue?.message).toContain(
+      "import from '@acme/widgets/components/AcmeWidget', as the doc's import does",
+    );
   });
 
   it('flags a subpath exports does not declare', async () => {
@@ -562,6 +592,18 @@ describe('template default export', () => {
     expect(issues[0].message).toContain('export default AccountCard;');
   });
 
+  it('suggests a value, never a type, as the default export', async () => {
+    write(
+      'templates/account-card.tsx',
+      'export interface AccountCardProps {\n  title: string;\n}\nexport type AccountCardSize = "sm";\nexport function AccountCard() {\n  return <div>Account</div>;\n}\n',
+    );
+    const issue = (await found()).find(
+      i => i.code === 'template_no_default_export',
+    );
+    expect(issue?.message).toContain('export default AccountCard;');
+    expect(issue?.message).not.toContain('AccountCardProps;');
+  });
+
   it('accepts a re-exported or type-annotated default', async () => {
     write(
       'templates/account-card.tsx',
@@ -772,6 +814,60 @@ describe('type-only imports', () => {
 });
 
 describe('imports listed as not checked', () => {
+  it('lists a template import of Core when Core is not installed', () => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-no-core-'));
+    try {
+      const put = (/** @type {string} */ rel, /** @type {string} */ text) => {
+        fs.mkdirSync(path.dirname(path.join(out, rel)), {recursive: true});
+        fs.writeFileSync(path.join(out, rel), text);
+      };
+      put(
+        'package.json',
+        JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+          type: 'module',
+          exports: {'./templates/account-card': './templates/account-card.tsx'},
+        }),
+      );
+      put(
+        'astryx.integration.mjs',
+        "export default {templates: './templates'};\n",
+      );
+      put('templates/account-card.doc.mjs', BLOCK());
+      put(
+        'templates/account-card.tsx',
+        "import {Button} from '@astryxdesign/core/src/Button';\nexport default function A() {\n  return <Button />;\n}\n",
+      );
+      const run = spawnSync(
+        process.execPath,
+        [
+          path.join(CLI_ROOT, 'clients/cli/bin/astryx.mjs'),
+          '--json',
+          'doctor',
+          'integration',
+          'validate',
+        ],
+        {cwd: out, encoding: 'utf-8', timeout: 60_000},
+      );
+      const {data} = JSON.parse(run.stdout);
+      expect(
+        data.issues.filter(
+          (/** @type {{code: string}} */ i) =>
+            i.code === 'template_private_import',
+        ),
+      ).toEqual([]);
+      expect(data.publicImports.unchecked).toEqual([
+        expect.objectContaining({
+          file: 'templates/account-card.tsx',
+          specifier: '@astryxdesign/core/src/Button',
+        }),
+      ]);
+    } finally {
+      fs.rmSync(out, {recursive: true, force: true});
+    }
+  }, 60_000);
+
   it('lists template and example imports whose names cannot be judged', async () => {
     pkg(p => {
       p.exports['./built'] = './dist/built.js';
@@ -905,5 +1001,63 @@ describe('export import declarations', () => {
     expect(
       result.data.publicImports?.unchecked.map(u => u.specifier),
     ).toContain('@acme/widgets/ns');
+  });
+});
+
+describe('types from a built package', () => {
+  it('reads a type re-exported through export * in a declaration file', async () => {
+    pkg(p => {
+      p.exports['./widget'] = {
+        types: './dist/widget.d.ts',
+        import: './dist/widget.js',
+      };
+    });
+    write(
+      'dist/widget.js',
+      "export * from './types.js';\nexport const AcmeWidget = () => null;\n",
+    );
+    write(
+      'dist/widget.d.ts',
+      "export * from './types.js';\nexport declare const AcmeWidget: () => null;\n",
+    );
+    write('dist/types.js', 'export {};\n');
+    write(
+      'dist/types.d.ts',
+      'export interface AcmeWidgetProps {\n  label: string;\n}\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      "import {AcmeWidget, AcmeWidgetProps} from '@acme/widgets/widget';\nexport default function C(props: AcmeWidgetProps) {\n  return <AcmeWidget {...props} />;\n}\n",
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('reads the declaration file beside a .js export target', async () => {
+    pkg(p => {
+      p.exports['./built'] = './dist/built.js';
+    });
+    write('dist/built.js', 'export const AcmeThing = 1;\n');
+    write(
+      'dist/built.d.ts',
+      'export declare const AcmeThing: number;\nexport type AcmeThingSize = "sm" | "md";\n',
+    );
+    write(
+      'templates/account-card.tsx',
+      "import {AcmeThing, AcmeThingSize} from '@acme/widgets/built';\nexport default function C() {\n  const size: AcmeThingSize = 'sm';\n  return <div>{AcmeThing}{size}</div>;\n}\n",
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('still warns on a name neither the module nor its declarations export', async () => {
+    pkg(p => {
+      p.exports['./built'] = './dist/built.js';
+    });
+    write('dist/built.js', 'export const AcmeThing = 1;\n');
+    write('dist/built.d.ts', 'export declare const AcmeThing: number;\n');
+    write(
+      'templates/account-card.tsx',
+      "import {AcmeOther} from '@acme/widgets/built';\nexport default function C() {\n  return <div>{AcmeOther}</div>;\n}\n",
+    );
+    expect(await codes()).toEqual(['template_import_missing_name']);
   });
 });
