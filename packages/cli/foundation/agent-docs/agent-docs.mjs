@@ -1300,7 +1300,7 @@ export function removeProjectAgentDocs(cwd) {
  *
  * @param {string} targetDir
  * @param {string[]} existing
- * @param {Map<string, Set<string>>} wrappers
+ * @param {Map<string, Set<string>>} givenWrappers
  * @param {string} compressedIndex
  * @param {boolean} onlyReplace
  * @param {((rel: string, reason: string) => void) | undefined} onSkipped
@@ -1308,9 +1308,16 @@ export function removeProjectAgentDocs(cwd) {
  *   `targetDir` refuses the run
  * @returns {string[]} files written
  */
-function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyReplace, onSkipped, refuseEscapes = true) {
+function writeEachAgentDoc(targetDir, existing, givenWrappers, compressedIndex, onlyReplace, onSkipped, refuseEscapes = true) {
   /** @param {string} p */
   const marked = p => hasManagedMarker(path.join(targetDir, p));
+  // A committed .claude/CLAUDE.md beside an ignored root CLAUDE.md keeps a
+  // copy (INV31): one that already holds a block is refreshed where it is,
+  // even when it imports another agent file, rather than left stale.
+  const keptCopy =
+    givenWrappers.has(CLAUDE_DIR_MD) && marked(CLAUDE_DIR_MD) && claudeDirKeepsCopy(targetDir);
+  const wrappers = new Map(givenWrappers);
+  if (keptCopy) wrappers.delete(CLAUDE_DIR_MD);
   /** @param {string} p */
   const isImport = p => {
     try {
@@ -1330,7 +1337,9 @@ function writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, onlyR
   // file 0.7.1 wrote that escapes the project refuses the run, as in 0.7.1.
   const skipped = skipEscaping(
     targetDir,
-    [...writes, ...strips].filter(p => !refuseEscapes || p === GEMINI_MD),
+    [...writes, ...strips].filter(
+      p => !refuseEscapes || p === GEMINI_MD || (keptCopy && p === CLAUDE_DIR_MD),
+    ),
     onSkipped,
   );
   assertTargetsWithin(
@@ -1447,13 +1456,19 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
   const plan = planDefaultAgentDocs(targetDir, existing, wrappers, aliases);
   // While root CLAUDE.md is one the project ignores, .claude/CLAUDE.md gets
   // the copy too, first run included: a fresh clone has only that file.
+  // 0.7.1 left this copy alone (it imported AGENTS.md, or root CLAUDE.md held
+  // the block), so one that resolves outside the project is skipped and
+  // reported, not refused.
+  let keptCopy = false;
   if (plan.get(CLAUDE_DIR_MD) === 'strip' && claudeDirKeepsCopy(targetDir)) {
     plan.set(CLAUDE_DIR_MD, 'block');
+    keptCopy = true;
   }
   const foundLegacy = existing.filter(p => LEGACY_DOC_PATHS.includes(p));
   /** @param {string} p */
   const legacy = p =>
-    foundLegacy.includes(p) || (p === AGENTS_MD && foundLegacy.length === 0);
+    !(keptCopy && p === CLAUDE_DIR_MD) &&
+    (foundLegacy.includes(p) || (p === AGENTS_MD && foundLegacy.length === 0));
 
   /** @type {Set<string>} */
   const escaped = new Set();
@@ -1692,9 +1707,12 @@ export function installAgentDocs(
     const dirHasBlock = hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD));
     const strip = claudeRoot && !keepDirCopy && dirHasBlock ? [CLAUDE_DIR_MD] : [];
     // A path that escapes the project refuses the run, as in 0.7.0; below the
-    // project root, where 0.7.1 wrote nothing, it is skipped and reported.
+    // project root, where 0.7.1 wrote nothing, it is skipped and reported. A
+    // .claude/CLAUDE.md the preset adds beside an ignored root, which 0.7.1
+    // did not write, is skipped and reported wherever init runs.
+    const added = injectAll.filter(p => !inject.includes(p));
     const escaping = refuseEscapes
-      ? new Set()
+      ? skipEscaping(targetDir, added, onSkipped)
       : skipEscaping(targetDir, [...injectAll, ...create, ...strip], onSkipped);
     const injectHere = injectAll.filter(p => !escaping.has(p));
     const createHere = create.filter(p => !escaping.has(p));
@@ -1735,6 +1753,8 @@ export function installAgentDocs(
       agentsAliases,
     );
     if (claudeCopy != null) wrappers.delete(claudeCopy);
+    // A committed .claude/CLAUDE.md kept beside an ignored root CLAUDE.md is
+    // refreshed even when it imports AGENTS.md (writeEachAgentDoc).
     return writeEachAgentDoc(targetDir, existing, wrappers, compressedIndex, true, onSkipped, refuseEscapes);
   }
   // A wrapper that imports something other than AGENTS.md, or two agent docs

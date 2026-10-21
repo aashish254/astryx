@@ -301,6 +301,29 @@ describe('upgrade() — receipts', () => {
     expect(content).toMatch(/More notes\.\n$/u);
   });
 
+  it('refreshes a committed .claude/CLAUDE.md that imports AGENTS.md and keeps a copy beside an ignored root CLAUDE.md', async () => {
+    writePkg(tmpDir);
+    writeInstalledCore(tmpDir, '0.0.15');
+    writeAgentBlock(tmpDir, 'AGENTS.md', '0.0.1');
+    writeAgentBlock(tmpDir, 'CLAUDE.md', '0.0.1');
+    fs.writeFileSync(path.join(tmpDir, '.gitignore'), '/CLAUDE.md\n');
+    fs.mkdirSync(path.join(tmpDir, '.claude'));
+    const copy = path.join(tmpDir, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(
+      copy,
+      `@../AGENTS.md\n\n${generateCompressedIndex('0.0.1')}\n`,
+    );
+
+    for (let round = 0; round < 2; round++) {
+      await upgrade({from: '0.0.15', apply: true}, {cwd: tmpDir});
+      const content = fs.readFileSync(copy, 'utf-8');
+      expect(content, `round ${round}`).toMatch(/^@\.\.\/AGENTS\.md\n/u);
+      expect(content, `round ${round}`).toMatch(/Astryx v0\.0\.15 ·/u);
+    }
+    const dry = await upgrade({from: '0.0.15'}, {cwd: tmpDir});
+    expect(dry.data.agentDocs.status).toBe('current');
+  });
+
   it('reports would-refresh on a dry run without writing (honors cwd)', async () => {
     writePkg(tmpDir);
     writeInstalledCore(tmpDir, '0.0.15');

@@ -919,6 +919,106 @@ describe('round 6: an ignored .claude/CLAUDE.md follows the usual rule; --agent 
   });
 });
 
+describe('round 8: refreshing a committed .claude copy that imports AGENTS.md; a linked .claude with --agent claude', () => {
+  it('refreshes a committed .claude/CLAUDE.md that imports AGENTS.md beside an ignored root', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, '@../AGENTS.md\n');
+    const OLD = '<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->';
+
+    installAgentDocs(project, {renderedBlock: OLD});
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`@../AGENTS.md\n\n${OLD}\n`);
+
+    // An upgrade's refresh, twice: the copy follows the installed release.
+    for (let round = 0; round < 2; round++) {
+      const written = installAgentDocs(project, {
+        onlyReplace: true,
+        renderedBlock: BLOCK,
+      });
+      if (round === 0) expect(written).toContain('.claude/CLAUDE.md');
+      expect(fs.readFileSync(copy, 'utf-8')).toBe(
+        `@../AGENTS.md\n\n${BLOCK}\n`,
+      );
+    }
+  });
+
+  it('refreshes a kept .claude/CLAUDE.md copy in a project with its own layout', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    // AGENTS.md imports CLAUDE.md, so the project keeps its own layout.
+    fs.writeFileSync(path.join(project, 'AGENTS.md'), '@CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(
+      copy,
+      '@../CLAUDE.md\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n',
+    );
+
+    installAgentDocs(project, {renderedBlock: BLOCK});
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`@../CLAUDE.md\n\n${BLOCK}\n`);
+  });
+
+  it('skips the kept .claude/CLAUDE.md copy with a note when .claude links outside, in the default layout', () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.writeFileSync(path.join(outside, 'CLAUDE.md'), '@../AGENTS.md\n');
+    fs.symlinkSync(outside, path.join(project, '.claude'), 'dir');
+
+    /** @type {Array<[string, string]>} */
+    const skipped = [];
+    const written = installAgentDocs(project, {
+      renderedBlock: BLOCK,
+      onSkipped: (rel, reason) => skipped.push([rel, reason]),
+    });
+    expect(written).toEqual(['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']);
+    expect(skipped).toEqual([
+      ['.claude/CLAUDE.md', expect.stringMatching(/outside the project root/u)],
+    ]);
+    expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+      '@../AGENTS.md\n',
+    );
+  });
+
+  it('--agent claude skips a .claude linked outside beside an ignored root, with a note, and writes CLAUDE.md', async () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.writeFileSync(path.join(outside, 'CLAUDE.md'), '# Shared\n');
+    fs.symlinkSync(outside, path.join(project, '.claude'), 'dir');
+
+    /** @type {Array<[string, string]>} */
+    const skipped = [];
+    const written = installAgentDocs(project, {
+      agent: 'claude',
+      renderedBlock: BLOCK,
+      onSkipped: (rel, reason) => skipped.push([rel, reason]),
+    });
+    expect(written).toEqual(['CLAUDE.md']);
+    expect(skipped).toEqual([
+      ['.claude/CLAUDE.md', expect.stringMatching(/outside the project root/u)],
+    ]);
+    expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+      '# Shared\n',
+    );
+
+    const text = await runCli(
+      ['init', '--features', 'agents', '--agent', 'claude'],
+      project,
+    );
+    expect(text.status).toBe(0);
+    expect(text.stderr).toMatch(/^Note: Left as it is: \.claude\/CLAUDE\.md/mu);
+    expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+      '# Shared\n',
+    );
+  }, 30_000);
+});
+
 describe('init exit codes and output', () => {
   it('an ignored GEMINI.md with notes: written through, exit 0, nothing on stderr', async () => {
     const {project} = layout();
