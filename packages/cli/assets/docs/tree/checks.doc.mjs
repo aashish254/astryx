@@ -48,9 +48,9 @@ export const docs = {
             ],
             [
               '`npx astryx doctor integration docs`',
-              'Your docs tree, every link, and topic names against Core',
+              'Your docs tree, every link, topic names against Core, passages two topics repeat word for word, and padding phrases and low-density topics',
               'A topic takes a Core topic name without `replaces` or `extends`, a doc is invalid (`invalid_doc`), or a namespace or placement fails, which hides the doc (`invalid_doc_graph`)',
-              'A link names no doc (`invalid_doc_graph`)',
+              'A link names no doc (`invalid_doc_graph`), two topics repeat a passage word for word (`copied_passage`), or prose pads with a listed phrase or falls under the density floor (`doc_fluff`)',
             ],
             [
               '`npx astryx integration check`',
@@ -78,7 +78,7 @@ export const docs = {
       content: [
         {
           type: 'prose',
-          text: 'Every integration runs `integration check --strict` in its own build, so every build keeps your docs, types, and links in sync; this is required, not optional. Run `integration verify` before you publish. Install devDependencies first, because the components check needs Core, and `tsc --noEmit` needs `typescript` and a `tsconfig.json`. In package.json:',
+          text: 'Every integration runs `integration check --strict` in its own build, so every build keeps your docs, types, and links in sync; this is required, not optional. The strict check fails on every copied passage the docs check lists ({@link generic:check-your-docs}). Run `integration verify` before you publish. Install devDependencies first, because the components check needs Core, and `tsc --noEmit` needs `typescript` and a `tsconfig.json`. In package.json:',
         },
         {
           type: 'code',

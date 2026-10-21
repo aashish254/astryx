@@ -445,7 +445,14 @@ function printDocConflicts(data, seen) {
     section(
       `Checking integration docs: ${integrationLabel(data) ?? '(local package)'}`,
     ),
-    ...issueBlocks(data.issues, seen),
+    // A copied passage or fluff is listed below with its detail, so its
+    // issue is not printed twice.
+    ...issueBlocks(
+      data.issues.filter(
+        issue => issue.code !== 'copied_passage' && issue.code !== 'doc_fluff',
+      ),
+      seen,
+    ),
   ];
   if (
     !data.issues.some(
@@ -465,6 +472,56 @@ function printDocConflicts(data, seen) {
       records(data.findings, {
         fields: ['severity', 'topic', 'relationship', 'coreTopic', 'message'],
         format: {severity: statusToken},
+      }),
+    );
+  }
+  const copied = data.copiedPassages ?? [];
+  if (copied.length === 0) {
+    if (!data.issues.some(issue => issue.severity === 'error')) {
+      output.push(text('[ok] No topic copies a passage from another.'));
+    }
+  } else {
+    output.push(
+      text(
+        `[warn] ${copied.length} copied passage(s) (copied_passage): two topics say the same thing word for word. Keep the text in one and link to it from the other.`,
+      ),
+      records(copied, {
+        fields: [
+          'topic',
+          'section',
+          'line',
+          'otherTopic',
+          'otherOwner',
+          'owner',
+          'text',
+          'words',
+          'passages',
+          'message',
+        ],
+      }),
+    );
+  }
+  const fluff = data.fluff ?? [];
+  if (fluff.length === 0) {
+    if (!data.issues.some(issue => issue.severity === 'error')) {
+      output.push(text('[ok] No filler phrases or low-density topics.'));
+    }
+  } else {
+    output.push(
+      text(
+        `[warn] ${fluff.length} fluff finding(s) (doc_fluff): words that add length, not meaning. Cut each one.`,
+      ),
+      records(fluff, {
+        fields: [
+          'topic',
+          'kind',
+          'phrase',
+          'section',
+          'file',
+          'line',
+          'density',
+          'message',
+        ],
       }),
     );
   }

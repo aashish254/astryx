@@ -4,7 +4,7 @@
     "validate": ["docTypes", "issues"],
     "components": ["conflicts", "issues", "propDrift"],
     "templates": ["conflicts", "issues"],
-    "docs": ["findings", "issues"]
+    "docs": ["copiedPassages", "findings", "fluff", "issues"]
   },
   "reports": {
     "docTypes": "doc_types_skipped",
@@ -15,7 +15,9 @@
     "ambiguous_template_replacement",
     "codemod_outside_version",
     "component_name_conflict",
+    "copied_passage",
     "core_not_found",
+    "doc_fluff",
     "doc_types_skipped",
     "duplicate_doc",
     "duplicate_provider",
@@ -66,6 +68,7 @@
     "root_outside_package",
     "shadowed_component_name",
     "source_without_component_doc",
+    "source_without_template_doc",
     "template_id_conflict",
     "type_mismatch",
     "unknown_field",
