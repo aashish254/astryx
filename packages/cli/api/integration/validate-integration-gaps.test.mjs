@@ -711,7 +711,7 @@ describe('block component names', () => {
     ]);
   });
 
-  it('judges names against the Core the CLI carries outside any project', async () => {
+  it('lists names only Core could resolve as not checked when Core is not installed', async () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-no-core-'));
     try {
       fs.writeFileSync(
@@ -725,7 +725,7 @@ describe('block component names', () => {
       fs.mkdirSync(path.join(outside, 'templates'));
       fs.writeFileSync(
         path.join(outside, 'templates', 'account-card.doc.mjs'),
-        block(" componentsUsed: ['Chat', 'Layout', 'AcmeGizmo']"),
+        block(" componentsUsed: ['Chat', 'Layout']"),
       );
       fs.writeFileSync(
         path.join(outside, 'templates', 'account-card.tsx'),
@@ -734,11 +734,18 @@ describe('block component names', () => {
 
       const {data} = await validateIntegration(undefined, {cwd: outside});
       expect(
-        data.issues
-          .filter(issue => issue.code === 'unknown_block_component')
-          .map(issue => issue.message),
-      ).toEqual([expect.stringContaining('names "AcmeGizmo"')]);
-      expect(data.blockComponents?.unchecked).toEqual([]);
+        data.issues.filter(issue => issue.code === 'unknown_block_component'),
+      ).toEqual([]);
+      const reason =
+        'Core is not installed, so its component names cannot be checked.';
+      expect(data.blockComponents).toEqual({
+        status: 'checked',
+        findings: [],
+        unchecked: [
+          {file: 'templates/account-card.doc.mjs', name: 'Chat', reason},
+          {file: 'templates/account-card.doc.mjs', name: 'Layout', reason},
+        ],
+      });
     } finally {
       fs.rmSync(outside, {recursive: true, force: true});
     }

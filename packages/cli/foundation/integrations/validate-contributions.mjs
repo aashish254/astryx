@@ -25,7 +25,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {parse as parseModule} from '@babel/parser';
 import {isValidSemver} from '../env/semver.mjs';
-import {findCoreDir} from '../fs/paths.mjs';
+import {findProjectCoreDir} from '../fs/paths.mjs';
 import {
   contributionFiles,
   findSourceOnlyCandidates,
@@ -417,7 +417,9 @@ async function judgeBlockComponents(integration) {
   } catch {
     return {issues, unchecked};
   }
-  const coreDir = findCoreDir(integration.__packageDir ?? root);
+  // The Core installed beside the package, never the one the CLI carries:
+  // a name is judged against the Core the package's users install.
+  const coreDir = findProjectCoreDir(integration.__packageDir ?? root);
   /** @type {Map<string, boolean>} */
   const inCore = new Map();
   /** @param {string} name */
