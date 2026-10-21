@@ -245,60 +245,61 @@ export function scanComputerIntegrations({
   for (const root of computerInstallRoots(cliRoot, {cacheDir})) {
     scanRoot(root, {self, release, found, seen});
   }
-  const root = approved.length > 0 ? installPlaceOf(self).owner : null;
-  if (root) {
-    for (const name of approved) {
-      const packageDir = path.join(root, 'node_modules', ...name.split('/'));
-      if (!fs.existsSync(path.join(packageDir, 'package.json'))) continue;
-      addCandidate(
-        name,
-        {packageDir, hostDir: root},
-        {self, release, found, seen},
-      );
-    }
-  }
+  const owner = approved.length > 0 ? installPlaceOf(self).owner : null;
+  if (owner) scanRoot(owner, {self, release, found, seen}, approved);
   return found;
 }
 
 /**
- * Add the integrations installed in one install root.
+ * `name` as installed in `root`'s own `node_modules`, never in a folder above.
+ * @param {string} name
  * @param {string} root
- * @param {{self: string, release: string, found: ComputerIntegrationCandidate[], seen: Set<string>}} into
+ * @returns {{packageDir: string, hostDir: string} | null}
  */
-function scanRoot(root, into) {
-  const declared = readPackage(root)
-    ? readDeclaredDependencies(root).map(d => d.name)
-    : installedNames(root);
-  for (const name of declared) {
-    const resolved = resolveInstalledPackageDir(name, root);
-    if (resolved) addCandidate(name, resolved, into);
-  }
+function ownPackageDir(name, root) {
+  const packageDir = path.join(root, 'node_modules', ...name.split('/'));
+  return fs.existsSync(path.join(packageDir, 'package.json'))
+    ? {packageDir, hostDir: root}
+    : null;
 }
 
 /**
- * Add one installed package when it is an integration not yet found.
- * @param {string} name
- * @param {{packageDir: string, hostDir: string}} resolved
+ * Add the integrations installed in one install root: those it declares or
+ * installs, or, given `approved`, those names installed in its own
+ * `node_modules`.
+ * @param {string} root
  * @param {{self: string, release: string, found: ComputerIntegrationCandidate[], seen: Set<string>}} into
+ * @param {readonly string[] | null} [approved]
  */
-function addCandidate(name, resolved, {self, release, found, seen}) {
-  if (NOT_INTEGRATIONS.has(name)) return;
-  const identity = real(resolved.packageDir);
-  if (identity === self || seen.has(identity)) return;
-  if (findManifestPaths(resolved.packageDir).length !== 1) return;
-  const pkg = readPackage(resolved.packageDir);
-  if (!pkg || typeof pkg.name !== 'string') return;
-  if (NOT_INTEGRATIONS.has(pkg.name)) return;
-  seen.add(identity);
-  found.push({
-    name: pkg.name,
-    version: typeof pkg.version === 'string' ? pkg.version : undefined,
-    description:
-      typeof pkg.description === 'string' ? pkg.description : undefined,
-    packageDir: resolved.packageDir,
-    hostDir: resolved.hostDir,
-    incompatible: peerProblem(pkg, release),
-  });
+function scanRoot(root, {self, release, found, seen}, approved = null) {
+  const declared =
+    approved ??
+    (readPackage(root)
+      ? readDeclaredDependencies(root).map(d => d.name)
+      : installedNames(root));
+  for (const name of declared) {
+    if (NOT_INTEGRATIONS.has(name)) continue;
+    const resolved = approved
+      ? ownPackageDir(name, root)
+      : resolveInstalledPackageDir(name, root);
+    if (!resolved) continue;
+    const identity = real(resolved.packageDir);
+    if (identity === self || seen.has(identity)) continue;
+    if (findManifestPaths(resolved.packageDir).length !== 1) continue;
+    const pkg = readPackage(resolved.packageDir);
+    if (!pkg || typeof pkg.name !== 'string') continue;
+    if (NOT_INTEGRATIONS.has(pkg.name)) continue;
+    seen.add(identity);
+    found.push({
+      name: pkg.name,
+      version: typeof pkg.version === 'string' ? pkg.version : undefined,
+      description:
+        typeof pkg.description === 'string' ? pkg.description : undefined,
+      packageDir: resolved.packageDir,
+      hostDir: resolved.hostDir,
+      incompatible: peerProblem(pkg, release),
+    });
+  }
 }
 
 /**

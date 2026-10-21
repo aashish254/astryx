@@ -242,10 +242,18 @@ export async function runHostedCli(options) {
   process.argv = [process.argv[0] ?? process.execPath, BIN, ...input.argv];
   if (!(await nodeVersionGate(input.argv))) return {status: 1, packages: []};
 
-  const {installPlaceOf} = await import('../foundation/release/choose.mjs');
+  const {installPlaceOf, projectRootOf} =
+    await import('../foundation/release/choose.mjs');
+  const {readReleaseFacts} = await import('../foundation/release/project.mjs');
   const {activateHostedRun, recordResolved, resolvedPackages} =
     await import('../foundation/runtime/package-root.mjs');
   const real = fs.realpathSync(CLI_ROOT);
+  let projectRoot = null;
+  try {
+    projectRoot = projectRootOf(readReleaseFacts(input.cwd));
+  } catch {
+    projectRoot = null;
+  }
   activateHostedRun({
     roots: input.roots,
     integrations: input.integrations,
@@ -253,6 +261,7 @@ export async function runHostedCli(options) {
     // The root that holds this CLI, or, for a CLI that is not installed in a
     // node_modules folder, the folder beside it that holds its Core.
     startingRoot: installPlaceOf(real).owner ?? path.dirname(real),
+    projectRoot,
     loadHostEntry,
   });
   recordResolved(

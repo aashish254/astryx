@@ -36,7 +36,10 @@ export const CLI_ROOT = path.resolve(__dirname, '..', '..');
  * @returns {string | null}
  */
 export function findCoreDir(startDir = process.cwd()) {
-  return noteCore(findProjectCoreDir(startDir) ?? carriedCoreFor(startDir).dir);
+  const own = findProjectCoreDir(startDir);
+  return own
+    ? noteCore(own, 'project')
+    : noteCore(carriedCoreFor(startDir).dir);
 }
 
 /**
@@ -44,9 +47,10 @@ export function findCoreDir(startDir = process.cwd()) {
  * (architecture:cli-surface INV30). Does nothing outside a hosted run.
  * @template {string | null} T
  * @param {T} dir
+ * @param {'project'} [source] where it came from, when the caller knows
  * @returns {T}
  */
-function noteCore(dir) {
+function noteCore(dir, source) {
   if (dir && hostedRun()) {
     let version;
     try {
@@ -56,7 +60,7 @@ function noteCore(dir) {
     } catch {
       version = null;
     }
-    recordResolved('@astryxdesign/core', version, dir);
+    recordResolved('@astryxdesign/core', version, dir, source);
   }
   return dir;
 }
@@ -90,7 +94,7 @@ export function unavailableCoreMessage(found, inProject) {
  */
 export function requireCoreDir(startDir = process.cwd()) {
   const found = findProjectCoreDir(startDir) ?? carriedCoreFor(startDir, true);
-  if (typeof found === 'string') return noteCore(found);
+  if (typeof found === 'string') return noteCore(found, 'project');
   if (found.unavailable) {
     throw codedError(
       unavailableCoreMessage(found, runChoice(startDir).inProject),

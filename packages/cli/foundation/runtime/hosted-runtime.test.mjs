@@ -296,6 +296,48 @@ describe("the host's discover sources", () => {
   });
 });
 
+describe("the host's discover sources in a project", () => {
+  /**
+   * JavaScript for a discover source whose catalog is named `name`.
+   * @param {string} name
+   */
+  const source = name =>
+    `async () => ({schemaVersion: 1, source: {name: ${JSON.stringify(name)}, generatedAt: '2026-10-20T00:00:00.000Z', complete: true}, packages: []})`;
+
+  it("come after the project's own source and its integrations' sources, and before the official list", () => {
+    const root = project(tempDir(), {
+      '@astryxdesign/core': SELF_VERSION,
+      'acme-widgets': '1.0.0',
+    });
+    fs.writeFileSync(
+      path.join(root, 'astryx.config.mjs'),
+      `export default {discover: ${source('Project catalog')}};\n`,
+    );
+    const pkgDir = path.join(root, 'node_modules', 'acme-widgets');
+    writeJson(path.join(pkgDir, 'package.json'), {
+      name: 'acme-widgets',
+      version: '1.0.0',
+    });
+    fs.writeFileSync(
+      path.join(pkgDir, 'astryx.integration.mjs'),
+      `export const discover = ${source('Widgets catalog')};\nexport default {};\n`,
+    );
+    const run = host(
+      {argv: ['discover', '--json'], cwd: root},
+      {sources: ACME_SOURCE},
+    );
+    expect(run.status).toBe(0);
+    expect(
+      JSON.parse(run.stdout).meta.sources.map(s => [s.name, s.from]),
+    ).toEqual([
+      ['Project catalog', 'astryx.config'],
+      ['Widgets catalog', 'acme-widgets'],
+      ['Acme catalog', 'the host'],
+      ['Astryx', '@astryxdesign/cli'],
+    ]);
+  });
+});
+
 describe('what a hosted run resolved', () => {
   it('names the CLI and its Core from the package set outside a project', () => {
     const run = host({

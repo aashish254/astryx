@@ -19,6 +19,14 @@ import {
 import {projectAstryxPins} from './locked-versions.mjs';
 import {qualifyingRoot, rootPackage, satisfiesInstall} from './package-set.mjs';
 import {scanComputerIntegrations} from '../integrations/computer-integrations.mjs';
+import {findCoreDir} from '../fs/paths.mjs';
+import {
+  _resetHostedRun,
+  activateHostedRun,
+  recordResolved,
+  recordResolvedIntegrations,
+  resolvedPackages,
+} from './package-root.mjs';
 
 afterEach(cleanupFixtures);
 
@@ -298,5 +306,127 @@ describe('the integrations a host approves', () => {
     expect(found[0].packageDir).toBe(
       path.join(set, 'node_modules', 'acme-widgets'),
     );
+  });
+
+  it('never takes an approved name from a folder above the package set', () => {
+    const outer = tempDir('outer');
+    install(outer, 'acme-outer', {version: '1.0.0'}, {manifest: true});
+    const set = path.join(outer, 'set');
+    const cliDir = install(set, '@astryxdesign/cli', {version: '0.7.2'});
+    writeJson(path.join(set, 'package.json'), {
+      dependencies: {'@astryxdesign/cli': '0.7.2'},
+    });
+    expect(
+      scanComputerIntegrations({
+        cliRoot: cliDir,
+        release: '0.7.2',
+        approved: ['acme-outer'],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe('where each package a hosted run resolved came from', () => {
+  afterEach(() => _resetHostedRun());
+
+  /**
+   * @param {string} root
+   * @param {string} name
+   */
+  const at = (root, name) =>
+    path.join(root, 'node_modules', ...name.split('/'));
+
+  it("names the project's packages as the project's when the host's CLI is installed in the project", () => {
+    const app = tempDir('app');
+    activateHostedRun({startingRoot: app, projectRoot: app});
+    recordResolved('@astryxdesign/cli', '0.7.2', at(app, '@astryxdesign/cli'));
+    recordResolved(
+      '@astryxdesign/core',
+      '0.7.2',
+      at(app, '@astryxdesign/core'),
+      'project',
+    );
+    recordResolvedIntegrations([
+      {
+        name: 'acme-widgets',
+        version: '1.0.0',
+        __packageDir: at(app, 'acme-widgets'),
+      },
+    ]);
+    expect(resolvedPackages()).toEqual([
+      {name: '@astryxdesign/cli', version: '0.7.2', source: 'project'},
+      {name: '@astryxdesign/core', version: '0.7.2', source: 'project'},
+      {name: 'acme-widgets', version: '1.0.0', source: 'project'},
+    ]);
+  });
+
+  it("names what a package set holds as the package set's, and the project's integrations as the project's", () => {
+    const set = tempDir('set');
+    const app = tempDir('app');
+    activateHostedRun({startingRoot: set, projectRoot: app});
+    recordResolved('@astryxdesign/cli', '0.7.2', at(set, '@astryxdesign/cli'));
+    recordResolved(
+      '@astryxdesign/core',
+      '0.7.2',
+      at(set, '@astryxdesign/core'),
+    );
+    recordResolvedIntegrations([
+      {
+        name: 'acme-tools',
+        version: '2.0.0',
+        __packageDir: at(set, 'acme-tools'),
+        __computer: true,
+      },
+      {
+        name: 'acme-widgets',
+        version: '1.0.0',
+        __packageDir: at(app, 'acme-widgets'),
+      },
+    ]);
+    expect(resolvedPackages()).toEqual([
+      {name: '@astryxdesign/cli', version: '0.7.2', source: 'package-set'},
+      {name: '@astryxdesign/core', version: '0.7.2', source: 'package-set'},
+      {name: 'acme-tools', version: '2.0.0', source: 'package-set'},
+      {name: 'acme-widgets', version: '1.0.0', source: 'project'},
+    ]);
+  });
+
+  it("names what the project loaded or found above itself, as a workspace hoists it, as the project's", () => {
+    // The host's CLI sits in the workspace root, which is its package set,
+    // and the project is a workspace package whose packages are hoisted there.
+    const mono = tempDir('mono');
+    writeJson(path.join(mono, 'package.json'), {
+      private: true,
+      workspaces: ['packages/*'],
+    });
+    const app = path.join(mono, 'packages', 'app');
+    writeJson(path.join(app, 'package.json'), {
+      name: 'app',
+      dependencies: {'@astryxdesign/core': '0.7.2', 'acme-widgets': '1.0.0'},
+    });
+    install(mono, '@astryxdesign/core', {version: '0.7.2'});
+    activateHostedRun({startingRoot: mono, projectRoot: app});
+    expect(findCoreDir(app)).toBe(at(mono, '@astryxdesign/core'));
+    recordResolvedIntegrations([
+      {
+        name: 'acme-widgets',
+        version: '1.0.0',
+        __packageDir: at(mono, 'acme-widgets'),
+      },
+    ]);
+    expect(resolvedPackages()).toEqual([
+      {name: '@astryxdesign/core', version: '0.7.2', source: 'project'},
+      {name: 'acme-widgets', version: '1.0.0', source: 'project'},
+    ]);
+  });
+
+  it('names a package set inside the project folder as a package set', () => {
+    const app = tempDir('app');
+    const set = path.join(app, '.tools', 'astryx');
+    activateHostedRun({startingRoot: set, projectRoot: app});
+    recordResolved('@astryxdesign/cli', '0.7.2', at(set, '@astryxdesign/cli'));
+    expect(resolvedPackages()).toEqual([
+      {name: '@astryxdesign/cli', version: '0.7.2', source: 'package-set'},
+    ]);
   });
 });
