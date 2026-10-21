@@ -653,8 +653,9 @@ function importedNames(file, packageName) {
       } else if (node.type === 'ExportNamedDeclaration') {
         // A barrel: `export {Body} from './Body'` passes Body on, and what
         // Body renders comes from the module it names.
-        for (const specifier of node.specifiers) {
-          if (/** @type {any} */ (specifier).exportKind === 'type') continue;
+        for (const each of node.specifiers) {
+          const specifier = /** @type {any} */ (each);
+          if (specifier.exportKind === 'type') continue;
           if (specifier.type !== 'ExportSpecifier') {
             // `export * as UI from`, `export UI from`.
             unread.push(
