@@ -105,12 +105,19 @@ if (rendered !== pinned) {
 // same URLs over plain HTTP starts and finishes the build first, and turns the
 // remaining case into a line that names the asset instead of a navigation
 // timeout at the end of a 17-minute run.
+const PRIME_DEADLINE_MS = 120_000;
 const assets = pageAssetUrls(fs.readFileSync(pagePath, 'utf8'));
-const {cold} = await primeCdnAssets(assets);
+const {cold} = await primeCdnAssets(assets, {deadlineMs: PRIME_DEADLINE_MS});
 if (cold.length > 0) {
   fail(
-    `${cold.length} CDN asset(s) never served — the CDN has not built ${rendered}, which no change in this repo can fix`,
-    cold.map(({url, reason}) => `        ${url} :: ${reason}`).join('\n'),
+    `${cold.length} page asset(s) did not serve within ${PRIME_DEADLINE_MS / 1000}s`,
+    [
+      '        Every URL below is one the starter page requests, so the page cannot render',
+      '        without it. The text after :: is what the request actually returned — a cold',
+      '        CDN build for this version, a path this change broke, a wrong version in the',
+      '        URL, and a network failure all look different there.',
+      ...cold.map(({url, reason}) => `        ${url} :: ${reason}`),
+    ].join('\n'),
   );
   fs.rmSync(tmpDir, {recursive: true, force: true});
   process.exit(1);

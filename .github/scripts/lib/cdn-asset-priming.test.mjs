@@ -38,7 +38,8 @@ describe('pageAssetUrls', () => {
   });
 
   it('names a URL once when the page asks for it twice', () => {
-    const resetCss = 'https://cdn.jsdelivr.net/npm/@astryxdesign/core@0.7.2/src/reset.css';
+    const resetCss =
+      'https://cdn.jsdelivr.net/npm/@astryxdesign/core@0.7.2/src/reset.css';
     const twice = `${PAGE}\n<link rel="stylesheet" href="${resetCss}" />`;
     expect(pageAssetUrls(twice).filter(u => u === resetCss)).toHaveLength(1);
     expect(pageAssetUrls(twice)).toHaveLength(pageAssetUrls(PAGE).length);
@@ -50,6 +51,59 @@ describe('pageAssetUrls', () => {
     expect(pageAssetUrls(broken)).toContain(
       'https://cdn.jsdelivr.net/npm/@astryxdesign/core@0.7.2/src/reset.css',
     );
+  });
+
+  it('collects a scoped import-map target, not only the top-level ones', () => {
+    const scoped = `
+      <script type="importmap">
+        {"imports": {"react": "https://esm.sh/react@19.2.0"},
+         "scopes": {"./app/": {"react": "https://esm.sh/react@18.3.1",
+                               "lodash": "https://esm.sh/lodash@4.17.21"}}}
+      </script>
+    `;
+    const urls = pageAssetUrls(scoped);
+    expect(urls).toContain('https://esm.sh/react@19.2.0');
+    expect(urls).toContain('https://esm.sh/react@18.3.1');
+    expect(urls).toContain('https://esm.sh/lodash@4.17.21');
+    // A scope prefix is a key, never a value, and must not displace the
+    // top-level entry that happens to share its specifier name.
+    expect(urls).not.toContain('./app/');
+  });
+
+  it('tolerates a scope whose map is missing or malformed', () => {
+    expect(
+      pageAssetUrls(
+        '<script type="importmap">{"scopes": {"./a/": null, "./b/": {"x": 42}}}</script>',
+      ),
+    ).toEqual([]);
+  });
+
+  it('primes only the links a page load actually fetches', () => {
+    const page = `
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@astryxdesign/core@0.7.2/dist/astryx.css" />
+      <link rel="modulepreload" href="https://esm.sh/react@19.2.0" />
+      <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.js" />
+      <link rel="preload stylesheet" as="style" href="https://cdn.jsdelivr.net/npm/@astryxdesign/core@0.7.2/dist/theme.css" />
+      <link rel="icon" href="https://astryx.dev/favicon.ico" />
+      <link rel="manifest" href="https://astryx.dev/site.webmanifest" />
+      <link rel="canonical" href="https://astryx.dev/docs/button" />
+      <link rel="prefetch" href="https://astryx.dev/docs/input" />
+    `;
+    const urls = pageAssetUrls(page);
+    expect(urls).toEqual([
+      'https://cdn.jsdelivr.net/npm/@astryxdesign/core@0.7.2/dist/astryx.css',
+      'https://esm.sh/react@19.2.0',
+      // A bare `rel="preload"` is fetched during the load like any other asset,
+      // and a multi-token `rel` matches on any load-time token it carries.
+      'https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.js',
+      'https://cdn.jsdelivr.net/npm/@astryxdesign/core@0.7.2/dist/theme.css',
+    ]);
+    // A 404 on any of these is not a broken starter page: the page never asks
+    // for them while it loads.
+    expect(urls).not.toContain('https://astryx.dev/favicon.ico');
+    expect(urls).not.toContain('https://astryx.dev/site.webmanifest');
+    expect(urls).not.toContain('https://astryx.dev/docs/button');
+    expect(urls).not.toContain('https://astryx.dev/docs/input');
   });
 });
 
@@ -110,9 +164,7 @@ describe('primeCdnAssets', () => {
     });
     expect(calls).toEqual(['still-building.css']);
     expect(res.ready).toEqual([]);
-    expect(res.cold).toEqual([
-      {url: 'still-building.css', reason: 'HTTP 404'},
-    ]);
+    expect(res.cold).toEqual([{url: 'still-building.css', reason: 'HTTP 404'}]);
   });
 
   it('names a request that fails outright rather than answering', async () => {
@@ -126,6 +178,29 @@ describe('primeCdnAssets', () => {
       deadlineMs: 0,
     });
     expect(res.cold).toEqual([{url: 'hanging.css', reason: 'TimeoutError'}]);
+  });
+
+  it('carries a socket-level cause into the reason, not just the wrapper name', async () => {
+    // undici reports every transport failure as `TypeError: fetch failed` and
+    // puts the real code on error.cause — without it every network problem
+    // reads as the same one word.
+    const wrapped = new TypeError('fetch failed');
+    wrapped.cause = Object.assign(new Error('connect ETIMEDOUT'), {
+      code: 'UND_ERR_CONNECT_TIMEOUT',
+    });
+    const {fetchImpl} = scriptedFetch([wrapped]);
+    const res = await primeCdnAssets(['unreachable.css'], {
+      fetchImpl,
+      sleep: async () => {},
+      now: () => 0,
+      deadlineMs: 0,
+    });
+    expect(res.cold).toEqual([
+      {
+        url: 'unreachable.css',
+        reason: 'TypeError (UND_ERR_CONNECT_TIMEOUT)',
+      },
+    ]);
   });
 
   it('treats a redirect as served and a server error as not', async () => {

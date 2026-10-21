@@ -27,12 +27,20 @@ function isAbsoluteHttp(value) {
 }
 
 /**
+ * `rel` is a set of space-separated tokens, and the ones that make the browser
+ * fetch a file while loading the page are these. Everything else a `<link>` can
+ * carry — `icon`, `manifest`, `canonical`, `prefetch`, `preconnect` — names a
+ * resource the page load does not request, so priming it would report a
+ * perfectly good starter page as broken over a file nobody asked for.
+ */
+const LOAD_TIME_RELS = new Set(['stylesheet', 'modulepreload', 'preload']);
+
+/**
  * Every URL the page itself fetches, in document order and deduplicated.
  *
- * Only fetched resources: stylesheets, scripts, and the import map's module
- * entries. `preconnect`/`dns-prefetch` hints name origins rather than files, and
- * a documentation link in prose is not something the page loads, so neither is
- * primed — a 404 on either would be reported as a broken starter page.
+ * Only load-time requests: `stylesheet`/`modulepreload`/`preload` links, script
+ * `src`s, and the import map's module entries — both the top-level `imports` and
+ * the targets nested under `scopes`.
  *
  * @param {string} html the scaffolded page
  * @returns {string[]}
@@ -42,7 +50,7 @@ export function pageAssetUrls(html) {
 
   for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
     const rel = /\brel="([^"]*)"/i.exec(tag)?.[1] ?? '';
-    if (/preconnect|dns-prefetch/i.test(rel)) continue;
+    if (!rel.split(/\s+/).some(token => LOAD_TIME_RELS.has(token))) continue;
     const href = /\bhref="([^"]*)"/i.exec(tag)?.[1];
     if (isAbsoluteHttp(href)) urls.push(href);
   }
@@ -64,13 +72,36 @@ export function pageAssetUrls(html) {
       // probe can, and priming is only a precondition for that report.
       continue;
     }
-    const entries = {...map?.imports, ...map?.scopes};
-    for (const target of Object.values(entries)) {
+    // `scopes` maps each scope prefix to its own specifier→URL object, so its
+    // values are objects rather than URLs: flatten that one level to reach the
+    // targets. Spreading it beside `imports` collected nothing and let a scope
+    // prefix silently overwrite an equally named top-level specifier.
+    const targets = [
+      ...Object.values(map?.imports ?? {}),
+      ...Object.values(map?.scopes ?? {}).flatMap(scope =>
+        Object.values(scope ?? {}),
+      ),
+    ];
+    for (const target of targets) {
       if (isAbsoluteHttp(target)) urls.push(target);
     }
   }
 
   return [...new Set(urls)];
+}
+
+/**
+ * What a failed request actually was. `undici` puts the socket-level reason on
+ * `error.cause.code` (`UND_ERR_CONNECT_TIMEOUT`, `EAI_AGAIN`, …) behind a plain
+ * `TypeError`, so the name alone sends a contributor to a generic error.
+ *
+ * @param {unknown} error
+ * @returns {string}
+ */
+function requestFailureLabel(error) {
+  const name = error instanceof Error ? error.name : String(error);
+  const code = error?.cause?.code;
+  return code ? `${name} (${code})` : name;
 }
 
 /**
@@ -120,7 +151,7 @@ export async function primeCdnAssets(
             ? null
             : `HTTP ${response.status}`;
         } catch (error) {
-          reason = error instanceof Error ? error.name : String(error);
+          reason = requestFailureLabel(error);
         }
         if (reason === null) {
           ready.add(url);
