@@ -14,7 +14,9 @@
  * leaves that rule writes.
  *
  * Precedence inside one resolved layer, lowest to highest: seed → color → type
- * scale → radius → motion → font families → syntax → explicit `tokens`.
+ * scale → radius → motion → font families → syntax → explicit `tokens` →
+ * source-scoped semantic role defaults. Explicit role tokens always win; a role
+ * default is filled only when its source token exists and the role is absent.
  * Ordered rule-vs-root and rule-vs-rule precedence is owned by
  * `themeAdaptations` and CSS source order, outside this value resolver.
  *
@@ -262,6 +264,39 @@ export function buildFontFamilyTokens(
 // =============================================================================
 
 /**
+ * Public status roles that default to an existing semantic source token.
+ *
+ * StyleX owns the canonical root defaults, but a custom theme that authors one
+ * of these source tokens needs the corresponding role re-declared in that
+ * theme's own scope. Otherwise the root alias is already resolved before a
+ * nested Theme changes the source token, and the nested region keeps the outer
+ * theme's color. Explicit role values remain authoritative.
+ */
+const SCOPED_STATUS_ROLE_DEFAULTS: ReadonlyArray<
+  readonly [role: string, source: string]
+> = [
+  ['--color-info', '--color-accent'],
+  ['--color-info-muted', '--color-accent-muted'],
+  ['--color-on-info', '--color-on-accent'],
+  ['--color-status-foreground-info', '--color-text-blue'],
+  ['--color-status-foreground-success', '--color-text-green'],
+  ['--color-status-foreground-warning', '--color-text-yellow'],
+  ['--color-status-foreground-error', '--color-text-red'],
+  ['--color-on-info-muted', '--color-text-blue'],
+  ['--color-on-success-muted', '--color-text-green'],
+  ['--color-on-warning-muted', '--color-text-yellow'],
+  ['--color-on-error-muted', '--color-text-red'],
+];
+
+function fillScopedStatusRoleDefaults(tokens: Record<string, string>): void {
+  for (const [role, source] of SCOPED_STATUS_ROLE_DEFAULTS) {
+    if (tokens[role] === undefined && tokens[source] !== undefined) {
+      tokens[role] = `var(${source})`;
+    }
+  }
+}
+
+/**
  * Resolve one theme layer's declarative axes into tokens and component styles.
  *
  * `seed` is the already-resolved layer underneath — the base theme for an
@@ -320,6 +355,11 @@ export function resolveThemeValues(
       }
     }
   }
+
+  // 8. Scope semantic-role defaults beside any source tokens this resolved
+  // layer carries. This is intentionally after explicit tokens: authored role
+  // values win, while omitted roles remain live aliases to their local source.
+  fillScopedStatusRoleDefaults(tokens);
 
   // Components: generated type-scale rules (lowest) → this input's own →
   // all of it over the seed's.
