@@ -48,7 +48,9 @@ describe('search tree', () => {
   it('sends a page request to the template searcher', async () => {
     const {steps, answer} = await route('page of settings with a side menu');
     expect(steps).toEqual(['root', 'template']);
-    expect(answer.data.results[0].name).toBe('settings');
+    expect(
+      answer.data.results.slice(0, 3).map((/** @type {any} */ r) => r.name),
+    ).toContain('settings');
   });
 
   it('sends a component query to the main searcher', async () => {

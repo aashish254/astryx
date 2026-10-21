@@ -13,7 +13,6 @@
  * @position api/search; the searchers and the root router import it
  */
 
-import {toResult} from './_result.mjs';
 import {DOMAINS, ROUTES, words, fold, queryWords} from './_query-words.mjs';
 import {entryOf} from './_entries.mjs';
 
@@ -153,43 +152,4 @@ export function rank(table, rows, weights) {
     return Math.round(s * 1e9) / 1e9;
   });
   return score.map((s, k) => k).sort((a, b) => score[b] - score[a] || a - b);
-}
-
-/**
- * The search response for ranked entries: each entry's lexical result when
- * the lexical ranker matched it, else a result built from its candidate.
- * Only entries some query word matched answer, and never more of them than
- * the lexical ranker returns, so the response never grows.
- * @param {EntryTable} table
- * @param {number[]} order
- * @param {Float64Array[]} rows each entry's signals
- * @param {import('./search.type.mjs').SearchResponse} lexical the full lexical response
- * @param {number} limit
- * @returns {import('./search.type.mjs').SearchResponse}
- */
-export function respond(table, order, rows, lexical, limit) {
-  /** @type {Map<string, any>} */
-  const own = new Map();
-  for (const res of lexical.data.results) {
-    const k = entryOf(table, res);
-    const id = k === undefined ? '' : table.ids[k];
-    if (!own.has(id)) own.set(id, res);
-  }
-  const matched = (/** @type {number} */ k) =>
-    rows[k][2] > 0 ||
-    rows[k][9] > 0 ||
-    rows[k][10] > 0 ||
-    rows[k][11] > 0 ||
-    rows[k][17] > 0;
-  const cap = Math.min(limit, lexical.data.results.length);
-  const results = order
-    .filter(matched)
-    .slice(0, cap)
-    .map(k => {
-      const id = table.ids[k];
-      return (
-        own.get(id) ?? toResult(table.candidate[k], 0, 'related words', 0, 0)
-      );
-    });
-  return {...lexical, data: {...lexical.data, results}};
 }

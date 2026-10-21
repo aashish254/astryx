@@ -24,9 +24,14 @@ import {SEARCH_TREE} from './tree.mjs';
 // The domains a search covers (the command handler lists them), and what
 // build reads from search: its word vocabulary, the components a search
 // read, and the keywords of Core's components.
-export {SEARCH_DOMAINS, STOPWORDS} from './_query.mjs';
+export {SEARCH_DOMAINS, STOPWORDS, tokenizeQuery} from './_query.mjs';
+export {headingWithPhrase, titleInQuery} from './_titles.mjs';
+export {scoreCandidate} from './_candidate-score.mjs';
+export {scoreQuery} from './_score.mjs';
+export {domainPriority} from './_priority.mjs';
+export {compoundHit} from './_compound.mjs';
 export {SYNONYMS} from './_synonyms.mjs';
-export {stem} from './_words.mjs';
+export {sameWord, spellIdentifiers, stem} from './_words.mjs';
 export {searchedComponents} from './_result.mjs';
 export {componentKeywords} from './_adapter.mjs';
 

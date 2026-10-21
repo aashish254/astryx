@@ -30,20 +30,26 @@ const tables = new WeakMap();
 /**
  * The entry a lexical result answers as.
  * @param {{index: Map<string, number>}} table
- * @param {{domain: string, name: string, package?: string}} res
+ * @param {{domain: string, name: string, package?: string, section?: string}} res
  * @returns {number | undefined}
  */
-export const entryOf = (table, res) =>
-  table.index.get(`${res.domain}:${res.name}|${res.package}`) ??
-  table.index.get(`${res.domain}:${res.name}`);
-
-/** The id a candidate answers as. @param {any} c */
-export const entryId = c =>
-  `${c.domain}:${c.domain === 'doc' ? (c._topic ?? c.name) : (c._resultName ?? c.name)}`;
+export const entryOf = (table, res) => {
+  const id = `${res.domain}:${res.name}${res.section ? `#${res.section}` : ''}`;
+  return table.index.get(`${id}|${res.package}`) ?? table.index.get(id);
+};
 
 /**
- * The entries search can answer with and their text, by field. Doc sections
- * fold into their topic. Built once per gathered catalog.
+ * The id a candidate answers as: a doc section is its own entry, beside its
+ * topic. @param {any} c
+ */
+export const entryId = c =>
+  c.domain === 'doc'
+    ? `doc:${c._topic ?? c.name}${c._section ? `#${c._section}` : ''}`
+    : `${c.domain}:${c._resultName ?? c.name}`;
+
+/**
+ * The entries search can answer with and their text, by field. Each doc
+ * section is its own entry. Built once per gathered catalog.
  * @param {any[]} all the gathered candidates
  * @param {Record<string, {what?: string, synonyms?: string[], props?: string[]}>} cards
  * @returns {EntryTable}
@@ -83,9 +89,10 @@ export function entryTable(all, cards) {
   for (const id of ids) {
     const group = /** @type {any[]} */ (by.get(id));
     const first = group.find(c => !c._section) ?? group[0];
+    const plain = id.split('|')[0].split('#')[0];
     const [domain, name] = [
-      id.slice(0, id.indexOf(':')),
-      id.slice(id.indexOf(':') + 1),
+      plain.slice(0, plain.indexOf(':')),
+      plain.slice(plain.indexOf(':') + 1),
     ];
     const nw = nameWords(name).map(fold);
     table.candidate.push(first);

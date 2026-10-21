@@ -8,7 +8,7 @@ import {describe, it, expect, vi} from 'vitest';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {build} from './build.mjs';
-import {searchCore, searchedComponents} from '../search/search.mjs';
+import {search, searchedComponents} from '../search/search.mjs';
 
 // api/build/ -> up 3 = packages/cli, up 4 = repo root (has packages/core).
 const REPO = path.resolve(
@@ -16,7 +16,7 @@ const REPO = path.resolve(
   '../../../..',
 );
 
-// build() delegates to searchCore(), whose first (cold) call is slow under vitest.
+// build() delegates to search(), whose first (cold) call is slow under vitest.
 vi.setConfig({testTimeout: 30000});
 
 describe('build API', () => {
@@ -52,7 +52,7 @@ describe('build API', () => {
     if (r.type !== 'build.kit') return;
     expect(r.data.query).toBe('dashboard');
     expect(r.data.hasResults).toBe(true);
-    const raw = await searchCore('dashboard', {cwd: REPO, limit: 60});
+    const raw = await search('dashboard', {cwd: REPO, limit: 60});
     expect(r.data.matchCount).toBe(raw.data.matchCount);
     expect(r.data.frame).toContain('AppShell');
     expect(r.data.foundation).toContain('Button');
@@ -154,10 +154,10 @@ describe('build API', () => {
 
 describe('build kit — reuses the components its search gathered', () => {
   it('keeps them beside the search response, out of its JSON', async () => {
-    const all = await searchCore('date picker', {cwd: REPO});
+    const all = await search('date picker', {cwd: REPO});
     expect(searchedComponents(all)?.map(c => c.name)).toContain('DateRangeInput');
     expect(JSON.stringify(all)).not.toContain('"keywords"');
-    const pagesOnly = await searchCore('date picker', {cwd: REPO, type: 'template'});
+    const pagesOnly = await search('date picker', {cwd: REPO, type: 'template'});
     expect(searchedComponents(pagesOnly)).toBeNull();
   }, 60_000);
 });

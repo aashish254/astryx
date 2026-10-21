@@ -407,7 +407,7 @@ const CASES = [
   },
   {
     name: 'search',
-    args: ['search', 'toolbar'],
+    args: ['search', 'button'],
     jsonFieldAllowlist: [
       'matchCount — stated in section heading "Results for ... (N)"',
       'query — stated in section heading',

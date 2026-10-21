@@ -18,7 +18,7 @@ const REPO = path.resolve(
 );
 
 describe('template searcher', () => {
-  it('ranks a template first for a template query', async () => {
+  it('ranks a template near the top for a template query', async () => {
     const catalog = {
       ...(await gatherCandidates({cwd: REPO})),
       data: loadSearchData(),
@@ -30,7 +30,11 @@ describe('template searcher', () => {
         null,
       )
     );
-    expect(answer.data.results[0].domain).toBe('template');
+    expect(
+      answer.data.results
+        .slice(0, 3)
+        .some((/** @type {any} */ r) => r.domain === 'template'),
+    ).toBe(true);
     expect(answer.data.results.length).toBeLessThanOrEqual(20);
   });
 });

@@ -21,10 +21,7 @@ import {describe, it, expect} from 'vitest';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {docs} from '../docs/docs.mjs';
-import {search, searchCore} from './search.mjs';
-import {domainPriority} from './_priority.mjs';
-import {scoreQuery} from './_score.mjs';
-import {tokenizeQuery} from './_query.mjs';
+import {domainPriority, search, scoreQuery, tokenizeQuery} from './search.mjs';
 
 const REPO = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -256,7 +253,7 @@ describe('search domain priority — real docs and components', () => {
   it(
     'finds a guide that declares the whole phrase above a component that matches one word',
     async () => {
-      const results = (await searchCore('font size', {cwd})).data.results;
+      const results = (await search('font size', {cwd})).data.results;
       expect(results[0]).toMatchObject({domain: 'doc'});
       expect(results[0].name).toMatch(/^typography(?:\/|$)/);
       // The component the phrase points to stays near the top.
@@ -273,7 +270,7 @@ describe('search domain priority — real docs and components', () => {
     'keeps a component above a reference doc whose table or code terms hold the phrase',
     async () => {
       for (const q of ['missing field', 'file required']) {
-        const [top] = (await searchCore(q, {cwd})).data.results;
+        const [top] = (await search(q, {cwd})).data.results;
         expect(top, q).toMatchObject({domain: 'component', name: 'Field'});
       }
     },
@@ -298,7 +295,7 @@ describe('search domain priority — real docs and components', () => {
   it(
     'keeps a component above docs that match only by a heading, with scores unchanged',
     async () => {
-      const results = (await searchCore('font size', {cwd})).data.results;
+      const results = (await search('font size', {cwd})).data.results;
       const text = results.findIndex(
         r => r.domain === 'component' && r.name === 'Text',
       );
@@ -324,7 +321,7 @@ describe('search domain priority — real docs and components', () => {
         ['use a theme', 'use-a-theme'],
         ['author a theme', 'author-a-theme'],
       ]) {
-        const results = (await searchCore(q, {cwd})).data.results;
+        const results = (await search(q, {cwd})).data.results;
         expect(results[0], q).toMatchObject({domain: 'doc', name});
       }
     },
@@ -342,7 +339,7 @@ describe('search domain priority — real docs and components', () => {
       const misses = [];
       for (const route of guides) {
         const q = route.slice(route.lastIndexOf('/') + 1).replace(/-/g, ' ');
-        const top = (await searchCore(q, {cwd})).data.results[0];
+        const top = (await search(q, {cwd})).data.results[0];
         if (top?.domain !== 'doc' || top.name !== route) {
           misses.push(`${q} -> ${top?.domain}:${top?.name}`);
         }

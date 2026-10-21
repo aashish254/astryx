@@ -27,11 +27,15 @@ import {fileURLToPath} from 'node:url';
 import {docs} from '../docs/docs.mjs';
 import {listAvailableThemes} from '../theme/_adapter.mjs';
 import {doc as themeAddCommandDoc} from '../../clients/cli/commands/theme-add.doc.mjs';
-import {search, searchCore} from './search.mjs';
-import {scoreQuery} from './_score.mjs';
-import {headingWithPhrase, titleInQuery} from './_titles.mjs';
-import {scoreCandidate} from './_candidate-score.mjs';
-import {SEARCH_DOMAINS, tokenizeQuery} from './_query.mjs';
+import {
+  headingWithPhrase,
+  titleInQuery,
+  search,
+  scoreCandidate,
+  scoreQuery,
+  tokenizeQuery,
+  SEARCH_DOMAINS,
+} from './search.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const cwd = REPO;
@@ -151,7 +155,7 @@ describe('search leaf — docs at the grain a reader reads them', () => {
         // The troubleshooting guide, wherever the tree places it.
         ['troubleshoot integration', /^cli\/integrations\/(?:.+\/)?troubleshooting$/],
       ]) {
-        const r = await searchCore(query, {cwd, type: 'doc'});
+        const r = await search(query, {cwd, type: 'doc'});
         const names = r.data.results.slice(0, 3).map(result => result.name);
         expect(names.some(name => route.test(name)), `${query}: ${names.join(', ')}`).toBe(true);
       }
@@ -264,7 +268,7 @@ describe('search leaf — exact keyword phrase outranks incidental token matches
     // of unrelated Table-related templates by coincidence, and their
     // combined token-sum score outranked Outline's single exact match,
     // pushing it out of the results entirely at the default limit.
-    const r = await searchCore('table of contents', {cwd});
+    const r = await search('table of contents', {cwd});
     expect(r.data.results[0]?.name).toBe('Outline');
   }, SLOW);
 
@@ -429,17 +433,17 @@ describe('search leaf — a candidate that matches every word outranks a partial
       ['command palette', 'CommandPalette'],
       ['empty state', 'EmptyState'],
     ]) {
-      const r = await searchCore(query, {cwd});
+      const r = await search(query, {cwd});
       expect(r.data.results[0], query).toMatchObject({domain: 'component', name});
     }
-    const tokens = await searchCore('tokens', {cwd});
+    const tokens = await search('tokens', {cwd});
     expect(tokens.data.results[0]).toMatchObject({domain: 'doc', name: 'tokens'});
     for (const [query, route] of [
       ['codemods', /^cli\/integrations\/(?:.+\/)?codemods$/],
       ['quick start', /^cli\/integrations\/(?:.+\/)?quick-start$/],
       ['test in an app', /^cli\/integrations\/(?:.+\/)?test-in-an-app$/],
     ]) {
-      const r = await searchCore(query, {cwd, type: 'doc'});
+      const r = await search(query, {cwd, type: 'doc'});
       // The guide is among the hits that share the top score: two guides
       // that both declare the phrase tie, and the tie's order is not pinned.
       const top = r.data.results
@@ -531,7 +535,7 @@ describe('search leaf — a theme is found by its names; its description is pros
         ['focus', ['neutral']],
         ['content', ['matcha', 'neutral']],
       ]) {
-        const {results} = (await searchCore(query, {cwd, limit: 400})).data;
+        const {results} = (await search(query, {cwd, limit: 400})).data;
         const strong = results.filter(
           result => result.domain !== 'theme' && matchesByNameOrKeyword(result),
         );
@@ -907,7 +911,7 @@ describe('search leaf — compound names, other names, and word forms', () => {
       ['toggle group of buttons', 'ToggleButtonGroup'],
       ['circular progress for uploads', 'Spinner'],
     ]) {
-      const {data} = await searchCore(q, {cwd});
+      const {data} = await search(q, {cwd});
       expect(data.results[0], q).toMatchObject({domain: 'component', name});
     }
   }, SLOW);

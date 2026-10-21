@@ -13,9 +13,9 @@
  */
 
 import {routeKit} from '../../foundation/route/route.mjs';
-import {rank, respond, signals} from './_features.mjs';
+import {rank, signals} from './_features.mjs';
 import {entryTable} from './_entries.mjs';
-import {fullCoverageOrder, lexicalTies, namedFirst} from './_order.mjs';
+import {orderMatches} from './_order.mjs';
 import {routeProbs} from './_query-words.mjs';
 import {namesWhole, rankLexical} from './_lexical.mjs';
 
@@ -94,14 +94,13 @@ export function rankWith(request, catalog, weights) {
   );
   const route = routeProbs(catalog.data.router, query);
   const rows = signals(table, query, lexical.data.results, route);
-  let order = namedFirst(
+  return orderMatches(
     table,
     rank(table, rows, weights),
-    lexical.data.results,
+    lexical,
+    query,
+    options.limit ?? 20,
   );
-  order = fullCoverageOrder(order, rows, query);
-  order = lexicalTies(table, order, rows);
-  return respond(table, order, rows, lexical, options.limit ?? 20);
 }
 
 /** @type {import('./tree.mjs').SearchKit} */
