@@ -32,7 +32,10 @@ import {
   checkPackageManager,
 } from './doctor.mjs';
 
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const REPO = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../..',
+);
 const cwd = REPO;
 const SLOW = 30_000;
 
@@ -55,35 +58,51 @@ afterEach(() => {
 });
 
 describe('doctor leaf', () => {
-  it('returns a `doctor` envelope with checks + summary', async () => {
-    const r = await doctor({cwd});
-    expect(r.type).toBe('doctor');
-    expect(Array.isArray(r.data.checks)).toBe(true);
-    expect(r.data.checks.length).toBeGreaterThan(0);
-    expect(r.data.summary).toBeDefined();
-  }, SLOW);
+  it(
+    'returns a `doctor` envelope with checks + summary',
+    async () => {
+      const r = await doctor({cwd});
+      expect(r.type).toBe('doctor');
+      expect(Array.isArray(r.data.checks)).toBe(true);
+      expect(r.data.checks.length).toBeGreaterThan(0);
+      expect(r.data.summary).toBeDefined();
+    },
+    SLOW,
+  );
 
-  it('every check has an id, label, and a valid status', async () => {
-    const r = await doctor({cwd});
-    for (const c of r.data.checks) {
-      expect(typeof c.id).toBe('string');
-      expect(typeof c.label).toBe('string');
-      expect(['pass', 'warn', 'fail', 'info']).toContain(c.status);
-    }
-  }, SLOW);
+  it(
+    'every check has an id, label, and a valid status',
+    async () => {
+      const r = await doctor({cwd});
+      for (const c of r.data.checks) {
+        expect(typeof c.id).toBe('string');
+        expect(typeof c.label).toBe('string');
+        expect(['pass', 'warn', 'fail', 'info']).toContain(c.status);
+      }
+    },
+    SLOW,
+  );
 
-  it('summary counts sum to the number of checks (invariant)', async () => {
-    const r = await doctor({cwd});
-    const {pass, warn, fail, info} = r.data.summary;
-    expect(pass + warn + fail + info).toBe(r.data.checks.length);
-  }, SLOW);
+  it(
+    'summary counts sum to the number of checks (invariant)',
+    async () => {
+      const r = await doctor({cwd});
+      const {pass, warn, fail, info} = r.data.summary;
+      expect(pass + warn + fail + info).toBe(r.data.checks.length);
+    },
+    SLOW,
+  );
 
-  it('reports the core node-version and core-installed checks', async () => {
-    const r = await doctor({cwd});
-    const ids = r.data.checks.map(c => c.id);
-    expect(ids).toContain('node-version');
-    expect(ids).toContain('core-installed');
-  }, SLOW);
+  it(
+    'reports the core node-version and core-installed checks',
+    async () => {
+      const r = await doctor({cwd});
+      const ids = r.data.checks.map(c => c.id);
+      expect(ids).toContain('node-version');
+      expect(ids).toContain('core-installed');
+    },
+    SLOW,
+  );
 });
 
 describe('integration issue check', () => {
@@ -108,47 +127,63 @@ describe('integration issue check', () => {
 });
 
 describe('doctor leaf — degradation & error paths', () => {
-  it('does not crash on multiple config files; reports a config FAIL', async () => {
-    const dir = mkProject({
-      'package.json': '{"name":"x"}',
-      'astryx.config.mjs': 'export default {};',
-      'astryx.config.js': 'export default {};',
-    });
-    const r = await doctor({cwd: dir});
-    const config = r.data.checks.find(c => c.id === 'config');
-    expect(config).toBeDefined();
-    expect(config.status).toBe('fail');
-    expect(config.message).toMatch(/multiple|exactly one/i);
-  }, SLOW);
+  it(
+    'does not crash on multiple config files; reports a config FAIL',
+    async () => {
+      const dir = mkProject({
+        'package.json': '{"name":"x"}',
+        'astryx.config.mjs': 'export default {};',
+        'astryx.config.js': 'export default {};',
+      });
+      const r = await doctor({cwd: dir});
+      const config = r.data.checks.find(c => c.id === 'config');
+      expect(config).toBeDefined();
+      expect(config.status).toBe('fail');
+      expect(config.message).toMatch(/multiple|exactly one/i);
+    },
+    SLOW,
+  );
 
-  it('reports a config FAIL (not a crash) when astryx.config.mjs throws on import', async () => {
-    const dir = mkProject({
-      'package.json': '{"name":"x"}',
-      'astryx.config.mjs': 'throw new Error("boom");\nexport default {};',
-    });
-    const r = await doctor({cwd: dir});
-    const config = r.data.checks.find(c => c.id === 'config');
-    expect(config.status).toBe('fail');
-    expect(config.message).toMatch(/failed to load/i);
-  }, SLOW);
+  it(
+    'reports a config FAIL (not a crash) when astryx.config.mjs throws on import',
+    async () => {
+      const dir = mkProject({
+        'package.json': '{"name":"x"}',
+        'astryx.config.mjs': 'throw new Error("boom");\nexport default {};',
+      });
+      const r = await doctor({cwd: dir});
+      const config = r.data.checks.find(c => c.id === 'config');
+      expect(config.status).toBe('fail');
+      expect(config.message).toMatch(/failed to load/i);
+    },
+    SLOW,
+  );
 
-  it('flags a non-object config default export as FAIL', async () => {
-    const dir = mkProject({
-      'package.json': '{"name":"x"}',
-      'astryx.config.mjs': 'export default 42;',
-    });
-    const r = await doctor({cwd: dir});
-    const config = r.data.checks.find(c => c.id === 'config');
-    expect(config.status).toBe('fail');
-    expect(config.message).toMatch(/not an object/i);
-  }, SLOW);
+  it(
+    'flags a non-object config default export as FAIL',
+    async () => {
+      const dir = mkProject({
+        'package.json': '{"name":"x"}',
+        'astryx.config.mjs': 'export default 42;',
+      });
+      const r = await doctor({cwd: dir});
+      const config = r.data.checks.find(c => c.id === 'config');
+      expect(config.status).toBe('fail');
+      expect(config.message).toMatch(/not an object/i);
+    },
+    SLOW,
+  );
 
-  it('degrades gracefully on invalid package.json', async () => {
-    const dir = mkProject({'package.json': '{ not json }'});
-    const r = await doctor({cwd: dir});
-    const {pass, warn, fail, info} = r.data.summary;
-    expect(pass + warn + fail + info).toBe(r.data.checks.length);
-  }, SLOW);
+  it(
+    'degrades gracefully on invalid package.json',
+    async () => {
+      const dir = mkProject({'package.json': '{ not json }'});
+      const r = await doctor({cwd: dir});
+      const {pass, warn, fail, info} = r.data.summary;
+      expect(pass + warn + fail + info).toBe(r.data.checks.length);
+    },
+    SLOW,
+  );
 });
 
 describe('doctor — checkVersionAlignment', () => {
@@ -312,12 +347,16 @@ describe('checkProviderIdentity', () => {
     expect(c.fix).toContain('providerId');
   });
 
-  it('is part of the report doctor returns', async () => {
-    const r = await doctor({cwd});
-    expect(r.data.checks.map(check => check.id)).toContain(
-      'provider-identity',
-    );
-  }, SLOW);
+  it(
+    'is part of the report doctor returns',
+    async () => {
+      const r = await doctor({cwd});
+      expect(r.data.checks.map(check => check.id)).toContain(
+        'provider-identity',
+      );
+    },
+    SLOW,
+  );
 });
 
 describe('checkImplicitIntegrations', () => {
@@ -357,7 +396,9 @@ describe('checkImplicitIntegrations', () => {
   // config file, so the message must not say anything is named in one.
   it("names the package's own manifest instead of a config that does not exist", () => {
     const c = checkImplicitIntegrations({
-      integrations: [autolinked({__autolinked: false, __local: true, name: '@acme/kit'})],
+      integrations: [
+        autolinked({__autolinked: false, __local: true, name: '@acme/kit'}),
+      ],
     });
     expect(c.status).toBe('info');
     expect(c.message).toBe(
@@ -381,7 +422,9 @@ describe('checkImplicitIntegrations', () => {
     const beside = checkImplicitIntegrations({
       integrations: [autolinked({__autolinked: false}), failed],
     });
-    expect(beside.message).toBe('None — every loaded integration is named in astryx.config.');
+    expect(beside.message).toBe(
+      'None — every loaded integration is named in astryx.config.',
+    );
   });
 
   it('names both when configured integrations load beside the own manifest', () => {
@@ -415,9 +458,7 @@ describe('checkImplicitIntegrations', () => {
       });
       expect(c.message).toContain('@acme/widgets@1.0.0');
       expect(c.message).toContain('from dependencies');
-      expect(c.message).toContain(
-        'contributing components, templates, themes',
-      );
+      expect(c.message).toContain('contributing components, templates, themes');
       expect(c.message).not.toContain('missing on disk');
     } finally {
       fs.rmSync(root, {recursive: true, force: true});
@@ -456,21 +497,32 @@ describe('checkImplicitIntegrations', () => {
     }
   });
 
-  it('is part of the report doctor returns', async () => {
-    const r = await doctor({cwd});
-    expect(r.data.checks.map(c => c.id)).toContain('implicit-integrations');
-  }, SLOW);
+  it(
+    'is part of the report doctor returns',
+    async () => {
+      const r = await doctor({cwd});
+      expect(r.data.checks.map(c => c.id)).toContain('implicit-integrations');
+    },
+    SLOW,
+  );
 });
 
 describe('checkDocsProgressiveDisclosure', () => {
-  it('passes when every topic index and section fits one read', async () => {
-    const c = await checkDocsProgressiveDisclosure({
-      docsCatalog: DocsCatalog.fromBuiltins(),
-      docsCatalogIssues: [],
-    });
-    expect(c).toMatchObject({id: 'docs-progressive-disclosure', status: 'pass'});
-    expect(c.message).toMatch(/^\d+ topics: /);
-  }, SLOW);
+  it(
+    'passes when every topic index and section fits one read',
+    async () => {
+      const c = await checkDocsProgressiveDisclosure({
+        docsCatalog: DocsCatalog.fromBuiltins(),
+        docsCatalogIssues: [],
+      });
+      expect(c).toMatchObject({
+        id: 'docs-progressive-disclosure',
+        status: 'pass',
+      });
+      expect(c.message).toMatch(/^\d+ topics: /);
+    },
+    SLOW,
+  );
 
   it('warns on an invalid doc an integration contributed', async () => {
     const c = await checkDocsProgressiveDisclosure({
@@ -494,7 +546,9 @@ describe('checkDocsProgressiveDisclosure', () => {
   });
 
   it('names a section over the budget and a topic that fails to load', async () => {
-    const dir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-docs-'));
+    const dir = fs.mkdtempSync(
+      path.join(process.cwd(), '.astryx-doctor-docs-'),
+    );
     tmpDirs.push(dir);
     const huge = {
       name: 'huge',
@@ -502,14 +556,20 @@ describe('checkDocsProgressiveDisclosure', () => {
       description: 'Too big for one read.',
       sections: [
         {title: 'Small', content: [{type: 'prose', text: 'Fits.'}]},
-        {title: 'Everything', content: [{type: 'prose', text: 'x'.repeat(40 * 1024)}]},
+        {
+          title: 'Everything',
+          content: [{type: 'prose', text: 'x'.repeat(40 * 1024)}],
+        },
       ],
     };
     fs.writeFileSync(
       path.join(dir, 'huge.doc.mjs'),
       `export const docs = ${JSON.stringify(huge)};\n`,
     );
-    fs.writeFileSync(path.join(dir, 'broken.doc.mjs'), 'export const docs = {;\n');
+    fs.writeFileSync(
+      path.join(dir, 'broken.doc.mjs'),
+      'export const docs = {;\n',
+    );
     const c = await checkDocsProgressiveDisclosure({
       docsCatalog: DocsCatalog.fromBuiltins({
         huge: path.join(dir, 'huge.doc.mjs'),
@@ -519,18 +579,24 @@ describe('checkDocsProgressiveDisclosure', () => {
     });
     expect(c.status).toBe('warn');
     expect(c.message).toMatch(/^2 problems: /);
-    expect(c.message).toContain('huge everything: 41 KB, over the 32 KB one read may return');
+    expect(c.message).toContain(
+      'huge everything: 41 KB, over the 32 KB one read may return',
+    );
     expect(c.message).toContain('broken: ');
     expect(c.message).not.toContain('huge small');
   });
 });
 
 describe('checkAuthoringDocs', () => {
-  it('passes when every authoring self-doc is reachable and fits one read', async () => {
-    const c = await checkAuthoringDocs();
-    expect(c).toMatchObject({id: 'authoring-docs', status: 'pass'});
-    expect(c.message).toContain('astryx docs authoring');
-  }, SLOW);
+  it(
+    'passes when every authoring self-doc is reachable and fits one read',
+    async () => {
+      const c = await checkAuthoringDocs();
+      expect(c).toMatchObject({id: 'authoring-docs', status: 'pass'});
+      expect(c.message).toContain('astryx docs authoring');
+    },
+    SLOW,
+  );
 });
 
 describe('checkCliDocs', () => {
@@ -539,7 +605,9 @@ describe('checkCliDocs', () => {
 
   /** A doc tree under the working directory, as the CLI root. */
   function writeRoot(/** @type {Record<string, any>} */ docsByPath) {
-    const root = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-cli-docs-'));
+    const root = fs.mkdtempSync(
+      path.join(process.cwd(), '.astryx-doctor-cli-docs-'),
+    );
     tmpDirs.push(root);
     for (const [rel, doc] of Object.entries(docsByPath)) {
       const file = path.join(root, rel);
@@ -557,7 +625,8 @@ describe('checkCliDocs', () => {
         id: 'cli-docs',
         label: 'CLI docs',
         status: 'pass',
-        message: `All ${audit.docs} CLI docs are readable: ${audit.tree} in the \`astryx docs cli\` tree and ${audit.authoring} in \`astryx docs authoring\`.`,
+        // Experimental docs are checked but not counted (spec:AST-017 FR27).
+        message: `All ${audit.docs - audit.experimental.docs} CLI docs are readable: ${audit.tree - audit.experimental.tree} in the \`astryx docs cli\` tree and ${audit.authoring - audit.experimental.authoring} in \`astryx docs authoring\`.`,
       });
     },
     SLOW,
@@ -603,9 +672,8 @@ describe('checkDocsTree', () => {
   it(
     'passes on this repo: every CLI doc in a cli group has one route',
     async () => {
-      const {loadDocsTree} = await import(
-        '../../foundation/doc-compiler/tree.mjs'
-      );
+      const {loadDocsTree} =
+        await import('../../foundation/doc-compiler/tree.mjs');
       const tree = await loadDocsTree({fresh: true});
       const nodes = [...tree.nodes.values()];
       const namespaces = nodes.filter(node => node.kind === 'namespace').length;
@@ -622,9 +690,8 @@ describe('checkDocsTree', () => {
   );
 
   it('fails on a tree with a broken placement, and names the fix', async () => {
-    const {buildDocsTree} = await import(
-      '../../foundation/doc-compiler/tree.mjs'
-    );
+    const {buildDocsTree} =
+      await import('../../foundation/doc-compiler/tree.mjs');
     const tree = buildDocsTree({
       namespaces: [
         {
@@ -697,7 +764,9 @@ describe('checkAuthoringDocs against the public authoring surface', () => {
         id: 'authoring-docs',
         label: 'Authoring docs',
         status: 'pass',
-        message: `All ${AUTHORING_SELF_DOCS.length} authoring schemas are readable in \`astryx docs authoring\`.`,
+        // The three experimental icon-set schemas are checked but not
+        // counted (spec:AST-017 FR27).
+        message: `All ${AUTHORING_SELF_DOCS.length - 3} authoring schemas are readable in \`astryx docs authoring\`.`,
       });
     },
     SLOW,
@@ -815,6 +884,7 @@ describe('checkAuthoringDocs against the public authoring surface', () => {
       const sources = without(source);
       expect(await auditAuthoringSelfDocs({root, sources})).toEqual({
         sections: sources.length,
+        experimental: 3,
         unreachable: [],
         failed: [],
         oversized: [],
@@ -916,23 +986,34 @@ function snapshot(root) {
 }
 
 describe('doctor docs checks', () => {
-  it('runs both docs checks and they pass on the repo', async () => {
-    const r = await doctor({cwd});
-    const byId = Object.fromEntries(r.data.checks.map(c => [c.id, c.status]));
-    expect(byId['authoring-docs']).toBe('pass');
-    expect(byId['docs-progressive-disclosure']).toBe('pass');
-  }, SLOW);
+  it(
+    'runs both docs checks and they pass on the repo',
+    async () => {
+      const r = await doctor({cwd});
+      const byId = Object.fromEntries(r.data.checks.map(c => [c.id, c.status]));
+      expect(byId['authoring-docs']).toBe('pass');
+      expect(byId['docs-progressive-disclosure']).toBe('pass');
+    },
+    SLOW,
+  );
 });
 
 describe('checkDocsProgressiveDisclosure languages', () => {
   it('checks every overlay a topic ships, not only English', async () => {
-    const dir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-lang-'));
+    const dir = fs.mkdtempSync(
+      path.join(process.cwd(), '.astryx-doctor-lang-'),
+    );
     tmpDirs.push(dir);
     const deploying = {
       name: 'deploying',
       title: 'Deploying',
       description: 'Ship it.',
-      sections: [{title: 'Overview', content: [{type: 'prose', text: 'Push the button.'}]}],
+      sections: [
+        {
+          title: 'Overview',
+          content: [{type: 'prose', text: 'Push the button.'}],
+        },
+      ],
     };
     fs.writeFileSync(
       path.join(dir, 'deploying.doc.mjs'),
@@ -955,7 +1036,9 @@ describe('checkDocsProgressiveDisclosure languages', () => {
       })};\n`,
     );
     const c = await checkDocsProgressiveDisclosure({
-      docsCatalog: DocsCatalog.fromBuiltins({deploying: path.join(dir, 'deploying.doc.mjs')}),
+      docsCatalog: DocsCatalog.fromBuiltins({
+        deploying: path.join(dir, 'deploying.doc.mjs'),
+      }),
       docsCatalogIssues: [],
     });
     expect(c.status).toBe('warn');
@@ -1009,38 +1092,54 @@ describe('doctor says what it could not check', () => {
 
   // An unparseable manifest is kept out of the loaded set on purpose, and
   // doctor used to report that no installed dependency ships a manifest.
-  it('names an installed dependency whose manifest cannot be loaded', async () => {
-    const report = (await doctor({cwd: project(broken, ['@acme/broken'])})).data;
-    const check = report.checks.find(c => c.id === 'implicit-integrations');
+  it(
+    'names an installed dependency whose manifest cannot be loaded',
+    async () => {
+      const report = (await doctor({cwd: project(broken, ['@acme/broken'])}))
+        .data;
+      const check = report.checks.find(c => c.id === 'implicit-integrations');
 
-    expect(check.status).toBe('info');
-    expect(check.message).toContain('@acme/broken');
-    expect(check.message).toContain('could not be loaded');
-    expect(check.message).not.toContain('no installed dependency ships');
-    expect(report.summary.fail).toBe(0);
-  }, SLOW);
+      expect(check.status).toBe('info');
+      expect(check.message).toContain('@acme/broken');
+      expect(check.message).toContain('could not be loaded');
+      expect(check.message).not.toContain('no installed dependency ships');
+      expect(report.summary.fail).toBe(0);
+    },
+    SLOW,
+  );
 
-  it('does not claim contributions from roots that are missing on disk', async () => {
-    const report = (await doctor({cwd: project(dangling, ['@acme/dangling'])}))
-      .data;
-    const implicit = report.checks.find(c => c.id === 'implicit-integrations');
-    const issues = report.checks.find(c => c.id === 'integration-issues');
+  it(
+    'does not claim contributions from roots that are missing on disk',
+    async () => {
+      const report = (
+        await doctor({cwd: project(dangling, ['@acme/dangling'])})
+      ).data;
+      const implicit = report.checks.find(
+        c => c.id === 'implicit-integrations',
+      );
+      const issues = report.checks.find(c => c.id === 'integration-issues');
 
-    expect(implicit.message).toContain('contributing nothing');
-    expect(implicit.message).toContain('missing on disk');
-    expect(implicit.message).not.toContain('contributing components');
-    expect(issues.status).toBe('warn');
-    expect(issues.message).toContain('@acme/dangling');
-  }, SLOW);
+      expect(implicit.message).toContain('contributing nothing');
+      expect(implicit.message).toContain('missing on disk');
+      expect(implicit.message).not.toContain('contributing components');
+      expect(issues.status).toBe('warn');
+      expect(issues.message).toContain('@acme/dangling');
+    },
+    SLOW,
+  );
 
-  it('still says no dependency ships a manifest when none does', async () => {
-    const report = (await doctor({cwd: project({}, [])})).data;
-    const check = report.checks.find(c => c.id === 'implicit-integrations');
+  it(
+    'still says no dependency ships a manifest when none does',
+    async () => {
+      const report = (await doctor({cwd: project({}, [])})).data;
+      const check = report.checks.find(c => c.id === 'implicit-integrations');
 
-    expect(check.message).toBe(
-      'None — no installed dependency ships an astryx.integration.* manifest.',
-    );
-  }, SLOW);
+      expect(check.message).toBe(
+        'None — no installed dependency ships an astryx.integration.* manifest.',
+      );
+    },
+    SLOW,
+  );
 
   it('says how many integrations could not be read, rather than counting silently', () => {
     /** @type {any} */
@@ -1057,7 +1156,9 @@ describe('doctor says what it could not check', () => {
     };
     const check = checkProviderIdentity(ctx);
 
-    expect(check.message).toContain('1 loaded integration has its own provider ID.');
+    expect(check.message).toContain(
+      '1 loaded integration has its own provider ID.',
+    );
     expect(check.message).toContain('could not be read');
   });
 });
@@ -1191,12 +1292,15 @@ describe('a configured integration that cannot load fails the gate', () => {
   const APP = {
     'package.json': '{"name":"app"}',
     ...CORE_STUB,
-    'astryx.config.mjs': "export default { integrations: ['@acme/widgets'] };\n",
+    'astryx.config.mjs':
+      "export default { integrations: ['@acme/widgets'] };\n",
   };
 
   /** Run doctor on a project under the working directory. */
   async function report(files) {
-    const dir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-gate-'));
+    const dir = fs.mkdtempSync(
+      path.join(process.cwd(), '.astryx-doctor-gate-'),
+    );
     tmpDirs.push(dir);
     for (const [rel, content] of Object.entries(files)) {
       const abs = path.join(dir, rel);
@@ -1208,13 +1312,26 @@ describe('a configured integration that cannot load fails the gate', () => {
   }
 
   it.each([
-    ['not installed', {}, /Could not find installed integration package "@acme\/widgets"/],
+    [
+      'not installed',
+      {},
+      /Could not find installed integration package "@acme\/widgets"/,
+    ],
     [
       'installed without a manifest',
-      {[`${WIDGETS}/package.json`]: JSON.stringify({name: '@acme/widgets', version: '1.0.0'})},
+      {
+        [`${WIDGETS}/package.json`]: JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+        }),
+      },
       /no conventional root manifest/,
     ],
-    ['installed with a manifest that throws', widgets('export default {  not valid ((\n'), /Unexpected/],
+    [
+      'installed with a manifest that throws',
+      widgets('export default {  not valid ((\n'),
+      /Unexpected/,
+    ],
   ])(
     'fails when a configured integration is %s, and names it',
     async (_shape, extra, reason) => {
@@ -1225,7 +1342,9 @@ describe('a configured integration that cannot load fails the gate', () => {
         /^1 of 1 integration named in astryx\.config could not be loaded, so it contributes nothing: @acme\/widgets \(/,
       );
       expect(check.message).toMatch(reason);
-      expect(check.fix).toContain('astryx doctor integration validate <package>');
+      expect(check.fix).toContain(
+        'astryx doctor integration validate <package>',
+      );
       expect(summary.fail).toBe(1);
     },
     SLOW,
@@ -1236,12 +1355,18 @@ describe('a configured integration that cannot load fails the gate', () => {
     async () => {
       const {by} = await report({
         ...CORE_STUB,
-        'package.json': JSON.stringify({name: '@acme/widgets', version: '1.0.0'}),
-        'astryx.integration.mjs': "export default {components: './components'};\n",
+        'package.json': JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+        }),
+        'astryx.integration.mjs':
+          "export default {components: './components'};\n",
         'components/AcmeCard.doc.mjs':
           "export default {type: 'component', name: 'AcmeCard', displayName: 'AcmeCard', description: 'Fixture.', props: []};\n",
-        'components/AcmeCard.tsx': 'export default function AcmeCard() { return null; }\n',
-        'astryx.config.mjs': "export default { integrations: ['@acme/widgets'] };\n",
+        'components/AcmeCard.tsx':
+          'export default function AcmeCard() { return null; }\n',
+        'astryx.config.mjs':
+          "export default { integrations: ['@acme/widgets'] };\n",
       });
       expect(by['configured-integrations'].status).toBe('pass');
       expect(by['configured-integrations'].message).toBe(
@@ -1256,9 +1381,13 @@ describe('a configured integration that cannot load fails the gate', () => {
     async () => {
       const {by, summary} = await report({
         ...CORE_STUB,
-        'package.json': JSON.stringify({name: '@acme/widgets', version: '1.0.0'}),
+        'package.json': JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+        }),
         'astryx.integration.mjs': 'export default {  not valid ((\n',
-        'astryx.config.mjs': "export default { integrations: ['@acme/widgets'] };\n",
+        'astryx.config.mjs':
+          "export default { integrations: ['@acme/widgets'] };\n",
       });
       const check = by['configured-integrations'];
       expect(check.status).toBe('fail');
@@ -1273,13 +1402,19 @@ describe('a configured integration that cannot load fails the gate', () => {
   it(
     'fails when node_modules links the configured name back to the authored package and its manifest throws',
     async () => {
-      const dir = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-gate-'));
+      const dir = fs.mkdtempSync(
+        path.join(process.cwd(), '.astryx-doctor-gate-'),
+      );
       tmpDirs.push(dir);
       const files = {
         ...CORE_STUB,
-        'package.json': JSON.stringify({name: '@acme/widgets', version: '1.0.0'}),
+        'package.json': JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+        }),
         'astryx.integration.mjs': 'export default {  not valid ((\n',
-        'astryx.config.mjs': "export default { integrations: ['@acme/widgets'] };\n",
+        'astryx.config.mjs':
+          "export default { integrations: ['@acme/widgets'] };\n",
       };
       for (const [rel, content] of Object.entries(files)) {
         const abs = path.join(dir, rel);
@@ -1302,17 +1437,25 @@ describe('a configured integration that cannot load fails the gate', () => {
   it(
     'fails for the self-linked authored package when the working directory is itself a symlink',
     async () => {
-      const real = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-gate-'));
+      const real = fs.mkdtempSync(
+        path.join(process.cwd(), '.astryx-doctor-gate-'),
+      );
       tmpDirs.push(real);
-      const linkParent = fs.mkdtempSync(path.join(process.cwd(), '.astryx-doctor-gate-'));
+      const linkParent = fs.mkdtempSync(
+        path.join(process.cwd(), '.astryx-doctor-gate-'),
+      );
       tmpDirs.push(linkParent);
       const cwd = path.join(linkParent, 'link');
       fs.symlinkSync(real, cwd, 'dir');
       const files = {
         ...CORE_STUB,
-        'package.json': JSON.stringify({name: '@acme/widgets', version: '1.0.0'}),
+        'package.json': JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+        }),
         'astryx.integration.mjs': 'export default {  not valid ((\n',
-        'astryx.config.mjs': "export default { integrations: ['@acme/widgets'] };\n",
+        'astryx.config.mjs':
+          "export default { integrations: ['@acme/widgets'] };\n",
       };
       for (const [rel, content] of Object.entries(files)) {
         const abs = path.join(real, rel);
@@ -1320,7 +1463,11 @@ describe('a configured integration that cannot load fails the gate', () => {
         fs.writeFileSync(abs, content);
       }
       fs.mkdirSync(path.join(real, 'node_modules/@acme'), {recursive: true});
-      fs.symlinkSync(real, path.join(real, 'node_modules/@acme/widgets'), 'dir');
+      fs.symlinkSync(
+        real,
+        path.join(real, 'node_modules/@acme/widgets'),
+        'dir',
+      );
       const {checks, summary} = (await doctor({cwd})).data;
       const by = Object.fromEntries(checks.map(c => [c.id, c]));
       expect(by['configured-integrations'].status).toBe('fail');
@@ -1337,16 +1484,24 @@ describe('a configured integration that cannot load fails the gate', () => {
         ...APP,
         'astryx.config.mjs':
           "export default { integrations: ['@acme/widgets', '@acme/charts'] };\n",
-        ...widgets("export default {providerId: 'acme', components: './components'};\n"),
-        [`${CHARTS}/package.json`]: JSON.stringify({name: '@acme/charts', version: '1.0.0'}),
+        ...widgets(
+          "export default {providerId: 'acme', components: './components'};\n",
+        ),
+        [`${CHARTS}/package.json`]: JSON.stringify({
+          name: '@acme/charts',
+          version: '1.0.0',
+        }),
         [`${CHARTS}/astryx.integration.mjs`]:
           "export default {providerId: 'acme', components: './components'};\n",
         [`${CHARTS}/components/AcmeChart.doc.mjs`]:
           "export default {type: 'component', name: 'AcmeChart', displayName: 'AcmeChart', description: 'Fixture.', props: []};\n",
-        [`${CHARTS}/components/AcmeChart.tsx`]: 'export default function AcmeChart() { return null; }\n',
+        [`${CHARTS}/components/AcmeChart.tsx`]:
+          'export default function AcmeChart() { return null; }\n',
       });
       expect(by['configured-integrations'].status).toBe('pass');
-      expect(by['configured-integrations'].message).toMatch(/^2 integrations named in astryx\.config loaded: /);
+      expect(by['configured-integrations'].message).toMatch(
+        /^2 integrations named in astryx\.config loaded: /,
+      );
       expect(by['configured-integrations'].message).toContain('@acme/charts');
     },
     SLOW,

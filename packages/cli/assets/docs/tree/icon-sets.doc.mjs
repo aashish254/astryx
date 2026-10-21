@@ -32,7 +32,7 @@ export const docs = {
       content: [
         {
           type: 'prose',
-          text: 'Icon sets are experimental: the `astryx experimental icon` commands, the `experimental.iconSet` key in astryx.config, the `experimental.iconSets` key in an integration manifest, the data file, icon definitions, and the output and JSON of all of them may change or be removed in any patch release, with no deprecation period. A project with no icon set installed or configured sees no change anywhere else: search, templates, and doctor answer as they always have.',
+          text: 'Icon sets are experimental: the `astryx experimental icon` commands, the `experimental.iconSet` key in astryx.config, the `experimental.iconSets` key in an integration manifest, the data file, icon definitions, and the output and JSON of all of them can change, or go away, in any patch release without a deprecation period. A project with no icon set installed or configured sees no change anywhere else: search, templates, and doctor answer as they always have.',
         },
       ],
     },
@@ -42,7 +42,7 @@ export const docs = {
       content: [
         {
           type: 'prose',
-          text: 'Astryx keeps a list of icon definitions: one file per thing an icon can stand for, such as `close` or `delete` (`astryx docs cli/experimental/icon-definitions`). An icon set registers which of its icons draws each definition, in the `map` of its data file. Templates say which definition each of their icons draws, so a project that uses your set gets your icon for every definition you map. Built-in definitions are the shared names Core renders; every set maps them.',
+          text: 'Astryx keeps a list of icon definitions: one file per meaning, like `close` or `delete` (`astryx docs cli/experimental/icon-definitions`). An icon set registers which of its icons draws each definition, in the `map` of its data file. Templates say which definition each of their icons draws, so a project that uses your set gets your icon for every definition you map. Every set maps the built-in definitions, the names Core renders itself.',
         },
         {
           type: 'prose',

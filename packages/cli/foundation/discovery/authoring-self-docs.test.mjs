@@ -32,6 +32,7 @@ describe('authoring self-docs', () => {
   it('audits clean: every self-doc loads, is reachable, and fits one read', async () => {
     expect(await auditAuthoringSelfDocs()).toEqual({
       sections: AUTHORING_SELF_DOCS.length,
+      experimental: 3,
       unreachable: [],
       failed: [],
       oversized: [],

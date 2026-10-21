@@ -60,7 +60,7 @@ export const doc = {
       name: 'stability',
       type: "'experimental'",
       description:
-        "Marks the doc of an experimental surface, one that may change or be removed in a patch release. A command's help shows it as `[experimental]`. The doc's own text still says so. Omit it for a stable surface.",
+        "Marks the doc of an experimental surface: one whose shape can still change, or disappear, in any patch release. A command's help shows it as `[experimental]`. The doc's own text still says so. Omit it for a stable surface.",
     },
   ],
   notes: [
