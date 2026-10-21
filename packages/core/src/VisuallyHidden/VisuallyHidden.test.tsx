@@ -91,9 +91,10 @@ describe('VisuallyHidden', () => {
   it('still accepts a typed xstyle, and ignores it', () => {
     // Released 0.7.2 accepted `xstyle` through `BaseProps`, so narrowing it out
     // of `VisuallyHiddenProps` would make code that compiles today stop
-    // compiling. It stays declared and deprecated, and the runtime drop is what
-    // keeps the stray attribute off the element. Written as a typed prop on
-    // purpose: this line is the tripwire if the interface is ever narrowed early.
+    // compiling. It stays declared and documented as ignored, and the runtime
+    // drop is what keeps the stray attribute off the element. Written as a typed
+    // prop on purpose: this line is the tripwire if the interface is ever
+    // narrowed early.
     const overrides = stylex.create({tint: {color: 'red'}});
     render(<VisuallyHidden xstyle={overrides.tint}>Hidden</VisuallyHidden>);
     const el = screen.getByText('Hidden');

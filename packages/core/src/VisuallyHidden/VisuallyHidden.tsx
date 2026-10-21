@@ -26,11 +26,13 @@ import * as stylex from '@stylexjs/stylex';
  * pass-throughs from `BaseProps` (`aria-*`, `role`, `id`, `data-*`, event
  * handlers) remain, since the live-region use case needs them.
  *
- * `xstyle` stays declared, and marked deprecated, because released 0.7.2
+ * `xstyle` stays declared and documented as ignored, because released 0.7.2
  * accepted it through `BaseProps`: narrowing the interface would force every
  * consumer to edit code, which is a `[breaking]` change for a planned minor
- * (`spec:AST-017/FR53`). Removing it from this interface is the follow-up once a
- * minor is planned.
+ * (`spec:AST-017/FR53`). It carries no `@deprecated` marker either — under
+ * `spec:AST-017/FR28` a patch may only deprecate a surface it ships an exact
+ * migration for, and this fix ships none. Dropping the prop from the interface,
+ * with the migration being to delete it, belongs to a planned minor.
  */
 export interface VisuallyHiddenProps extends Omit<
   BaseProps<HTMLElement>,
@@ -56,9 +58,9 @@ export interface VisuallyHiddenProps extends Omit<
    * Ignored: VisuallyHidden has no styling surface. The clip block is the only
    * style applied, and nothing a caller passes can displace it.
    *
-   * @deprecated Remove this prop. `xstyle` stays only so that code written
-   * against 0.7.2 keeps compiling; it is not applied to the element, and it used
-   * to be spread onto the DOM as a stray `xstyle="[object Object]"` attribute.
+   * Accepted only so that code written against 0.7.2 keeps compiling. It is not
+   * applied to the element, and a planned minor removes it — the migration is to
+   * delete the prop.
    */
   xstyle?: StyleXStyles;
 }
@@ -109,7 +111,7 @@ export function VisuallyHidden({
   ref,
   ...rest
 }: VisuallyHiddenProps) {
-  // `className` and `style` are off the interface, and the deprecated `xstyle`
+  // `className` and `style` are off the interface, and the ignored `xstyle`
   // is off by intent. Take all three back off at runtime so a cast cannot reach
   // the element either: `xstyle` is not a valid attribute, so spreading it writes
   // xstyle="[object Object]" into the DOM, and a cast `style` keeps the last word
