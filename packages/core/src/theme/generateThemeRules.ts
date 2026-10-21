@@ -483,10 +483,15 @@ const SCOPED_STATUS_ROLE_DEFAULTS: ReadonlyArray<
 
 function tokenEntriesWithScopedStatusRoleDefaults(
   tokens: Record<string, string>,
+  inheritedTokens: Record<string, string> = {},
 ): [string, string][] {
   const entries = Object.entries(tokens);
   for (const [role, source] of SCOPED_STATUS_ROLE_DEFAULTS) {
-    if (tokens[role] === undefined && tokens[source] !== undefined) {
+    if (
+      tokens[role] === undefined &&
+      inheritedTokens[role] === undefined &&
+      tokens[source] !== undefined
+    ) {
       entries.push([role, `var(${source})`]);
     }
   }
@@ -1067,6 +1072,7 @@ export function generateOnMediaCSS(
     // Token overrides
     const tokenEntries = tokenEntriesWithScopedStatusRoleDefaults(
       onMedia.tokens,
+      theme.tokens,
     );
     if (tokenEntries.length > 0) {
       const declarations = joinDeclarations(

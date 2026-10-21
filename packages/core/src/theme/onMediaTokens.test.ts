@@ -146,6 +146,7 @@ describe('generateOnMediaCSS', () => {
     expect(css).toContain('[data-astryx-media="dark"]');
     expect(css).toContain('color-scheme: dark');
     expect(css).toContain('var(--color-on-dark)');
+    expect(css).toContain('--color-info: var(--color-accent);');
   });
 
   it('emits light media rules', () => {
@@ -153,6 +154,21 @@ describe('generateOnMediaCSS', () => {
     const css = generateOnMediaCSS(theme);
     expect(css).toContain('[data-astryx-media="light"]');
     expect(css).toContain('color-scheme: light');
+  });
+
+  it('keeps a root-authored status role inside a media surface', () => {
+    const theme = defineTheme({
+      name: 'status-role-media',
+      tokens: {
+        '--color-accent': '#0074E2',
+        '--color-info': '#6D9CFE',
+      },
+      onDark: {tokens: {'--color-accent': '#FFFFFF'}},
+    });
+    const css = generateOnMediaCSS(theme);
+
+    expect(css).toContain('--color-accent: #FFFFFF;');
+    expect(css).not.toContain('--color-info: var(--color-accent);');
   });
 
   it('emits component override rules', () => {
