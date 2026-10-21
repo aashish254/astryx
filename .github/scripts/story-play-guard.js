@@ -296,6 +296,28 @@ const TARGETS = [
       'a full-width GridSpan holding a Tokenizer with a long token stays within its 500px host',
   },
   {
+    component: 'Grid audit (phone)',
+    story: 'core-grid--audit-matrix',
+    viewport: {width: 320, height: 900},
+    guards:
+      'fixed tracks retain logical order, capped responsive tracks collapse to one, and every grid stays inside the phone viewport',
+  },
+  {
+    component: 'Grid audit (wide)',
+    story: 'core-grid--audit-matrix',
+    viewport: {width: 800, height: 900},
+    guards:
+      'capped responsive tracks reach three columns, auto-fit expands beyond auto-fill, and full span covers the explicit grid',
+  },
+  {
+    component: 'Grid audit (RTL)',
+    story: 'core-grid--audit-matrix',
+    direction: 'rtl',
+    viewport: {width: 800, height: 900},
+    guards:
+      'the rendered RTL wrapper mirrors fixed-track item order while responsive and span geometry remain bounded',
+  },
+  {
     component: 'TabList',
     story: 'core-tablist--full-bleed-geometry',
     guards:
