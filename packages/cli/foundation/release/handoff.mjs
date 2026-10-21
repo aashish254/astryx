@@ -268,14 +268,13 @@ export async function startRun({cliRoot, argv, declinedProjectCli}) {
     );
   }
 
-  // A host's door scopes this call (FR5); notices print as the process exits,
-  // outside that scope, so they re-enter it.
+  // A host's door holds only inside the call that set it; notices print as
+  // the process exits, outside it, so the door this run started under is
+  // kept and set again for them (FR5).
   const door = cliDoor();
   /** FR10: after a successful command, at most once a day per notice. */
-  const notify = () =>
-    door ? runWithCliDoor(door, printNotices) : printNotices();
-  const printNotices = () => {
-    try {
+  const notify = () => {
+    const print = () => {
       for (const line of noticeLines({
         cwd: process.cwd(),
         self,
@@ -286,6 +285,10 @@ export async function startRun({cliRoot, argv, declinedProjectCli}) {
         // Synchronous: the process is exiting.
         writeSync(2, `${line}\n`);
       }
+    };
+    try {
+      if (door) runWithCliDoor(door, print);
+      else print();
     } catch {
       // A notice never fails a run.
     }
