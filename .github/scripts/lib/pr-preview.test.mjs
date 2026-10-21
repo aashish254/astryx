@@ -9,6 +9,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import yaml from 'yaml';
 
 import {
+  confirmOrStandDown,
   confirmSourceRunIdentity,
   PR_ANALYSIS_MARKER,
   reconcileEarlyPreviewComment,
@@ -33,6 +34,13 @@ const EXECUTABLE_RESOLVE_SCRIPT = RESOLVE_SCRIPT.replace(
   /const \{pathToFileURL\} = require\('node:url'\);\nconst \{resolveWorkflowRunPullRequest\} = await import\([\s\S]*?\n\);/,
   'const resolveWorkflowRunPullRequest = injectedResolve;',
 );
+const RECONFIRM_SCRIPT = PR_COMMENT_WORKFLOW.jobs.comment.steps.find(
+  step => step.name === 'Reconfirm trusted PR identity',
+).with.script;
+const EXECUTABLE_RECONFIRM_SCRIPT = RECONFIRM_SCRIPT.replace(
+  /const \{pathToFileURL\} = require\('node:url'\);\nconst \{confirmOrStandDown\} = await import\([\s\S]*?\n\);/,
+  'const confirmOrStandDown = injectedConfirm;',
+);
 const roots = [];
 
 function identity(overrides = {}) {
@@ -44,7 +52,6 @@ function identity(overrides = {}) {
     headRepositoryId: '321',
     baseRepository: 'facebook/astryx',
     baseSha: BASE,
-    testedBaseSha: null,
     sourceRunId: 33321033727,
     sourceRunAttempt: 1,
     sourceConclusion: 'success',
@@ -236,13 +243,20 @@ afterEach(() => {
 });
 
 describe('trusted PR preview identity', () => {
-  it('keeps the source-run base when main advances before publication', async () => {
-    const current = identity({baseSha: 'f'.repeat(40)});
+  it('does not treat the live pull-request base on the run as the tested base', async () => {
+    // GitHub reports the pull request's live base on `run.pull_requests`, so
+    // after main advances it names a base the run never tested. Checking the
+    // visual report against it rejected correct reports.
+    const current = identity();
     const {github} = githubFixture({value: current});
     const run = {
       ...sourceRun(current),
       pull_requests: [
-        {number: current.prNumber, head: {sha: HEAD}, base: {sha: BASE}},
+        {
+          number: current.prNumber,
+          head: {sha: HEAD},
+          base: {sha: 'c'.repeat(40)},
+        },
       ],
     };
     const resolved = await resolveWorkflowRunPullRequest({
@@ -251,25 +265,12 @@ describe('trusted PR preview identity', () => {
       repo: 'astryx',
       run,
     });
-    expect(resolved.testedBaseSha).toBe(BASE);
-    expect(resolved.baseSha).toBe(current.baseSha);
+    expect(resolved).not.toHaveProperty('testedBaseSha');
     const prepare = PR_COMMENT_WORKFLOW.jobs.comment.steps.find(
       step => step.name === 'Prepare canonical visual report',
     );
-    expect(prepare.env.BASE_SHA).toBe(
-      '${{ steps.identity.outputs.tested_base_sha }}',
-    );
-  });
-
-  it('does not substitute live main when a fork run omits the base association', async () => {
-    const {github} = githubFixture();
-    const resolved = await resolveWorkflowRunPullRequest({
-      github,
-      owner: 'facebook',
-      repo: 'astryx',
-      run: sourceRun(),
-    });
-    expect(resolved.testedBaseSha).toBeNull();
+    expect(prepare.env).not.toHaveProperty('BASE_SHA');
+    expect(prepare.run).not.toContain('--base-sha');
   });
 
   it('resolves a fork run through the trusted owner and branch fallback', async () => {
@@ -374,6 +375,76 @@ describe('trusted PR preview identity', () => {
     expect(core.setOutput).toHaveBeenCalledWith('valid', 'false');
     expect(github.rest.pulls.get).not.toHaveBeenCalled();
     expect(github.paginate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['closed', {state: 'closed'}],
+    ['pushed to a newer head', {head: {sha: 'e'.repeat(40)}}],
+  ])(
+    'skips the comment job without failing when the pull request is %s before it runs',
+    async (_label, change) => {
+      const value = identity();
+      const {github} = githubFixture({value});
+      const moved = pull(value);
+      Object.assign(moved, change, {
+        head: {...moved.head, ...change.head},
+      });
+      github.rest.pulls.get.mockResolvedValue({data: moved});
+      const core = {info: vi.fn(), setOutput: vi.fn()};
+      const previousEnv = {...process.env};
+      Object.assign(process.env, {
+        GITHUB_WORKSPACE: ROOT,
+        PR_NUMBER: String(value.prNumber),
+        HEAD_SHA: value.headSha,
+        HEAD_REPOSITORY: value.headRepository,
+        HEAD_REPOSITORY_ID: value.headRepositoryId,
+        HEAD_REF: value.headRef,
+        BASE_REPOSITORY: value.baseRepository,
+        SOURCE_RUN_ID: String(value.sourceRunId),
+        SOURCE_RUN_ATTEMPT: String(value.sourceRunAttempt),
+        SOURCE_CONCLUSION: value.sourceConclusion,
+      });
+
+      try {
+        await new ASYNC_FUNCTION(
+          'require',
+          'context',
+          'github',
+          'core',
+          'injectedConfirm',
+          EXECUTABLE_RECONFIRM_SCRIPT,
+        )(
+          REQUIRE,
+          {repo: {owner: 'facebook', repo: 'astryx'}},
+          github,
+          core,
+          confirmOrStandDown,
+        );
+      } finally {
+        process.env = previousEnv;
+      }
+
+      expect(EXECUTABLE_RECONFIRM_SCRIPT).not.toBe(RECONFIRM_SCRIPT);
+      expect(core.setOutput).toHaveBeenCalledWith('valid', 'false');
+      expect(core.setOutput).not.toHaveBeenCalledWith('valid', 'true');
+      expect(core.info).toHaveBeenCalledWith(
+        expect.stringContaining('nothing to publish'),
+      );
+    },
+  );
+
+  it('still fails the comment job when the run itself no longer matches', async () => {
+    // A run's head never changes. A mismatch there is not churn.
+    await expect(
+      confirmOrStandDown({
+        github: githubFixture({value: identity({headSha: 'f'.repeat(40)})})
+          .github,
+        core: {info: vi.fn()},
+        owner: 'facebook',
+        repo: 'astryx',
+        expected: identity(),
+      }),
+    ).rejects.toThrow(/headSha does not match/);
   });
 
   it('keeps every write-capable job behind the valid identity output', () => {
@@ -550,6 +621,28 @@ describe('analysis metadata compatibility', () => {
         value,
       ),
     ).toThrow(error);
+  });
+
+  it('accepts analysis from an earlier attempt of the same run, never a later one', () => {
+    // Rerunning only the failed jobs keeps the passing build job's artifact,
+    // so attempt 3 reports with analysis written by attempt 1.
+    const value = identity({sourceRunAttempt: 3});
+    const metadata = runAttempt => ({
+      prNumber: value.prNumber,
+      shortHash: value.headSha.slice(0, 7),
+      headSha: value.headSha,
+      headRepository: value.headRepository,
+      baseRepository: value.baseRepository,
+      runId: value.sourceRunId,
+      runAttempt,
+    });
+    expect(validateAnalysisMetadata(metadata('1'), value)).toBeDefined();
+    expect(validateAnalysisMetadata(metadata('3'), value)).toBeDefined();
+    for (const attempt of ['4', '0', 'x']) {
+      expect(() => validateAnalysisMetadata(metadata(attempt), value)).toThrow(
+        /attempt does not match/,
+      );
+    }
   });
 
   it('does not ignore mismatched exact identity fields when they are present', () => {
@@ -799,31 +892,34 @@ describe('PR comment preview reconciliation', () => {
     expect(state.listedIssues).toHaveLength(0);
   });
 
-  it('refuses a head push that happens during Vercel readiness before writing a comment', async () => {
+  it('stands down without writing when the head moves during Vercel readiness', async () => {
     const expected = identity();
     const current = identity({headSha: 'f'.repeat(40)});
     const paths = fixture(expected);
     const {github, state} = githubFixture({value: expected});
-    await expect(
-      reconcilePrComment({
-        github,
-        core: {info: vi.fn(), warning: vi.fn()},
-        context: {
-          repo: {owner: 'facebook', repo: 'astryx'},
-          serverUrl: 'https://github.com',
-        },
-        expectedIdentity: expected,
-        analysisPath: paths.analysis,
-        metadataPath: paths.metadata,
-        a11yPath: paths.a11y,
-        visualPath: paths.visual,
-        lookupPreview: async () => {
-          github.rest.pulls.get.mockResolvedValue({data: pull(current)});
-          return VERCEL_ORIGIN;
-        },
-        probePreview: async () => true,
-      }),
-    ).rejects.toThrow(/head does not match source run/);
+    const core = {info: vi.fn(), warning: vi.fn()};
+    const result = await reconcilePrComment({
+      github,
+      core,
+      context: {
+        repo: {owner: 'facebook', repo: 'astryx'},
+        serverUrl: 'https://github.com',
+      },
+      expectedIdentity: expected,
+      analysisPath: paths.analysis,
+      metadataPath: paths.metadata,
+      a11yPath: paths.a11y,
+      visualPath: paths.visual,
+      lookupPreview: async () => {
+        github.rest.pulls.get.mockResolvedValue({data: pull(current)});
+        return VERCEL_ORIGIN;
+      },
+      probePreview: async () => true,
+    });
+    expect(result.action).toBe('none');
+    expect(core.info).toHaveBeenCalledWith(
+      expect.stringContaining('head does not match source run'),
+    );
     expect(state.created).toHaveLength(0);
     expect(state.updated).toHaveLength(0);
   });
