@@ -519,7 +519,7 @@ function providerIdIssues(name, declared, manifestFile) {
   return [
     warning(
       'no_provider_id',
-      `No provider ID can be derived for this package: package.json "name" ${JSON.stringify(name)} is not a bare package name (lowercase letters, digits, "-", ".", "_", "~", not starting with "." or "_", with an optional @scope/ prefix), and ${manifest} declares no providerId that is one. Astryx files the package's components, templates and docs under that ID, so links to them and selecting the package cannot work. Fix: rename the package, such as "@your-scope/your-package", or set \`providerId: '@your-scope/your-package'\` in ${manifest}.`,
+      `No provider ID can be derived for this package: package.json "name" ${JSON.stringify(name)} is not a bare package name (an optional @scope/ and a name, each starting with a lowercase letter or digit and holding only lowercase letters, digits, "-", ".", "_" and "~"), and ${manifest} declares no providerId that is one. Astryx files the package's components, templates and docs under that ID, so links to them and selecting the package cannot work. Fix: rename the package, such as "@your-scope/your-package", or set \`providerId: '@your-scope/your-package'\` in ${manifest}.`,
     ),
   ];
 }

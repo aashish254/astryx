@@ -1145,10 +1145,11 @@ function packageCatalog(integration, discovered) {
  * @returns {Promise<Array<{severity: 'warning', message: string}>>}
  */
 export async function packageComponentLinkProblems(integration, discovered) {
-  // A package whose name is not a provider id links nothing, as on the read
-  // path: its text reads as written, so there is nothing to report.
+  // A package with no provider id (its manifest's, else its name) links
+  // nothing, as on the read path: its text reads as written, so there is
+  // nothing to report.
   try {
-    normalizeProviderId(integration.name);
+    normalizeProviderId(integration.providerId ?? integration.name);
   } catch {
     return [];
   }

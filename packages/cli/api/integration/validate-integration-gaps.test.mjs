@@ -903,7 +903,14 @@ describe('package.json', () => {
     );
   });
 
-  it.each([['acme kit'], ['_acme'], ['acme/kit'], ['-acme']])(
+  it.each([
+    ['acme kit'],
+    ['_acme'],
+    ['acme/kit'],
+    ['-acme'],
+    ['@acme/-kit'],
+    ['~acme'],
+  ])(
     'warns that no provider ID can be derived from the name %s, and keeps checking',
     async name => {
       const dir = writePackage(
@@ -920,7 +927,7 @@ describe('package.json', () => {
         ['invalid_component', 'error'],
       ]);
       expect(issues[0].message).toBe(
-        `No provider ID can be derived for this package: package.json "name" ${JSON.stringify(name)} is not a bare package name (lowercase letters, digits, "-", ".", "_", "~", not starting with "." or "_", with an optional @scope/ prefix), and astryx.integration.mjs declares no providerId that is one. Astryx files the package's components, templates and docs under that ID, so links to them and selecting the package cannot work. Fix: rename the package, such as "@your-scope/your-package", or set \`providerId: '@your-scope/your-package'\` in astryx.integration.mjs.`,
+        `No provider ID can be derived for this package: package.json "name" ${JSON.stringify(name)} is not a bare package name (an optional @scope/ and a name, each starting with a lowercase letter or digit and holding only lowercase letters, digits, "-", ".", "_" and "~"), and astryx.integration.mjs declares no providerId that is one. Astryx files the package's components, templates and docs under that ID, so links to them and selecting the package cannot work. Fix: rename the package, such as "@your-scope/your-package", or set \`providerId: '@your-scope/your-package'\` in astryx.integration.mjs.`,
       );
       expect(issues[0].message).not.toContain('npm cannot pack');
       const result = await integrationCheck({cwd: dir});
@@ -968,6 +975,48 @@ describe('package.json', () => {
           .map(issue => issue.code),
       ).toEqual(['invalid_root', 'invalid_root']);
     }
+  });
+
+  it('checks links under the manifest providerId when the name gives none', async () => {
+    const linked = (/** @type {string} */ name, /** @type {string} */ text) =>
+      `export default ${JSON.stringify({
+        type: 'generic',
+        name,
+        title: name,
+        description: `The ${name} topic.`,
+        sections: [{title: 'Overview', content: [{type: 'prose', text}]}],
+      })};\n`;
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({
+          providerId: '@acme/kit',
+          components: './components',
+          docs: './docs',
+        }),
+        'components/AcmeWidget.doc.mjs':
+          "export default {type: 'component', name: 'AcmeWidget', displayName: 'AcmeWidget', usage: {description: 'Read {@link generic:no-such-topic}.'}, props: []};\n",
+        'components/AcmeWidget.tsx': componentSource('AcmeWidget'),
+        'docs/deploying.doc.mjs': linked(
+          'deploying',
+          'See {@link @acme/kit:generic:other}.',
+        ),
+        'docs/other.doc.mjs': linked('other', 'The other topic.'),
+      },
+      {name: '@acme/_kit', version: '1.0.0'},
+    );
+
+    const result = await integrationCheck({cwd: dir});
+    const issuesOf = (/** @type {string} */ name) =>
+      result.data.checks.find(check => check.check === name)?.response.data
+        .issues ?? [];
+    const componentLinks = issuesOf('components').filter(
+      issue => issue.code === 'invalid_doc_graph',
+    );
+    expect(componentLinks).toHaveLength(1);
+    expect(componentLinks[0].message).toContain('no-such-topic');
+    expect(
+      issuesOf('docs').filter(issue => issue.code === 'invalid_doc_graph'),
+    ).toEqual([]);
   });
 
   it('fails only --strict on a missing name when nothing else is wrong', async () => {
