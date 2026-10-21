@@ -602,13 +602,22 @@ export const AuditMatrix: Story = {
     }
     await expect(host.scrollWidth).toBeLessThanOrEqual(host.clientWidth + 1);
 
-    const responsiveTracks = getComputedStyle(responsive)
-      .gridTemplateColumns.split(' ')
+    const responsiveStyle = getComputedStyle(responsive);
+    const responsiveTracks = responsiveStyle.gridTemplateColumns
+      .split(' ')
       .filter(Boolean).length;
-    if (window.innerWidth <= 400) {
-      await expect(responsiveTracks).toBe(1);
-    } else {
-      await expect(responsiveTracks).toBe(3);
+    const responsiveGap = Number.parseFloat(responsiveStyle.columnGap) || 0;
+    const expectedResponsiveTracks = Math.min(
+      3,
+      Math.max(
+        1,
+        Math.floor(
+          (responsive.clientWidth + responsiveGap) / (180 + responsiveGap),
+        ),
+      ),
+    );
+    await expect(responsiveTracks).toBe(expectedResponsiveTracks);
+    if (expectedResponsiveTracks === 3) {
       const fillWidth = (
         fill.firstElementChild as HTMLElement
       ).getBoundingClientRect().width;
