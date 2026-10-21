@@ -15,7 +15,7 @@
 import {routeKit} from '../../foundation/route/route.mjs';
 import {rank, respond, signals} from './_features.mjs';
 import {entryTable} from './_entries.mjs';
-import {namedFirst, lexicalTies} from './_order.mjs';
+import {fullCoverageOrder, lexicalTies, namedFirst} from './_order.mjs';
 import {routeProbs} from './_query-words.mjs';
 import {namesWhole, rankLexical} from './_lexical.mjs';
 
@@ -30,6 +30,46 @@ export const asWeights = weights =>
   /** @type {SearcherWeights | null} */ (weights);
 
 /**
+ * A name read loosely: lowercase, with dashes, underscores and slashes read as
+ * spaces.
+ * @param {string} text
+ * @returns {string}
+ */
+const looseName = text =>
+  text
+    .toLowerCase()
+    .replace(/[-_/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * True when the query, read loosely, is the candidate's name, another name of
+ * it, its title, or the last part of its route (`use-a-theme` typed as
+ * `use a theme`). Such a query names that entry too, though the lexical
+ * ranker's own gate (namesWhole) needs the name exactly.
+ * @param {import('./_lexical.mjs').Candidate} candidate
+ * @param {string} loose the query, read loosely
+ * @returns {boolean}
+ */
+function namesLoosely(candidate, loose) {
+  if (!loose) return false;
+  const names = [
+    candidate.name,
+    ...(candidate.aliases ?? []),
+    candidate._title,
+    candidate._topic,
+    candidate._resultName,
+    candidate._commandName,
+  ];
+  return names.some(name => {
+    if (!name) return false;
+    const whole = looseName(String(name));
+    const last = looseName(String(name).split('/').pop() ?? '');
+    return whole === loose || last === loose;
+  });
+}
+
+/**
  * Ranks with one searcher's weights. Shared by the main searcher and every
  * topic searcher, which differ only in their weights.
  * @param {import('./tree.mjs').SearchRequest} request
@@ -42,7 +82,8 @@ export function rankWith(request, catalog, weights) {
   // A query that is an entry's whole name gets the lexical answer as is: that
   // entry first, with no near siblings added beside it.
   const term = String(query).trim().toLowerCase();
-  if (catalog.all.some(c => namesWhole(c, term))) {
+  const loose = looseName(term);
+  if (catalog.all.some(c => namesWhole(c, term) || namesLoosely(c, loose))) {
     return rankLexical(query, options, catalog);
   }
   const table = entryTable(catalog.all, catalog.data.cards);
@@ -58,6 +99,7 @@ export function rankWith(request, catalog, weights) {
     rank(table, rows, weights),
     lexical.data.results,
   );
+  order = fullCoverageOrder(order, rows, query);
   order = lexicalTies(table, order, rows);
   return respond(table, order, rows, lexical, options.limit ?? 20);
 }
