@@ -215,6 +215,10 @@ describe('a name that differs from its file name', () => {
       'export function AcmeWidget() { return null; }\nexport const AcmeWidgets = AcmeWidget;\n',
     ],
     [
+      'an export import alias, a runtime value',
+      'namespace Impl {\n  export const Widgets = () => null;\n}\nexport function AcmeWidget() { return null; }\nexport import AcmeWidgets = Impl.Widgets;\n',
+    ],
+    [
       'an enum, a runtime value',
       'export function AcmeWidget() { return null; }\nexport enum AcmeWidgets {\n  Small,\n}\n',
     ],
@@ -256,6 +260,19 @@ describe('a name that differs from its file name', () => {
     expect(run.stdout).toContain('components/AcmeWidget.doc.mjs');
     expect(run.stdout).toContain(
       'AcmeWidget.tsx re-exports AcmeWidgets from "@acme/ui", another package this check does not read.',
+    );
+  });
+
+  it('does not count a member a namespace exports as an export of the module', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({components: './components'}),
+      'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidgets'),
+      'components/AcmeWidget.tsx':
+        'namespace Impl {\n  export const AcmeWidgets = () => null;\n}\nexport function AcmeWidget() { return null; }\n',
+    });
+
+    expect(only(await issuesOf(dir), 'doc_name_mismatch')).toContain(
+      'AcmeWidget.tsx does not export AcmeWidgets',
     );
   });
 
@@ -618,9 +635,65 @@ describe('package.json', () => {
       ]);
     }
     expect(result.data.checks[0].response.data.issues[0].message).toBe(
-      'package.json has no "name", so npm cannot pack or publish the package and Astryx cannot check its components and docs against other packages. Fix: add "name": "@your-scope/your-package" to package.json.',
+      'package.json has no "name", so npm cannot pack or publish the package, and a project that installs it has no name to select it by. Fix: add "name": "@your-scope/your-package" to package.json.',
     );
     expect(result.data.failed).toBe(true);
+  });
+
+  it('still compares documented props for a package without a name', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({components: './components'}),
+        'components/AcmeWidget.doc.mjs':
+          "export default {type: 'component', name: 'AcmeWidget', displayName: 'AcmeWidget', usage: {description: 'A widget.'}, props: [{name: 'label', type: 'string', description: 'Text.'}]};\n",
+        'components/AcmeWidget.tsx':
+          'export function AcmeWidget(props: {title: string}) { return null; }\n',
+      },
+      {version: '1.0.0'},
+    );
+
+    const result = await integrationCheck({cwd: dir, strict: true});
+    const components = result.data.checks.find(
+      check => check.check === 'components',
+    );
+    const propDrift = /** @type {any} */ (components?.response.data)?.propDrift;
+    expect(propDrift).toBeDefined();
+    const failures = result.data.failures.map(failure => failure.code);
+    expect(failures).toContain('invalid_package_json');
+    if (propDrift.status === 'skipped') {
+      // No TypeScript here: --strict names the skipped comparison.
+      expect(failures).toContain('prop_drift_skipped');
+    } else {
+      expect(propDrift.findings.map((/** @type {any} */ f) => f.kind)).toEqual(
+        expect.arrayContaining(['not_in_code', 'not_in_doc']),
+      );
+    }
+  });
+
+  it('checks the docs of a package without a name, naming them by path', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({docs: './docs'}),
+        'docs/deploying.doc.mjs': topic('deploying').replace(
+          '"text":"deploying"',
+          '"text":"See {@link generic:no-such-topic}."',
+        ),
+      },
+      {version: '1.0.0'},
+    );
+
+    const result = await integrationCheck({cwd: dir});
+    const docs = result.data.checks.find(check => check.check === 'docs');
+    const messages =
+      docs?.response.data.issues.map(issue => issue.message) ?? [];
+    expect(messages.join('\n')).not.toContain('astryx-unnamed-local-package');
+    expect(docs?.response.data.issues.map(issue => issue.code)).toEqual([
+      'invalid_package_json',
+      'invalid_doc_graph',
+    ]);
+    expect(messages[1]).toMatch(
+      /^deploying § overview: "generic:no-such-topic" names no doc\./u,
+    );
   });
 
   it('fails only --strict on a missing name when nothing else is wrong', async () => {

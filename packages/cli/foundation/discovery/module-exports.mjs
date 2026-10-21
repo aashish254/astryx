@@ -310,6 +310,17 @@ export function moduleExportSource(file, exportName, seen = new Set()) {
 }
 
 /**
+ * The module's own top-level statements of one type: an `export` inside a
+ * TypeScript namespace names a member of that namespace, not of the module.
+ * @param {any} program
+ * @param {string} type
+ * @returns {any[]}
+ */
+function topLevel(program, type) {
+  return program.body.filter((/** @type {any} */ node) => node.type === type);
+}
+
+/**
  * Every runtime name a module exports that this read can see, or null when
  * it cannot see them all: an `export *`, `export =`, CommonJS exports, or a
  * file that does not parse.
@@ -328,14 +339,21 @@ export function moduleExportNames(file) {
   }
   if (/\bmodule\.exports\b|\bexports\.[$\w]/u.test(text)) return null;
   if (
-    nodesOfType(ast.program, 'TSExportAssignment').length > 0 ||
-    nodesOfType(ast.program, 'ExportAllDeclaration').length > 0
+    topLevel(ast.program, 'TSExportAssignment').length > 0 ||
+    topLevel(ast.program, 'ExportAllDeclaration').length > 0
   ) {
     return null;
   }
   /** @type {Set<string>} */
   const names = new Set();
-  for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
+  for (const node of topLevel(ast.program, 'TSImportEqualsDeclaration')) {
+    if (!node.isExport) continue;
+    // A type-only alias has no runtime value; any other might.
+    if (node.importKind === 'type') continue;
+    if (typeof node.id?.name !== 'string') return null;
+    names.add(node.id.name);
+  }
+  for (const node of topLevel(ast.program, 'ExportNamedDeclaration')) {
     if (node.exportKind === 'type') continue;
     const declaration = node.declaration;
     if (declaration?.type === 'VariableDeclaration') {
@@ -401,7 +419,7 @@ export function moduleExportVerdict(file, exportName, seen = new Set()) {
       `${shown} uses CommonJS exports, whose names this check does not read.`,
     );
   }
-  if (nodesOfType(ast.program, 'TSExportAssignment').length > 0) {
+  if (topLevel(ast.program, 'TSExportAssignment').length > 0) {
     unknown.push(`${shown} uses \`export =\`, whose names this check does not read.`);
   }
   /**
@@ -430,7 +448,19 @@ export function moduleExportVerdict(file, exportName, seen = new Set()) {
     if (inner.verdict === 'unknown') unknown.push(inner.reason);
     return false;
   };
-  for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
+  // `export import Name = Some.Path;` binds a runtime value unless it is
+  // type-only.
+  for (const node of topLevel(ast.program, 'TSImportEqualsDeclaration')) {
+    if (!node.isExport || node.id?.name !== exportName) continue;
+    if (node.importKind === 'type') {
+      unknown.push(
+        `${shown} exports ${exportName} with \`export import type\`, which has no runtime value this check can see.`,
+      );
+    } else {
+      return {verdict: 'exports'};
+    }
+  }
+  for (const node of topLevel(ast.program, 'ExportNamedDeclaration')) {
     if (node.exportKind === 'type') continue;
     const declaration = node.declaration;
     if (declaration?.type === 'VariableDeclaration') {
@@ -487,7 +517,7 @@ export function moduleExportVerdict(file, exportName, seen = new Set()) {
     }
   }
   if (exportName === 'default') {
-    const defaults = nodesOfType(ast.program, 'ExportDefaultDeclaration');
+    const defaults = topLevel(ast.program, 'ExportDefaultDeclaration');
     if (
       defaults.some((/** @type {any} */ node) =>
         runtimeDefault(node.declaration),
@@ -496,7 +526,7 @@ export function moduleExportVerdict(file, exportName, seen = new Set()) {
       return {verdict: 'exports'};
     }
   }
-  for (const node of nodesOfType(ast.program, 'ExportAllDeclaration')) {
+  for (const node of topLevel(ast.program, 'ExportAllDeclaration')) {
     if (node.exportKind === 'type') continue;
     const exported = node.exported?.name ?? node.exported?.value;
     if (exported != null) {

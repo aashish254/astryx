@@ -492,7 +492,7 @@ function packageJsonFieldIssues(pkg, pkgJsonPath) {
     issues.push(
       warning(
         'invalid_package_json',
-        `${shown} has no "name", so npm cannot pack or publish the package and Astryx cannot check its components and docs against other packages. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
+        `${shown} has no "name", so npm cannot pack or publish the package, and a project that installs it has no name to select it by. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
       ),
     );
   }

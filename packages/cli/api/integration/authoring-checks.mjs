@@ -58,6 +58,25 @@ export function shellArg(value) {
 }
 
 /**
+ * The provider ID a package without a name is checked under: a valid bare
+ * package name no published package can hold (npm names are lowercase).
+ */
+const UNNAMED_PROVIDER = 'astryx-unnamed-local-package';
+
+/**
+ * A message as the package sees it: the stand-in provider ID gone, its docs
+ * named by their path in the package.
+ * @param {string} message
+ */
+function unnamedShown(message) {
+  return message
+    .split(`${UNNAMED_PROVIDER}/`)
+    .join('')
+    .split(UNNAMED_PROVIDER)
+    .join('this package');
+}
+
+/**
  * Resolve one local or installed integration for an authoring check.
  * @param {string | undefined} pkg
  * @param {string} cwd
@@ -68,12 +87,12 @@ async function resolveIntegration(pkg, cwd) {
     : await validateLocalIntegration(cwd);
   const integration = resolved.found ? resolved.integration : undefined;
   if (!integration) return resolved;
-  // The checks below compare a package with Core and others by its name; a
-  // package without one (validate warned about it) has nothing to compare.
+  // A package without a name (validate warned about it) is still checked; the
+  // docs check names its docs under a stand-in provider ID.
   try {
     normalizeProviderId(integration.name);
   } catch {
-    return {...resolved, integration: undefined};
+    return {...resolved, integration: {...integration, __unnamed: true}};
   }
   // A root that is not a readable folder is reported in the issues; the
   // checks read nothing from it rather than fail on it.
@@ -371,8 +390,20 @@ export async function integrationDocConflicts(pkg, options = {}) {
     };
   }
 
+  // The docs tree names a package's docs by its provider ID, which a
+  // package.json without a name does not give: its docs are checked under a
+  // stand-in ID, which no message names.
+  const unnamed = /** @type {{__unnamed?: boolean}} */ (resolved.integration)
+    .__unnamed;
+  const docsIntegration = unnamed
+    ? {
+        ...resolved.integration,
+        name: UNNAMED_PROVIDER,
+        providerId: UNNAMED_PROVIDER,
+      }
+    : resolved.integration;
   const [discovered, builtinTopics] = await Promise.all([
-    discoverIntegrationDocs(resolved.integration),
+    discoverIntegrationDocs(docsIntegration),
     Promise.resolve(discoverBuiltinTopics()),
   ]);
   const {records, errors} = discovered;
@@ -442,33 +473,51 @@ export async function integrationDocConflicts(pkg, options = {}) {
   // its docs (spec:AST-046, spec:AST-047).
   if (errors.length === 0) {
     for (const {severity, message} of await packageDocsProblems(
-      /** @type {{name: string}} */ (resolved.integration),
+      /** @type {{name: string}} */ (docsIntegration),
       discovered,
     )) {
-      issues.push({code: 'invalid_doc_graph', severity, message});
+      issues.push({
+        code: 'invalid_doc_graph',
+        severity,
+        message: unnamedShown(message),
+      });
     }
 
     // A reference block includes content rather than linking to it, so one
     // that cannot include what it names loses that content for every reader:
     // an error, where a link that names no doc still prints as written.
     for (const message of await packageReferenceProblems(
-      /** @type {{name: string}} */ (resolved.integration),
+      /** @type {{name: string}} */ (docsIntegration),
       discovered,
     )) {
-      issues.push({code: 'invalid_doc_reference', severity: 'error', message});
+      issues.push({
+        code: 'invalid_doc_reference',
+        severity: 'error',
+        message: unnamedShown(message),
+      });
     }
 
     // One fact has one owner: a passage two topics repeat goes stale in one
     // of them. Each is listed and is a warning (architecture:cli-surface
     // DEC-8), so `integration check --strict` fails until it is fixed;
     // `doctor integration docs` keeps its exit code, as it fails on errors.
-    copiedPassages.push(...(await integrationCopiedPassages(discovered)));
+    copiedPassages.push(
+      ...(await integrationCopiedPassages(discovered)).map(passage => ({
+        ...passage,
+        message: unnamedShown(passage.message),
+      })),
+    );
     for (const {message} of copiedPassages) {
       issues.push({code: 'copied_passage', severity: 'warning', message});
     }
     // Docs should be dense: padding phrases and mostly-glue topics, listed
     // and warned about the same way (DEC-8).
-    fluff.push(...(await integrationFluff(discovered)));
+    fluff.push(
+      ...(await integrationFluff(discovered)).map(each => ({
+        ...each,
+        message: unnamedShown(each.message),
+      })),
+    );
     for (const {message} of fluff) {
       issues.push({code: 'doc_fluff', severity: 'warning', message});
     }
