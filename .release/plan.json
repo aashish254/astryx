@@ -1,0 +1,2036 @@
+{
+  "schemaVersion": 2,
+  "version": "0.7.2",
+  "branch": "release/v0.7.2",
+  "cutSha": "577a62e5901911a24b5a485ac4c0bdf5fca4ef1f",
+  "changesets": [
+    {
+      "path": ".changeset/allow-metadatalist-label-width-without-an-explic-a6fz.md",
+      "sha256": "1325109693369316c180be1ee4f6671e4cdd9ebc835d87ffebef3930a8a2f62f",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Allow MetadataList label width without an explicit position while preserving single- and multi-column label defaults (#6310)",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/appshell-mobilenav-close-animation.md",
+      "sha256": "1550064639e720bd0cd0bf50f46bea7453e3fb97ba6d3a162e5f0f63dfd7e94a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "AppShell: defer hiding the mobile nav's Activity boundary until its close animation finishes (#5701)",
+      "contributors": [
+        "HelloOjasMutreja"
+      ],
+      "body": "`AppShell` mounts the mobile nav drawer inside a `React.Activity` boundary that flipped to `mode=\"hidden\"` in the same commit as the drawer closing. React's `Activity` hides its subtree with `display: none !important` synchronously and re-runs the cleanup of every effect inside it, which cut off `MobileNav`'s own slide-out CSS transition and cancelled its delayed `dialog.close()` before either could run. The drawer still closed correctly (a safety-net effect force-closed the native dialog on that same cleanup), just with the close animation skipped entirely.\n\n`AppShell` now holds the `Activity` boundary visible for a beat after the drawer closes, strictly longer than `MobileNav`'s own worst-case close delay, so `MobileNav`'s normal close effect gets a real chance to run its transition and its own timed `dialog.close()` before `Activity` ever hides the subtree.\n\n`MobileNav` also keeps its dialog rendered from the commit that closes it until its delayed `close()` has run, instead of relying on the dialog's discrete `display` transition to do so. A browser that does not hold that transition (WebKit) dropped the dialog to `display: none` at once while it was still an open modal, so for about 200ms nothing was visible and the page stayed inert. The slide-out itself is unchanged."
+    },
+    {
+      "path": ".changeset/aspect-ratio-fit-tailwind-layers.md",
+      "sha256": "71278d4a3b5766332e57e00cf116be506c8f11a8337b1b173d8428c7f9668da6",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`AspectRatio`'s `fit=\"cover\"` and `fit=\"contain\"` now fill the box on the documented Tailwind setups. The fit rules lived in `reset.css`, in the `reset` layer, and the setup guides put Tailwind's preflight in a layer above it, so preflight's `img, video { height: auto }` won and a fitted image kept its own aspect ratio. The fit sizing now ships with the component's own styles in `astryx-base`: above preflight, and below Tailwind's utilities, so a utility class on the child still wins. `reset.css` no longer carries AspectRatio rules.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": "With `fit=\"cover\"` or `fit=\"contain\"`, a direct child's own Astryx styles (an Astryx component's own size or `object-fit`) no longer override the fill. To keep a child's own size, set it with an inline style, unlayered CSS or a rule in a later layer, or leave `fit` unset."
+    },
+    {
+      "path": ".changeset/avatar-numeric-size-docs.md",
+      "sha256": "d96dd53e432f9ce2656295d46a6e0017d90470c2f4b65204302fffb7efc46de1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "`Avatar` and `AvatarGroup` docs list the numeric sizes `size` accepts (16, 20, 24, 32, 36, 40, 48, 60, 64, 72, 96, 128, 144, 180) instead of implying any pixel value, and say that an `AvatarGroup`'s size always overrides a child `Avatar`'s size, including the group's default.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/avatargroupoverflow-exposes-its-static-overflow--2590.md",
+      "sha256": "7248d485ac8c01421fc5f26131888646b90f95f6f53dd84f41aaa8300ea3b3cf",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The static `AvatarGroupOverflow` chip (no `onClick`) is exposed to assistive technology as an image named by its count label (\"5 more\"). Before, it was a span with an `aria-label` but no role, a name the generic role does not allow, so screen readers could skip the count. This meets WCAG 2.2 SC 4.1.2 Name, Role, Value. Nothing changes visually; the clickable chip stays a button, and a `role` passed by the caller still wins.",
+      "contributors": [
+        "azure-553"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/build-next-keep-symlinks.md",
+      "sha256": "dcb50fa7ecf3768834c5f1053421ed59186a8f7b0bbea3dbe23a14a1d9f9f5f1",
+      "packages": [
+        {
+          "name": "@astryxdesign/build",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`withAstryx()` builds again under pnpm's default isolated layout. It no longer turns off webpack's symlink resolution, which hid each Astryx package's own dependencies (`Can't resolve 'intl-messageformat'`, `'lucide-react'`). Astryx modules are still matched by their real path, so a workspace-linked package keeps resolving its `source` entries.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/build-postcss-library-config-file.md",
+      "sha256": "08c64909fb5829a26ddcac2a3283e1fef60d08fa86b4ec5aae05a52917b987ce",
+      "packages": [
+        {
+          "name": "@astryxdesign/build",
+          "bump": "patch"
+        }
+      ],
+      "category": "perf",
+      "headline": "The PostCSS plugin no longer loads the app's root Babel config when it compiles Astryx source. In the documented Next.js setup that config (`next/babel` plus Astryx's StyleX plugin) ran over every installed Astryx module on each build only for the plugin to read StyleX metadata, roughly doubling the CSS pass. The emitted CSS is unchanged, and the app's own files still compile with its config.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/build-postcss-library-glob-cycles.md",
+      "sha256": "47419154fcfe057b2d92a32940b82b2c898d0a6668498e0668a2e8c32bb28b91",
+      "packages": [
+        {
+          "name": "@astryxdesign/build",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The PostCSS plugin now scans what each installed Astryx package publishes (its `files` field, or the whole package minus nested `node_modules` when it has none) instead of everything under `node_modules/@astryxdesign`. A package linked from a workspace no longer drags in its own `node_modules`, whose links can cycle back to it and made the build run out of memory, or its unpublished test fixtures. Registry installs scan the same files as before.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/button-busy-aria-disabled.md",
+      "sha256": "91366e2dfe8dfa63f28f23bf873139617fe57390ce414e903822241d043165d6",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Button` (and `IconButton`) no longer use the native `disabled` attribute while a busy state (`isLoading`, or a non-interruptible `clickAction` in flight) is the only reason the button can't be clicked. A natively disabled element can't hold focus, so the browser moved focus to `<body>` the instant an action started and never restored it — the classic reason busy state should be visual-only. Busy now uses `aria-disabled` (button stays focusable) with `aria-busy` and the spinner, matching the documented \"Disabled vs Busy\" API convention and the behavior input components already follow. `isDisabled` (and `isDisabled` together with a busy state) is unchanged — that still uses native `disabled`. `isInterruptible` is also unchanged.",
+      "contributors": [
+        "HelloOjasMutreja"
+      ],
+      "body": "`aria-disabled`, unlike native `disabled`, still lets the button dispatch a click — the busy guard already called `preventDefault()` to block the button's own action, but a click on a busy button could still bubble to a wrapping ancestor's own click handler (a clickable row, card, or backdrop), which the previous native-`disabled` behavior never allowed. `handleClick` now also calls `stopPropagation()` in that guard, containing an unavailable click at the Button boundary the way a natively disabled control always did.\n\nThe `href`-rendered anchor path had the same gap for keyboard activation: it only wired `onClick` to the busy guard, not `onKeyDown`, so a consumer's own `onKeyDown` still received Enter/Space on a busy-only anchor Button while it was announced `aria-disabled`. The anchor path now wires the same `handleKeyDown` suppression the button path already had, so Enter/Space are swallowed and every other key still reaches the consumer, on both render paths."
+    },
+    {
+      "path": ".changeset/canonical-core-imports.md",
+      "sha256": "ece99a5a64db830aea52cdc439bc7866a28f278c2d099fa318ca258925e10086",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Docs and CLI examples import each Core export from the path `astryx component <Name>` prints.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- `VStack` and `HStack` come from `@astryxdesign/core/VStack` and `@astryxdesign/core/HStack`, `Heading` from `@astryxdesign/core/Heading`, `Text` from `@astryxdesign/core/Text`, and `Theme` and `defineTheme` from `@astryxdesign/core/theme`.\n- This covers the guides, the `Card` docs, the next steps `astryx init` prints, the install example `astryx theme build` prints, the wiring example `theme add` prints, the build rules, the theme-module fix `astryx doctor` prints, and the annotated theme template.\n- Every path was already exported. Nothing else changes."
+    },
+    {
+      "path": ".changeset/chat-scroll-affordance-focus.md",
+      "sha256": "52a919a211568e89a1087ee9ba3f4f7f3a168a513af301674784a48605e6c95a",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ChatLayoutScrollButton`: the scroll-to-bottom pill now gives up keyboard focus, and refuses new focus, as soon as it starts to hide. Previously focus stayed on the fading pill for about half a second, until `visibility: hidden` applied, so it could sit on a control that was fading out or already transparent (WCAG 2.2 SC 2.4.7 Focus Visible). (#7738)",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/checkbox-file-input-ids.md",
+      "sha256": "79a38512c09d42909ef0b328bb07738c5313c6b14a8d1188d32ac21be6d66fa3",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Preserve caller-provided IDs on CheckboxInput and keep labels associated with the native input.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/checkboxlist-caller-labelledby.md",
+      "sha256": "e7c0344071a72ba000d0b3c303c6e498e2b21980948bf185f51b131f93eb930b",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "CheckboxList keeps a caller's `aria-labelledby`. The group always replaced it with its own label id, so the caller's ids never reached the accessible name. The group is now named by its label and then the caller's ids, the same order RadioList and TimeInput use.",
+      "contributors": [
+        "kyu-rong"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-component-doc-names-another-export.md",
+      "sha256": "02b2b2e9203d96dfb36d613a7cdeeb98bc11be61eee9b368c62cbce4597d57a4",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "An integration component doc can name a differently named export of the file beside it: when `Slides.tsx` exports `AcmeCarousel` and nothing named `Slides`, `Slides.doc.mjs` can set `name: 'AcmeCarousel'`, and a kebab-case `acme-widget.doc.mjs` can name `AcmeWidget`. `component --list`, `component <Name>`, `search`, `swizzle`, the `doctor integration` checks and `integration verify` know the component by that name, and its file name still opens it. A name that Core or another doc's file already has stays theirs on every surface unless `--package` names the integration. Docs and sources are read without running them; a doc named after its file, or beside a file that exports its own name, reads exactly as before.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-component-family-members.md",
+      "sha256": "53c43206a7c3f2080614a96d26e200787904497115f130198ade914039a4c748",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Each full entry an integration's family doc lists in `components`, such as `AcmeSlide` in an `AcmeCarousel` doc, is a component under its own name when the module the doc's `import` names exports it. Its source is the `.tsx` file in the family's folder that declares it; a member that only built output or a file outside that folder declares has no source to show or copy. `component --list`, `component <Name>`, `search`, `swizzle`, the `doctor integration` checks, `integration verify` and `integration add` know these members. A member's detail is scoped to its own entry, as a Core sub-component's is, and it never carries the family's `replaces`. A member named like a Core component or another doc's file opens with `--package`.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-computer-agent-text.md",
+      "sha256": "2c932e57973442f571926b7f0a04c9998b0097171ad2220823494078f0eb398c",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "The CLI installed for the computer keeps one short Astryx skill for every agent on the computer: `~/.agents/skills/astryx/SKILL.md`, which most coding agents read, linked into the skill folder of each agent that reads only its own (`~/.claude/skills` always; Kiro, Windsurf, Letta, Xcode's coding assistant, and `~/.config/agents/skills` when that folder exists) with a folder link and a relative target, a junction on Windows, or a copy where no link can be made. Continue, whose scanner skips links, gets a managed copy. The text tells agents that Astryx is on the computer, when it is relevant (building or changing UI), to start with `astryx search`, and to read docs with `astryx docs`; it names no version and only commands every release keeps. It is written on the global copy's first run and after each upgrade, in the background; package install scripts never write it. `astryx init --user` writes it now, in any folder, and `astryx init --user --remove-agents` removes the file, every link Astryx made, and the copy, and turns it off. The setting and the links Astryx made are kept in `astryx/settings.json` in the per-user configuration folder. The file records a hash of its text, so a file a person edited is never overwritten or removed, and nothing Astryx did not create at a link folder is replaced. `init --user` warns, while still writing, when no `astryx` command on the computer runs the Astryx CLI, and its `init.user` receipt lists each path and what happened to it. Outside a project, `astryx doctor` adds a `computer-agent-text` check (info only) that says whether the text is present, current, edited, or turned off, where it is linked, and any link folder it skipped or whose skill folder is missing. A cache or configuration folder set through `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `LOCALAPPDATA`, or `APPDATA` is used only when it is an absolute path.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-computer-integrations.md",
+      "sha256": "c8e0f8e90b1ef7037063669b522b5ef0da3ea581c7d830b384d8b9aede482c52",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Integrations installed for the computer. An integration package installed in the same place as the CLI installed for the computer (`npm i -g`, `pnpm add -g`, `yarn global add`, or `bun add -g` beside `@astryxdesign/cli`), or installed with the CLI in one package set by a tool that runs it, is a computer-level integration. Outside a project, it loads the way a project's integrations do: its components, templates, docs, themes, discover source, and `cliCommand` apply, with the same validation, and one whose `@astryxdesign/core` or `@astryxdesign/cli` peer range excludes the CLI's release is skipped. pnpm 11 and later, which give each global package a folder of its own, count every one of those folders. Inside a project, only the project's own integrations load: a computer-level one adds nothing there, and `astryx discover` lists it under `meta.available` with source `installed for this computer` and the project's install command in `install`, when its peer range admits the project's release and it loads. A project that installs the same integration uses only its own copy. `astryx doctor` adds a `computer-integrations` check: outside a project, each one it uses, each the folder replaces with its own copy, and a warning for each it skips or cannot load; inside one, the ones the project could add.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-fix-timeline-phantom-component.md",
+      "sha256": "1fe9c30b0bc21ca1e8780491663d1da0c871c84b370008b5eafcb416d22b1075",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`extractComponents` reported phantom components from locally-declared helper functions in template files — e.g. \"Timeline\", derived from a `function TimelineSection() {...}` helper declared directly in the detail-page template, which isn't a real component. It now excludes any name bound by a top-level `function`, `class`, `const`, `let` or `var` declaration in the same file (read from the parsed source, so comments, strings and type annotations don't count), before suffix-stripping runs, so a locally-declared helper is never mistaken for an imported component. A component whose whole name is a stripped suffix, such as a bare `Section`, now stays in the list instead of emptying out.",
+      "contributors": [
+        "abu-abdullah22"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-gap-report-to.md",
+      "sha256": "bbc19dd02917d6814bf789aae0388e0d01c541c0581c49356a2a5cc24ee8e2ce",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx gap-report --to <package>` sends a report to the issues URL of the loaded integration the person chose, under the same `--confirm-public` rule, instead of the default handlers. When loaded integrations name their own issues URLs, `--list-categories` and the receipt list every destination and tell the agent to ask the person where to file. The default route is unchanged.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-global-docs.md",
+      "sha256": "b9656929159648205a77762a103d9fcbe114493db90bab5614915fde3932d4a4",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Global mode docs: `astryx docs global` is a top-level docs section (and one docsite page, under Guide, which Getting Started introduces and links) explaining what global mode is, the one install command, what you get, and which version runs where. Its pages, each answering one question: project, global, or both (both is recommended; `global/project-global-or-both`), install (`global/install-once`, with what to do about `EACCES`), which version runs and why (`global/who-answers`), updates and notices (`global/updates`), the agent guide on your computer (`global/computer-agent-guide`), integrations installed globally (`global/computer-integrations`), monorepos and nested folders (`global/monorepos`), CI and containers (`global/ci-and-containers`), troubleshooting every line global mode prints (`global/problems`), uninstall and reset (`global/uninstall`), and a reference of paths, environment variables, JSON fields, and error codes (`global/reference`). `astryx docs global` and its pages are answered by the copy you start, even inside a project whose version predates them. Integration authors get a checklist with the commands to try a package globally (`cli/integrations/global-integrations`). Every command that does something else outside a project says exactly what in its \"In global mode\" note, checked against the command run in an empty folder, and every terminal line the global-mode pages show is checked against the CLI's own strings. A project's update notice now installs the CLI beside Core, so a project that installed only Core gets its own CLI too.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-global-local-fixes.md",
+      "sha256": "ba4ba0ab42fa7f3d69b6fe0142f01af234a3895f55ecd555729be4d35000aa96",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Global and project copies of the CLI meet more predictably. A repository that builds the CLI itself, with `packages/cli` beside `packages/core`, answers with that CLI instead of failing with `ERR_VERSIONS_UNAVAILABLE`. On a cache folder shared between computers, a release install renews its lock every 10 seconds, and a lock from another computer that goes a minute without renewal is taken over, instead of blocking runs for 20 minutes. Folder names are compared without letter case on macOS and Windows, a Yarn 1 global install on Windows is recognized as a global install, and the shims npm, pnpm (including pnpm 12's), and PowerShell write are read when doctor and the reminders look for the `astryx` commands on the search path.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-global-mode.md",
+      "sha256": "58edb889d9cdeb9940506496b028c3090250cc51ca48880739cc79e883dd9d35",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Install the CLI once for your computer (`npm i -g @astryxdesign/cli`) and run `astryx` in any folder. In a project, the project's own CLI answers, whatever its version, as before: a copy started anywhere else (the global install, `npx`, a typed version) hands the run to it. A project with no CLI of its own (only `@astryxdesign/core`, or a fresh clone) is answered by the copy you started, as before; when that copy is not the Core's release, one hint after the command, at most once a day per project, names the command that adds the CLI at Core's version, and JSON reports `meta.answeredBy.copy: \"starting\"`. Only a project whose own CLI cannot start is answered by the CLI release equal to its Core, installed once into a per-user cache (from the installed Core, else the lockfile, else the declared range). `astryx doctor` warns when a project's CLI and Core are different releases, or when a project has no CLI and the copy that answered differs from its Core, and prints the command that aligns them. `astryx --help` and the manifest's new `globalMode` field point to `astryx docs global`. The hand-off keeps the arguments, folder, standard streams, and exit status. Outside a project, the copy installed for your computer answers with its own release; commands that read Core use the Core of that release there: the global copy downloads it into the cache in a background step it starts as a run ends (never in CI, and not on Windows, where a background process would hold the caller's pipes and the first component command downloads it instead), so component reads work offline after one online run. Nothing that worked before breaks: when that release cannot be obtained (offline, a registry without it, an unwritable cache), the copy you started answers, as before global mode, with one warning line on standard error (`astryx: could not get Astryx <version> to match this project's Core (<reason>); answering with CLI <version> instead`) and `meta.answeredBy.copy: \"fallback\"` in JSON. A copy counts as installed for the computer only in npm's global folder or in a global folder a package manager's own settings name (Bun's `BUN_INSTALL` or `globalDir`, Yarn's `global-folder`, pnpm's `PNPM_HOME` or `global-dir`, or their defaults), never by a folder's layout alone, so an app made with `yarn add` is never mistaken for one; a moved Bun or Yarn global folder counts, and its notice reinstalls there. A failed install is remembered in the cache, so offline runs do not start npm again each time: it is retried after 2 minutes, then after 10 once it fails again, and a success forgets it. A stale install lock ends the process it records only when that process is exactly this CLI's install of that release (npm, or node running npm-cli.js, installing `@astryxdesign/cli@<version>`, started after the lock); otherwise the lock is simply taken over. The new `ERR_VERSIONS_UNAVAILABLE` is kept for runs nothing can answer, such as a command that needs Core outside a project that cannot install it. The CLI starts npm from npm's own entry file with the running Node, never through a shell, and reads a project's declared Core range only when it is a plain version range.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "Every successful `--json` result now carries `meta.answeredBy` (`cli`, `core`, `copy`: `project`, `starting`, `matched`, `carried`, or `fallback`), typed in `CLIResponse` and described in the output envelope docs. In text mode, a run answered by anything other than the project's own CLI prints one `astryx: answered by …` line on standard error. Printed commands start with a name that reaches the same release: the project's runner when its own CLI answers, `astryx` outside a project for the copy installed for the computer, and otherwise the CLI package pinned to the answering version (`npx @astryxdesign/cli@0.7.2`). The new `ERR_PROJECT_REQUIRED` code names a command that needs a project. See `astryx docs global/install-once`."
+    },
+    {
+      "path": ".changeset/cli-integration-check-doc-gaps.md",
+      "sha256": "a5ebf31e67791563f43efc948aca41c78a990bafc3168841d8ae98bc646d1d60",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx doctor integration` and `astryx integration check` catch more doc mistakes, and stop flagging one pattern Core itself uses.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- A `docsZh` or `docsDense` overlay may set `name` and `displayName`, as Core's own docs do; both are ignored when the doc renders, so `--strict` no longer fails on them.\n- `doctor integration components` reports a documented `default` that differs from the literal default the component writes in its props destructuring (`size = 'md'`) as `default_mismatch`. Quotes and spacing are ignored; where either side's default is not a literal, the prop is listed as not compared.\n- `doctor integration validate` warns, each with a fix, on a prop documented twice (`duplicate_prop`), a `propDescriptions` key that matches no prop entry's name as written (`unknown_translated_prop`), a section with no content (`empty_section`), two sections of one topic with the same key (`duplicate_section_key`, whose fix names the key the second one is already served at), and a `.doc.zh.mjs` or `.doc.dense.mjs` overlay beside no topic file (`orphan_doc_overlay`).\n- A topic that takes the route of one of Astryx's own docs is named by its topic name, not an internal id, with the rename to make. A link written as a bare name (`{@link deploying}`) gives the exact link to write, or says no topic has that name.\n- When a doc is missing several required fields, each finding's message names only its own field.\n- `doctor integration validate` prints each issue's fix and file in text output, as JSON already carries them."
+    },
+    {
+      "path": ".changeset/cli-integration-command-name.md",
+      "sha256": "4c59c79cb0e6648ff1381ef004e7c8eceb9636d7eec66fa06f483e445bb67df1",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "An integration can set the command its users run the CLI with: a new `cliCommand` field in `astryx.integration.*`, such as `cliCommand: 'acme astryx'`. In a project that loads that integration, every command the CLI prints starts with it instead of the package-manager prefix (`npx astryx`, `pnpm exec astryx`): next-step hints, errors, suggestions, Doctor fixes, `--help`, the setup reminder, the agent-docs block, and doc text. If two loaded integrations set different commands, neither is used, and the new `cli-command` check in `astryx doctor` warns. An invalid `cliCommand` is ignored with an `invalid_cli_command` warning; the rest of the manifest still loads.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "Docs, including an integration's, are now written with bare `astryx ...` commands, and `astryx docs` prefixes them for the project when it prints them. JSON output keeps every command bare, as before. The install-time setup reminder from `@astryxdesign/core` and `@astryxdesign/cli` names the command the project's package manager runs, instead of always `npx @astryxdesign/cli`."
+    },
+    {
+      "path": ".changeset/cli-integration-docsite-url.md",
+      "sha256": "fc5eac53206e1e3a78bd9fb661a74849168d7987cdda8ccd45b726303192c58e",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "The integration manifest accepts an optional `docsiteUrl`, a link to the integration's docs site, as a known field, so setting it no longer raises an unknown-key warning.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-notes-say-what-is-true.md",
+      "sha256": "89f3414be835eca710275c638307e4dee73ac96123ffbb5892cb5231a7871112",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The setup reminder, the swizzle StyleX note, and one doctor line say only what is true",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- The \"run init to finish setup\" reminder no longer prints where agents already have the Astryx prompt. In a git repository it looks for init's block in the agent docs from the project up to the repository root, because coding agents read every agent doc in between, so a package in a monorepo that ran `init` at its root stays quiet. This holds for every command and for the reminder printed when `@astryxdesign/core` or `@astryxdesign/cli` is installed. Running the CLI from its own source checkout, inside that checkout, prints no reminder. A project with no block in reach still gets it, and `--json` never prints it.\n- `astryx swizzle` no longer says StyleX components \"render unstyled (no error)\" without a StyleX compiler. Importing them throws StyleX's \"Unexpected 'stylex.create' call at runtime\" error and the page does not render, and the note now says so.\n- In an integration package, where the package's own manifest loads, `astryx doctor`'s implicit-integrations line no longer says that \"every loaded integration is named in astryx.config\". It names the package's own manifest: as the only loaded integration, or beside the integrations astryx.config names.\n\nClassification: contract-restoring. Only message text changes: JSON keys, check ids, statuses, and exit codes are unchanged. The doctor line's new text also appears in its `--json` `message`."
+    },
+    {
+      "path": ".changeset/cli-npm-prefix-upgrade.md",
+      "sha256": "c34ebfacc94bab2adb136a7bec8ef013466c787c8621335f5a128102ad79e2fe",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A CLI installed with npm under a prefix of its own (`npm i -g --prefix ~/.local`, `NPM_CONFIG_PREFIX`, or `prefix=` in an `.npmrc`) is now upgraded into that same prefix: the update notice and `astryx doctor` print `npm i -g --prefix <prefix> @astryxdesign/cli@latest`, with `~` for the home folder. npm's default prefixes (Node's own, `/usr/local`, `/usr`, and `%APPDATA%\\npm` on Windows) keep the plain command.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-selector-parser-linear-time.md",
+      "sha256": "7ce88ef66dba06bb022dba663a8b2caf3c39d734aabfd3bf22926b22e8994c7b",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The CLI now uses `postcss-selector-parser` 7.1.6, which parses flat selectors in linear time and closes a CPU-exhaustion vulnerability (#6985).",
+      "contributors": [
+        "dependabot"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-theme-build-core-on-demand.md",
+      "sha256": "62b32e6e58c009178a5a88130a2a30f5ac34c437c2d53bc4beac0d0f439dc55a",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "perf",
+      "headline": "The CLI loads Core's runtime (`@astryxdesign/core` and `@astryxdesign/core/theme`) only when it builds or checks a theme (`theme build`, and the `doctor` and `integration pack` theme checks), not on every start. In a project with Core installed, every other command, and an import of `@astryxdesign/cli/api`, skips loading Core's components and React: `astryx --version` drops from about 1.3 s to 0.5 s. Output is unchanged.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-update-reminders.md",
+      "sha256": "e7d208870fa8577b4cb41eb3078c66281baad95851d38dd9baf87a9b6988ac57",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Update notices, the way `gh` and the Vercel CLI do them. Once a day, never in the first day after its first run, the CLI installed for the computer checks the registry's `latest` release in the background without delaying the command; it never installs a release by itself. When a newer release exists, a command that finishes successfully prints two lines on standard error, at most once a day: `A new release of Astryx is available: <current> → <newest>` and `To upgrade, run: <command>`, with the command of the package manager that installed the CLI (`npm i -g`, `pnpm add -g`, `yarn global add`, `bun add -g`, or `volta install`), after the Node the release needs when the computer runs an older one. Inside a project the notice names the project's install and `upgrade` commands instead, and an `astryx` first on the search path from before the hand-off gets a notice naming its upgrade. No notice prints with `--json`, after a failed command, or when `CI` or `NO_UPDATE_NOTIFIER` is set, and neither variable lets the check run; unlike `gh`, a notice prints when standard error is not a terminal, because agents run the CLI without one. What the check found lives in `astryx/state.json` in the per-user configuration folder. `astryx doctor` reports the same: the `newest-release` check names the upgrade commands, and a new `cli-on-path` check lists every `astryx` command on the search path.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/cli-verify-folder-reexport.md",
+      "sha256": "bb49febd3a99bb26acffae67139f2b24fc6f4e0dccee563db1c31a1e28a58727",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`integration verify` reads a package's exports with the same reader discovery uses, so the two agree: a component re-exported through a folder's index file passes, and a type-only re-export no longer counts as the component.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/command-palette-input-focus-ring.md",
+      "sha256": "90920bd01e19c3283ed09bb95652039a3add0d6f226fd6cac79043d94c7d7591",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`CommandPaletteInput`: the query field now draws the shared keyboard focus ring. Previously it suppressed the browser outline without replacing it, so keyboard users could not see which field held focus.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/component-doc-links.md",
+      "sha256": "e1c22499404975557b8dd6b8838a0ff4c88c568e942b8d9268058a05755b6ad7",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "A `{@link <target>}` in a component doc's text now reads as the command that opens its doc, in `astryx component <Name>`, its `--props` view, and component lists, in text and JSON: the description, usage, best practices, anatomy and accessibility notes, and each prop's and example's description. A topic's description reads the same way in `astryx docs`, its list, and the docs tree. Code fields and code ticks show the link as written. A Core component's links resolve against the CLI's docs; an integration's against its own. `astryx doctor integration components` warns on a link in an integration's component docs that names no doc, and `doctor integration docs` does the same for a topic's description. The written-pointer warning also reads component docs and topic descriptions, and each finding now names its `kind` and `field`.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/component-list-family-docs.md",
+      "sha256": "8f8fd1f9026aced207d1b57aef082ed10a7e220066598b9f6fce911264e143c2",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx component --list` and `astryx search` find VStack, HStack and Heading",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "Each has its own import path, but its doc lives in its family's folder: Stack's\ndoc documents HStack and VStack, and Heading's doc sits next to Text's. The list\nonly counted a doc in the component's own folder, so the three were missing from\nthe list and from search, and `astryx component VStack` found its doc only\nthrough fuzzy matching. A component whose doc is elsewhere is now listed and\nsearchable with its own import path, and `astryx component VStack` opens its doc\ndirectly."
+    },
+    {
+      "path": ".changeset/component-prop-doc-stability.md",
+      "sha256": "6a25255ad05395cc7743c1e1f8a5ac39408c4656c548b3d2a0489c9fa3d2e7b4",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Component prop docs accept `stability: 'experimental'`, the machine-readable marker for a prop outside the stable compatibility promise, such as a component's `experimental` prop object.",
+      "contributors": [
+        "imdreamrunner"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/context-menu-content-modes.md",
+      "sha256": "256ab9f29c95cfaedc031d38afbccb17588528865100dd747019f0a67a96b7cf",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "`ContextMenu` docs now state that data-driven `items` and compound `menuContent` are mutually exclusive choices instead of marking `items` as unconditionally required.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/copied-doc-passages.md",
+      "sha256": "50bda608f2bc9ef9ebe989c82845b11275117cc431ae0268d9fa355cc29f6b90",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`doctor integration docs` (and so `integration check`) lists each pair of topics that repeat 10 or more words of prose word for word: two of the package's own topics, or one of them and a Core topic other than the one it replaces. Each entry names the topic that keeps the text (a Core topic, or of two package topics the one the passage fits), the line to change in the other, and the exact link to put there, and is in the new `copiedPassages` field. A run with fewer than 4 distinct content words (words other than function words such as \"the\", \"in\" or \"it\"), or one that three or more topics share, is not listed. Each pair is also a `copied_passage` warning, so `integration check --strict` (new in this release) fails until it is fixed; `doctor integration docs` still exits 0.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "The CLI's own guides no longer repeat 18 passages that another guide owns; each copy is now a link to the guide that owns the fact."
+    },
+    {
+      "path": ".changeset/core-runtime-unicode-property-regex.md",
+      "sha256": "1604674a8b84cce257308d64a1a3a50dfcf2c02bf59e2f647477ff3518d82e2f",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Source builds through Next.js's Babel no longer fail with `Unknown property: L` (or `Zs`, `Letter`) when the app sets no browserslist or targets a browser without Unicode property escapes. `Avatar`'s initials and the Markdown parser's emphasis and heading-link rules now build their `\\p{…}` regular expressions at runtime, as `NumberInput` already does, so there is no literal for Babel to rewrite. Matching is unchanged.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/diff-viewer-catalog-keys.md",
+      "sha256": "88bd36c6a984092a7dfc840811c5ae331e6fd8dfedd26392533c51691f05c8f6",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Adds the `@astryx.diffViewer.*` keys to the `en` catalog so the lab `DiffViewer` reads its file-status badges, line counts, line-number button labels, per-line \"Added\"/\"Removed\" labels, and empty-state messages from the translation runtime. No existing string changes; locales without a translation fall back to English.",
+      "contributors": [
+        "latxh"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/discover-official-packages.md",
+      "sha256": "f52b9bb37965631029e027923d6ac58a6010fab2b1e2c8f1215d38cf33585c35",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx discover` lists the official Astryx packages, first, from a list each CLI release carries, so a project with no discover source sees the official themes, even offline. Each entry in `meta.available` carries the command that adds it (`install`), so a project that loads no integration and has no discover source of its own, where every query still answers with the list, can add a package straight from it. An official entry's `latest` is the newest release the CLI knows (its own version on a release CLI, or a newer Core release the project has), and its `versions` also list the project's Core version, so both can be looked up. Its add command pins the project's Core version (installed, or declared exactly), else the Core range the project declares (quoted), else the latest release; on a canary CLI with no Core it pins none for packages released with Core, and canary-only packages are listed only beside a canary Core or no Core. Official entries name `Astryx` as their `source`, and `meta.sources` reports the list last. A project's or an integration's source keeps its entry for an official package, and for any package of the same integration. A theme package that the project's own package.json declares as a dependency, under an npm alias too, shows as installed from any folder of the project, and a theme's add text ends with `astryx theme add <slug>`. A version or item that the official list does not show still answers `ERR_UNKNOWN_PACKAGE`, as before.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doc-fluff.md",
+      "sha256": "f120310c5c9ae7cad75296a4ebb5a59a57b94322ecf9270685efb429d12171f2",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`doctor integration docs` (and so `integration check`) lists fluff in a package's prose, in the new `fluff` field: each padding phrase such as \"in order to\", \"note that\", or \"it is worth noting\", with its file line and what to write instead, and each topic of 80 or more prose words in which fewer than half the words carry content. Each is also a `doc_fluff` warning, so `integration check --strict` (new in this release) fails until it is cut; `doctor integration docs` still exits 0. The phrase list and the floor are in the check-your-docs guide (`astryx docs cli/integrations/building-blocks/docs/check-your-docs`). Core's `browser-support` guide loses its one padding phrase, and three of Core's guides (`debug-and-gap-reports`, `sections-and-placement`, `publishing`) are tightened to meet the density floor.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doc-links-components-templates.md",
+      "sha256": "416418d42e49949979adf605478a667efcb26871397e00ec86833440ece81932",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A doc link to a component, page, or block (`{@link component:AcmeButton}`, `{@link @astryxdesign/core:component:Button}`, `{@link block:acme-card}`) now resolves, and reads as the command that opens it: `astryx component <Name>` or `astryx template <id> --type <page|block>`, with `--package` for anything not from Core. Before, every such link printed as written, and `astryx doctor` and `doctor integration docs` warned that it named no doc, for Core's components as for a package's own. A link that names no component or template still warns, and its hint now searches components or templates instead of topics. A resolved link's `route` is null for these kinds, which no `astryx docs` route opens.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-doc-types.md",
+      "sha256": "3947af3ce77e7df24c37249f77be055918c81fbbb1e9efb256be9d8eba89aff5",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx doctor integration validate` now checks every doc an integration ships under its roots (components, templates, docs topics, themes, and their translations, served or not) against the published authoring type for its kind, with the project's own TypeScript, the way `tsc` would. Each unknown field, missing required field, or value outside its field's type is a warning that names the doc, the line, the field, and a fix; the exit code is unchanged. A doc it cannot fully check, or a themes root that does not load, is listed with the reason; test fixtures under `__tests__` in the components or docs root are counted, not checked. JSON adds `data.docTypes`. Without TypeScript the check prints one `[skip]` line instead of passing silently; with a TypeScript it cannot read types with (one with no JavaScript compiler API, such as TypeScript 7), that line names the installed version. With no doc files, it says there is nothing to check.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-prop-comparison.md",
+      "sha256": "c8bb567519df1f457a85d5aa983bb6affcd2221c725bc27bab86312b5c72fb4e",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "chore",
+      "headline": "Internal groundwork for `astryx doctor integration components`: a comparison of the props a component doc documents with the props its TypeScript source declares, read with the project's own `typescript`. Nothing reaches it yet, so the CLI's behavior and output do not change; the command starts running it in a later change, which describes what users see.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-prop-drift.md",
+      "sha256": "447fa1be2ee7877962143eabe2a6baa712335010d037b9740ec0e0ba9fcc7c09",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx doctor integration components` compares each component doc's props with the component's TypeScript props, read with the project's own `typescript`. It warns about a documented prop the code does not have, a prop the package declares that the doc leaves out, and a wrong `required`. Without TypeScript it prints one line saying the comparison was skipped; with a TypeScript it cannot read types with (one with no JavaScript compiler API, such as TypeScript 7), that line names the installed version. The findings are warnings, so the exit code does not change; the JSON response gains `data.propDrift`, and nothing else in it changes.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-prop-types.md",
+      "sha256": "8259aa57c1618bdff0f74a5d96751591b693e7cfcc220e789898877e108eaa60",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx doctor integration components` also judges each documented prop's type against the code, for props the package declares, a documented field such as `status.type` and a name the package's own index signature takes included, and warns when they differ (`type_mismatch`). A type is judged only where both sides read exactly, with the project's own `typescript`: the same text once whitespace, quotes and union order are set aside, or primitives, literals, arrays and unions of those, and names for them. Every other type (a callback, an object, a generic with arguments, an intersection, `keyof`, a type that does not resolve, a name two index signatures take) is listed as not compared, never reported. The comparison needs TypeScript 4.8 or later: with an older one, no type is judged and the text says so in one `[skip]` line. JSON adds `typesCompared`, `typesNotCompared` and, when the types were not judged, `typesSkipped` to `propDrift`. The findings are warnings, so the exit code does not change.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-theme-stylesheet-imports.md",
+      "sha256": "992f7e23cb4110eab64b61cf3777300e99b6e7aa627e8fff741954359c38530f",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx doctor` no longer fails \"Theme owners and built imports\", and `astryx component` no longer stops with \"Could not load the recorded theme\", when an added theme's built module imports a stylesheet, as in `import './ocean.css'`. Node cannot load a stylesheet, so the CLI checks that each imported `.css` file exists, then treats it as empty. It looks for each stylesheet from the theme module's folder, also when a module that the theme imports from another folder names it. Doctor still fails when an imported stylesheet is missing, and when the module has any other problem, such as a missing dependency, a syntax error, or an error thrown while it loads.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-type-text.md",
+      "sha256": "7e6ea9399dfc18bac70923109796e6a96fdb9dca77e9ed18e72769dc82312119",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "chore",
+      "headline": "Internal groundwork for `astryx doctor integration components`: reading two written TypeScript types as one type when they differ only in how they are written (whitespace, comments, quotes, member order, `Array<T>` for `T[]`, parameter names, `React.` qualifiers), and judging a documented prop type against the type the code declares where both read exactly. Nothing reaches either yet, so the CLI's behavior and output do not change.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/doctor-typescript-project.md",
+      "sha256": "ddd19e0e90ac45f751513eeee92352fb2b62ce985caaee7ca82d05fb2abe2f2e",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "chore",
+      "headline": "Internal groundwork for `astryx doctor integration components`: finding the project's own `typescript`, and reading a package's TypeScript project the way `tsc` reads it (its own `tsconfig.json` or a monorepo root's, a solution-style config's references, and the declaration files the config includes), and finding the references in that project the compiler cannot resolve. Nothing reaches it yet, so the CLI's behavior and output do not change.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/drawer-experimental-full-width.md",
+      "sha256": "44a9ed2171639e5bb801544c896cbff275f991d0857ceb93cc2f59e27975a731",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "experimental",
+      "headline": "Drawer's full-viewport mobile coverage ships as experimental: `experimental={{isFullWidthOnMobile: true}}` fills the viewport below 640px instead of keeping the 56px page reveal. Anything inside Drawer's `experimental` prop may change or be removed in a patch release; omitting it keeps the stable behavior.",
+      "contributors": [
+        "imdreamrunner"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/drawer-header-zero-slots.md",
+      "sha256": "1a3e6ef5a7f0ccd7666c9710665290a2b0ee6b16cdf9846cf1fc777f188d82ad",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`DrawerHeader` now renders numeric zero `startContent` inside its start slot and preserves numeric zero `endContent` when no close button is present.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/drawer-self-directed-rtl.md",
+      "sha256": "c45edc306f01a9ff11d558061210acbcfe2f196746714710320dfd12610587e0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Drawer` now slides from the correct logical edge when `dir=\"rtl\"` is set directly on the drawer, matching inherited right-to-left regions.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-divider-host-props.md",
+      "sha256": "9dc043eb3588013ffc83f8dd5c071d56bcb457e1997883e94124a9a97e4beafe",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`DropdownMenuDivider` now forwards host attributes and DOM handlers (`id`, `data-*`, `aria-*`, event handlers) to its separator, as other DOM-owning components do. Before, it accepted only `xstyle`, `className`, `style` and `ref` and dropped everything else, so a separator could not carry a test id or an accessible label. Its `role=\"separator\"` and orientation stay component-owned.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-group-audit-docs.md",
+      "sha256": "e60fbcc973f63b7afd295c7e8562260d199c0ea4cbafa1534c27e9b9693a1cfd",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Document DropdownMenuGroup's complete wrapper props, group semantics, and non-interactive heading guidance.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/dropdown-menu-lazy-touch-sheet.md",
+      "sha256": "6954fd0266d42d17422077b1ff4e7a2ab53c6f2c8b659f7fa5e5b8cffd785d25",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "DropdownMenu: load the touch bottom sheet only when a menu shows it",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "`DropdownMenu` imported its touch sheet (BottomSheet, its gestures, and the touch action list) up front, so every page with a dropdown shipped it, even when the menu only ever opens as an anchored popover. The sheet now loads on demand, the way `ContextMenu` already loads it. A popover-only dropdown's own code drops by about a third (about 23 KB gzipped). Bottom-sheet and adaptive menus behave as before. The sheet starts loading when the trigger mounts, and a menu opened from the keyboard before it arrives still focuses its first action once it loads."
+    },
+    {
+      "path": ".changeset/dropdown-menu-region-stops.md",
+      "sha256": "b72dcdd7331495f3b70520c32c1be359f3cc8d266b3bd84c5c1860b6688cd167",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "chore",
+      "headline": "Internal groundwork for a sub-menu's header and footer: `DropdownMenu`'s Tab walk through its header, menu and footer moves, unchanged, into a module of its own, so another menu level with regions can share it. `DropdownMenu`'s behavior does not change.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/empty-state-nonrendering-slots.md",
+      "sha256": "07080fa6903286e196cf188f725885a4230051a0392b3129ec7ab7c0dc3462b6",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`EmptyState` no longer leaves blank icon or action spacing when those optional slots receive a boolean or an empty string. An empty description also omits its theme target. The docs now describe configurable heading levels and map the container anatomy to the public theme target.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/field-audit-docs.md",
+      "sha256": "2409fbaa8550c1daf8e9d4b0838f07b02ed84ee15468872c3628de50ae1ec18e",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep `Field`'s horizontal-label layout marker authoritative when callers pass conflicting data attributes, and keep hidden descriptions visually hidden in that layout. Correct its custom label-icon type, all three status placements, complete anatomy, and guidance for controls that cannot safely use attached status.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/field-label-audit-docs.md",
+      "sha256": "6d63c4a2bf45fe9540876f8ca158ea237938b39b52d83cbf85dfaee15e8bb4f3",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Document FieldLabel's complete public prop surface, group-label semantics, and supporting descriptions.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/field-status-hydration-entry-animation.md",
+      "sha256": "a615dc2cb14daa6505b909e05958605621c12c1f89ce01784e91fdceda77fa49",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`FieldStatus` (and any element using `useEntryAnimation`) no longer causes a hydration mismatch on server-rendered pages. An element that arrives in the server's HTML now hydrates without the entry style and never plays its entry animation, even when hydration runs after the page has painted; elements mounted after hydration still animate. `useEntryAnimation` no longer documents server rendering as unsupported.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/form-layout-audit-docs.md",
+      "sha256": "f89ba0a96567a6440c03b7d494c53165fa12ee6eb620854fb7859df3f1ee85ab",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Make `FormLayout` documentation match logical fractional grid tracks and viewport collapse, and make the public layout target discoverable from component anatomy.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/form-layout-direction-metadata.md",
+      "sha256": "73c691cfe42eca3128341f9dc6fb3cb34a41a9032fa0e7bd2ab265188cfbc5f1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep `FormLayout`'s direction metadata authoritative when callers pass conflicting data attributes.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/grid-audit-docs.md",
+      "sha256": "fb2d760b077dbe4d010cecf608c17b486e872bd73fda33f2318e21b3054a3f91",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Make `Grid` and `GridSpan` documentation match fractional track sizing, responsive repeat behavior, implicit rows, and explicit-column spans.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/grid-span-min-content-overflow.md",
+      "sha256": "c7a0aa56ff9771240b3eaad3289573d7abba92a9a6c0a4ba4b6006bc847d89b3",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`GridSpan` keeps its content inside the span. A child whose min-content width is wider than the span, such as a `Tokenizer` with a long token, used to stretch the span's column past the grid cell; it now gets the span's width and truncates the way it does outside a Grid (#7438)",
+      "contributors": [
+        "WeAreResilience"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/grid-theme-metadata.md",
+      "sha256": "f5284ed7f0b106476da4b9105c525a382b6ca80448ab032a8dda13788f219f3e",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep `Grid`'s theming metadata authoritative when callers pass conflicting data attributes.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/hook-doc-use-combobox.md",
+      "sha256": "9dd301af3300cd2c81fa0179727d3d70354eaf3c14cd072fe6b1192a8d7d8cc4",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "`useCombobox`, the single-select combobox hook exported from `@astryxdesign/core/Selector` that powers `Selector` and `CommandPalette`, now has hook docs, so `astryx hook useCombobox` and `astryx search combobox` return it with its options, its return fields, and how to wire `aria-activedescendant` while focus stays on the control.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/hook-doc-use-multi-combobox-opening.md",
+      "sha256": "ff5ee865a96eba0fb7482be700a4a4df66fb18629cc6ba3688f65bed5391e05e",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The `useMultiCombobox` hook docs now say that ArrowDown or ArrowUp opening the list lands on the first or last option even with `hasSearch` or a disabled end option, and that the hook still handles Home and End with `hasSearch`, so a search input that keeps those keys for the caret stops them first and relies on PageUp and PageDown.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/hook-doc-use-multi-combobox.md",
+      "sha256": "01a8eef6b0f1de5ef7bf5402eafb781833442f70784b1c1a1ef224bed46a95c9",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "`useMultiCombobox`, the multi-select combobox hook exported from `@astryxdesign/core/MultiSelector` that powers `MultiSelector`, now has hook docs, so `astryx hook useMultiCombobox` and `astryx search combobox` return it with its options, including the grid rows with an action cell, its return fields, and how to wire `aria-activedescendant` while focus stays on the control.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/hover-card-hide-latch.md",
+      "sha256": "f7366eed3ab0c8aeae719b8d44ad590094098b6c43d9dd07b0b7424921b308b6",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`useHoverCard`: closing a hover card with `hide()` or Escape while the pointer rests on the card no longer leaves the next open stuck. The hook kept believing the pointer was still over the card, because a card closed that way unmounts without a `mouseleave`, so the trigger's next hover-open never closed on leave or after `hideDelay`. Both paths now clear that state, as the touch dismissal already did.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/integration-check-required-in-guides.md",
+      "sha256": "30d83c7b2e355cc09657c87c9637bb29f18e0f2cc05f593a6885036394b2a3fe",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The integration guides make `integration check --strict` a required step in every integration's build: the quick start installs `typescript@6` (the checks need its JavaScript compiler API, which TypeScript 7 does not ship) and adds \"Check it in every build (required)\", the Build an integration overview says so, and the checks guide's section reads \"Run every check in every build (required)\".",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/integration-check.md",
+      "sha256": "070c4e243042f03abac9200308ac5e7b1486b139afc9cef0d910ab07e67f46d1",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "New `astryx integration check`, the CI check for an integration package's own build. It takes no package argument and checks the integration package in the current folder. It runs the four `doctor integration` checks (`validate`, `components`, `templates`, `docs`), prints each result, then a summary, and exits 1 when any of them would. `--strict` also exits 1 on any warning and on any check that did not run, such as a package with no `astryx.integration.*`: add `\"typecheck\": \"tsc --noEmit && astryx integration check --strict\"` to package.json so every build keeps the package's docs in sync. Its exit codes and JSON are a contract for the builds that run it: from this first release on, a new check, or a new failure code, joins only in a minor release named in the release notes. JSON: a new `integration.check` envelope carries each check's own envelope unchanged. Its docs say to run it in CI, so `astryx search ci` finds it. The `doctor integration` subcommands keep their exit codes; their JSON gains only additions.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/integration-guides-cleanup.md",
+      "sha256": "07f1c04862d415cdd6970c03ce5259292b549caf6d2e79583ebddb16218c6caa",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The `astryx docs cli/integrations` guides and `astryx docs authoring` now match the current CLI, and the guides point to the matching `astryx docs authoring <section>` for every field instead of repeating its tables.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- Old-CLI notes name the published releases that behave that way: template `replaces`, links, docs sections, section `id`s and typed theme descriptors work from 0.6.4, and template `keywords` from 0.6.6. `integration verify` still names the CLI range to declare.\n- The quick start makes the package an ES module, so a theme it builds can be imported.\n- Samples and output that had drifted are fixed, among them the subcomponent imports, a theme that extends another, and the upgrade output.\n- The Authoring Reference corrects how an invalid `astryx.config` is handled, the `issuesUrl` format, where codemod files go, and which fields nothing reads yet. Its examples use the `export default {type: ...}` form that `integration add` writes.\n- `astryx docs cli/integrations` links to the Authoring Reference, and the reference links back to the guides.\n- `astryx docs styling-overview` and `tokens-and-setup` give the real symptom of a missing StyleX compiler: importing a swizzled component throws an error that starts `Unexpected 'stylex.create' call at runtime`."
+    },
+    {
+      "path": ".changeset/integration-template-doc.md",
+      "sha256": "a011150e24e896b7825f57d67e206b873c143b451b79c965c1180b31cf2c3cd2",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Three new published types describe an integration package's templates: `IntegrationPageTemplateDoc` and `IntegrationBlockTemplateDoc`, each with every field of its `TemplateDoc` member but `category` as the package's own string instead of a `TemplateCategory` value, and their union, `IntegrationTemplateDoc`. `@astryxdesign/cli/authoring` exports `IntegrationTemplateDoc`; `@astryxdesign/cli/doc` and `@astryxdesign/cli/template` export all three. `TemplateDoc` is unchanged.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/internationalization-provider-contract.md",
+      "sha256": "214c29837663e304c3a8e0e23e29e6778688f0d9a2605aecbedbfa575339fb5e",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "InternationalizationProvider documentation now names its nonvisual provider boundary so the new component contract can map its anatomy without implying rendered DOM. (#6048)",
+      "contributors": [
+        "nynexman4464"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/iso-week-number-dst.md",
+      "sha256": "51207b17ae07da3cf955ab3d89254fa93fe363c6c13a2b4eb7eaeb57cc4510b5",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Compute ISO week numbers (`Calendar hasWeekNumbers`, `getWeekNumber`) on UTC anchors instead of local-time `Date` arithmetic. In timezones whose DST ends after New Year (Sydney, Auckland, Santiago), the local-millisecond difference between the week's Thursday and January 1 carried the DST offset, and in years whose January 1 is a Friday that extra hour rounded a whole week up: the entire ISO week 14 of April 2021 displayed as week 15. Week numbers are now identical in every timezone.",
+      "contributors": [
+        "ManoharPaturi"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/item-align-first-line.md",
+      "sha256": "b5310c68197d67f75d47d392153ae8c280f1f3bd89ddac3c9391db1612e8b156",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`Item` accepts `align=\"first-line\"`, which centers each start and end slot on the label's first line. A small status dot, radio, checkbox, or timestamp beside a wrapping label now stays level with the first line, where `center` drops it to the middle of the row and `start` leaves it above the line. A slot taller than the first line moves the text down rather than leaving the row, and a one-line row with no description looks the same as `center`. `ListItem`, `RadioListItem`, and `CheckboxListItem` accept the same `align` and pass it to their row. Themes can style these rows through the `item` target's `align` axis. The default stays `center`, so existing rows don't change.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/lab-comment-composer-catalog.md",
+      "sha256": "1015f8db486166464dff4720128bffe12da02fbbe10ca8d7c6ff0f14a74427a1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "i18n catalog: add the English messages used by the Lab CommentComposer for its input, image upload, inline quote, emoji action, cancel action, and retry affordance.",
+      "contributors": [
+        "ernestt"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/lab-comment-thread-catalog.md",
+      "sha256": "7d78833539a10de5fcea4a1662ef40164179531aa4d90dd0df681cc75fb1bb51",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "i18n catalog: add the English messages used by the Lab CommentThread for replies, reactions, edit history, resolution, errors, comment actions, and the unsaved-draft warning it announces when a dismissal would discard a reply or edit.",
+      "contributors": [
+        "ernestt"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/lab-comments-catalog.md",
+      "sha256": "e6235d3aec2381e824269b0ba702ba844a6b1c6777d19f2375f95c2870dc662c",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "i18n catalog: add the English messages used by the Lab Comments panel for its region, empty/loading states, pagination, and posting errors.",
+      "contributors": [
+        "ernestt"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/lab-emoji-picker-catalog.md",
+      "sha256": "ea47a54f00e94dca317a6abf54f0c00421c83784d78cde8ecc954440daa2b564",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "i18n catalog: add the English messages used by the Lab EmojiPicker so locale catalogs and provider overrides can replace its labels, search status, loading state, and group names.",
+      "contributors": [
+        "ernestt"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/layer-cap-dynamic-viewport.md",
+      "sha256": "9a9df3be4ed246462406d3a5325a5733961f92fe8a041b4787556f4a555991a1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Anchored layers (`Popover`, `DropdownMenu`, and every component built on them) now keep their safe-area gutter and dynamic-viewport size cap in the shipped stylesheet. The compiled CSS referenced an undefined variable for the preferred value, so every browser used the fallback: on a phone with a dynamic toolbar or a notch, a tall layer could run past the visible screen or under a declared bottom bar. Desktop sizes are unchanged.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/list-edge-codemod.md",
+      "sha256": "8edeb0e01ee59b67d18c0673dbec7bc00ca24c38bda59869d38a553c0c75d72d",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx upgrade` renames a static `edgeCompensation=\"inline\"` on `List` to `edge=\"outset\"`, and drops `edgeCompensation` beside an `edge` that is a fixed string. It keeps `edgeCompensation` with a `TODO(astryx upgrade)` comment where it can't prove the result: where `edge` is computed (it may be undefined, and then `edgeCompensation` still applies), on a dynamic `edgeCompensation` value, and where the `List` also spreads props, which may set `edge`. The deprecated prop keeps working there.",
+      "contributors": [
+        "kentonquatman"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/list-edge.md",
+      "sha256": "5163f86ed9506adb9453401fc3f07799a2a3436267fc8a0b73b66d5a8d910e71",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`List`: add `edge` to choose where each row's text, dividers, and hover and selection backgrounds sit. `padded` (default) keeps today's look. `flush` drops the rows' side padding, so text and dividers start on the same line as the list header and a heading above, with no container needed. `outset` keeps backgrounds' room around the text while reaching into the padding of a Card, Section, or Dialog, so text lands on the heading's line. `bleed` reaches rows to the container's edges with square corners, like Table rows in a Card. `edgeCompensation=\"inline\"` is deprecated in favor of `edge=\"outset\"` and keeps working; its rows' outer room is no longer cut off by the list's swipe clip. Run `astryx upgrade` to rename it.",
+      "contributors": [
+        "kentonquatman"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/listitem-label-doc-type.md",
+      "sha256": "8854dc15cc96c423b6ed5861a13ccfff6ec0bcfda1a4519f77f951daf7fbeb2d",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "`ListItem`'s docs now list `label` as a `ReactNode`, matching its props type: a string is truncated to one line, and any other node renders as given. They used to say `string`, which told readers a rich label had to be restructured away.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/markdown-frontmatter-plain-fields.md",
+      "sha256": "f63e9f9f10077f0beef2cde03a369bb4dce33fa5cf97f305f003e684d5a0becd",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`createMarkdownFrontmatter` now hands its `parse` function a plain object, so a parser that returns the decoded fields unchanged (`parse: fields => fields`) is accepted as metadata. Before, the record had no prototype, failed the JSON-like metadata check, and the document fell back to readable text with its frontmatter still showing.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/mcp-setup-instructions.md",
+      "sha256": "f6123c3039fa01896c5e67157d244613d854a7d03d23d76084a005a3b458b1bd",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "Fix the MCP setup snippet in working-with-ai — \"type\": \"url\" is not a transport type, and Claude Desktop adds remote servers through Connectors",
+      "contributors": [
+        "Kyujenius"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/multiselector-action-cell-ring.md",
+      "sha256": "281342410debeab70eefb5ec3dc640191bed6d7a64689a15f4034216c1f1a3f0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`MultiSelector`: the row action cell the keyboard reaches with the inline-end arrow draws the standard focus ring. Before, its outline read four CSS variables that nothing declared, so no ring showed on the active action cell.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/pagination-compact-first-last.md",
+      "sha256": "2cccf6f721497c0aba8dabc232f65b6423a954035e056905c0ca14c43ad86b95",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`Pagination`: `variant=\"compact\"` shows first/last buttons around previous/next when `hasFirstLast` is `true` and the page count is known. Compact still omits them by default, and the `input` variant still shows them unless `hasFirstLast` is `false`.",
+      "contributors": [
+        "nynexman4464"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/powersearch-clear-all-filters.md",
+      "sha256": "a4fcd0150b2cd720e84764810f039dd88bcbd55a23bda4b01cedb40b1fe59ce4",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "PowerSearch: clear every filter with one press of the clear-all button instead of removing only the last filter.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/powersearch-token-mouse-focus.md",
+      "sha256": "26364d2a4e04a25911592ccae7486cc059b0f4e66dd3c15c6d7296bb2daada1f",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Prevent pressing a built-in PowerSearch filter token with the mouse from opening search suggestions before the filter editor. Token editing, removal, and keyboard navigation retain their existing behavior.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/promote-drawer-to-core.md",
+      "sha256": "cb1edd75d80da9919f668e701da17b3edf0e4f37af5467c49adf9b8a296815bd",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "component",
+      "headline": "Promote `Drawer` and `DrawerHeader` from the canary-only Lab package to Core, imported from `@astryxdesign/core/Drawer` or the package root. The stable package now ships the full-height side panel with modal and non-modal presentation, the shared dismissal stack, Dialog's `purpose` dismissal policy, a `DrawerHeader` whose close button appears when given `onOpenChange`, and Dialog-style container padding (`--spacing-4` by default, `padding` prop, or a theme's `drawer` padding), plus Core documentation and runnable examples. Canary users importing from `@astryxdesign/lab` switch to `@astryxdesign/core/Drawer`.",
+      "contributors": [
+        "imdreamrunner"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/quiet-power-search-value-disabled.md",
+      "sha256": "64b38c82010dd62dd4be439c3da95a70110de71d7d664f665059ddfe98454958",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Keep built-in PowerSearch value controls disabled in read-only filter editors, matching custom editors.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/radiolist-caller-labelledby.md",
+      "sha256": "474faf437f7d6bfa1ac4644028715d8fa4a013a50f72499ba656cda50325d580",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "RadioList keeps a caller's `aria-labelledby`. The radiogroup always replaced it with its own label id, so the caller's ids never reached the accessible name. The group is now named by its label and then the caller's ids, the same order TimeInput uses.",
+      "contributors": [
+        "harjothkhara"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/reset-list-marker.md",
+      "sha256": "43a21aa8d6a94d268f0e354183710ce94b36ddf34ec9ee851c0227ebd77eeab1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`reset.css`: in Chromium, the dropdown marker of an `<input>` with a `list` sits in the middle of the field. Chromium sets the marker on the field's line-height, so above a line-height of 1 it sits low, and the reset makes every field inherit the page's 1.5: the marker sat 3.5px below the middle of a 40px field, and further down on taller lines. Date and time fields, whose calendar icon uses the same part, keep their icon where it was. To keep the old placement, add `input[list]::-webkit-calendar-picker-indicator { line-height: inherit; }` after the reset.",
+      "contributors": [
+        "vjeux"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/restore-dialog-focus-to-opener.md",
+      "sha256": "45046aeef189878677d882dcd62f24f95072edee36e21a49d928be49fce288b2",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Restore focus to the element that opened a Dialog when its content mounts in the open commit. The opener was captured in the Dialog's passive effect, which runs after a freshly mounted DialogHeader's autofocus effect had already moved focus to the dialog's own title — closing then restored focus to that detached title and the user's focus landed on `<body>`. The capture now runs in a layout effect, before any descendant's passive effect. (#5637)",
+      "contributors": [
+        "ManoharPaturi"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/richtext-editor-doc-field-props.md",
+      "sha256": "b0db62bdb8462257d3639696de6aafb4e15f5203a49d52a662cbd554ed0109c5",
+      "packages": [
+        {
+          "name": "@astryxdesign/richtext",
+          "bump": "patch"
+        }
+      ],
+      "category": "docs",
+      "headline": "The `RichTextEditor` docs now list `isOptional`, `isRequired`, `labelTooltip` and `namespace`, four props the editor already accepted, so `astryx component RichTextEditor` and the docsite props table show the Required/Optional indicator, `aria-required`, the label tooltip and the Lexical namespace.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/search-compound-names.md",
+      "sha256": "f7582f26b7728698c62f9ed2f8db1c932ad59893a96721e66517186047eab97d",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx search` finds more of what a reader means when the words differ from the catalog's.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- Adjacent query words that join into a component, hook, or template name, or into a one-word keyword, match it: `table header cell with sort arrow` finds `TableHeaderCell`, `tree view folders` the `treeview` keyword, and a hook answers to its words without `use`. Most of a name, a name's leading words, or a run of its words also count for components and hooks, a step below the full name.\n- A query that is one camelCase identifier and matches nothing as typed is read as the words it spells, so an unknown API name such as `useTablePaginationState` reaches `useTablePagination`. In a query of several words each identifier stays one term.\n- When the whole query is an entry's name, these readings add no near siblings beside it. A match on a joined keyword never ranks above an entry the query names, and a match on part of another name does only when it spans more query words than that entry's name.\n- A gerund matches its verb (`spacing` and `space`, `dragging` and `drag`), and a plural can start a longer word through its singular (`tokens` and `Tokenizer`).\n- Core component docs declare more keywords: other libraries' names (`scrollarea`, `togglegroup`, `pageheader`, `splitpane`, `circularprogress`, `linearprogress`, `commandmenu`, `relativetime`, `sidesheet`, `descriptionlist`, `inlinecode`) and common glyph names on `Icon`, since any icon library's glyph renders through it.\n- The JSON shape is unchanged."
+    },
+    {
+      "path": ".changeset/search-doc-keyword-names.md",
+      "sha256": "1443cf85deb1c7eddcb7e3151b55e57f2c470f37f5cc0befea10ec1255fb9915",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx search` keeps a guide first when the query is a phrase of two or more words that the guide declares as a keyword. `font size` and `font weight` now open the font setup guide before the Text component, and `dark mode` opens the theme guides before the theme hooks. A component whose name is the whole query still comes first, one-word queries are unchanged, and the code terms and table cells in a reference doc don't count as its keywords.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/search-names-over-aliases.md",
+      "sha256": "62d91b073e12f86795f0ae5bba0db5339c876c86eebf03e52619e20f2def34b7",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx search` ranks a match on more of your words above a shorter named entry.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": "- A match on part of a longer name that reads more of the query than the entry the query names is no longer held below it: `dropdown menu radio options` leads with `DropdownMenuRadioItem`, not `DropdownMenu`.\n- `useResizable` drops the `splitview` keyword, which put it ahead of the side-panels guide."
+    },
+    {
+      "path": ".changeset/sidenav-item-row-classname.md",
+      "sha256": "c4aa3bb0427e8a2f0e179ae0e0da4b03171aad0cd9492f9d0dc2d436645695f5",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`SideNavItem` keeps a caller's `className` on its row element (the link or button, and the collapsed rail item) next to its own classes. Before, the row's generated class replaced it, so a class passed to style the row (for example, a cursor while a row is dragged) never reached the DOM, even though `style`, ARIA, data attributes and handlers did.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/sidenav-nested-full-width.md",
+      "sha256": "9458fa54c49487507b49130a751df369a528b45dd5c6956e2a74c725fa50b123",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`SideNavItem`: nested items now span the full width of the nav list, like top-level items, so their hover and selected fill lines up with the rows above them. Before, a nested item started 24px in from the list edge. The indent now sits inside the row, one `--spacing-6` step per nesting level, so icons and labels stay exactly where they were. The indent area is now part of the nested row, so it shows hover feedback and clicking it activates the item. Content placed directly inside a `SideNavItem` that is not itself a `SideNavItem` is no longer inset by the children group. There is no supported way to keep the old inset look.",
+      "contributors": [
+        "kentonquatman"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/small-token-remove-target.md",
+      "sha256": "3e8c87fd126623a3af93ac08809276c36edb8876010d9899ead50ff0704e1aa0",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Shrink Token's invisible remove-button target from 44px to 24px without changing the visible icon. Clicking adjacent text or values in PowerSearch now edits the filter instead of accidentally removing it.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/stray-doc-pointers.md",
+      "sha256": "ea38c3aa529d0b93cfcf84f9cdb64b65e11cefde547df080f9309b91ed532725",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx doctor integration docs` lists each code span in an integration's prose that is exactly `astryx docs <name>` for a doc that exists, and says which `{@link}` to write instead: `{@link generic:<name>}` for the package's own topic, `{@link @astryxdesign/cli:generic:<name>}` for Core's. The link prints the command that opens the doc, and doctor's link check fails it if the doc goes away. A command with more words, a route, or a code block is not listed. Each is a `stray_doc_pointer` warning, so `astryx integration check --strict` fails on it, and is in the new `strayPointers` field; `doctor integration docs` keeps exit 0. Core's own guides point with links, and a test keeps them that way.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/strict-list-once.md",
+      "sha256": "6c3132b5c7c81ae911936e5021e5d12dc59cc3c9f0db21210c359d83e141a924",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx integration check --strict` prints each finding once. The checks' own output shows its message and fix, and the closing \"Failing under --strict\" list names each failure by check, code and place only, so a long report is no longer doubled.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/submenu-light-dismiss.md",
+      "sha256": "80738643ab02b24ca4293b4ed95f455056cc373c38978dc901d8e6fc8587d256",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "DropdownMenu submenu flyouts close with their menu when it is light-dismissed: previously a submenu opened by tap or a fast click stayed open (and re-anchored to the viewport corner) after the menu was dismissed and reopened. A hover-open scheduled on a submenu trigger before the menu closed from elsewhere is also cancelled, so it can no longer reopen a flyout behind the dismissed menu",
+      "contributors": [
+        "Pushpak731"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/switch-caller-describedby.md",
+      "sha256": "c6b0bbeed71b26ce855d9b1b5c53a06a7ccb1d65d95e4556780d5ac2d1faa184",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Switch` now adds a caller's `aria-describedby` to the switch control, ahead of its own description, status, and disabled-reason ids. Before, the value landed on the field wrapper, so a hint rendered elsewhere on the page could not describe the switch to assistive technology.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/switch-caller-labelledby.md",
+      "sha256": "c3126bd31303a65e6b5d08a00011a18d6293972fa2ae67cfeb7cd2ac82021734",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Switch` now puts a caller's `aria-labelledby` on the switch control. Before, the value landed on the field wrapper, so a visible title elsewhere in the row could not name the switch for assistive technology.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/tab-menu-host-attributes.md",
+      "sha256": "d306ac6dc70a6893a51a6cfa5641b781914a78b8e85e5e3a9a3b15aa39a68a1d",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`TabMenu` passes host attributes and DOM event handlers to its trigger button. The trigger keeps its button semantics, tab stop, and menu disclosure attributes; a caller's `onClick` runs after the menu toggle.",
+      "contributors": [
+        "korkt-kim"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/table-cell-boundaries.md",
+      "sha256": "95bd88b8bd50a80808e735a45649eea99750e98f43f92c796a47bdad7df12984",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        },
+        {
+          "name": "@astryxdesign/richtext",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "Tables draw a line on every cell edge, not only between rows, on both `Markdown` and the RichText surfaces, and the grid closes at the table's rim. A reader following one row across never needed vertical lines, but someone editing a table has to aim at a cell and judge where a selection stops, and the empty 3×3 a toolbar insert produces was three horizontal rules with no sign it had three columns. The line is the same `--color-border` already used between rows, the rim merges with it into one rule rather than doubling at the edge, and both surfaces move together — the read and edit renderings match block for block, more closely than before.",
+      "contributors": [
+        "potatowagon"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/table-filter-view-tabpanel-label.md",
+      "sha256": "415dfa0737620e82a20f4e7c91c1232cd5cf6ac7a8f09ced59da5e0949245ef3",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "The `table-filter` page template's phone-width view-options panel is now labelled by its selected tab (`aria-labelledby`) instead of a fixed `aria-label`, so screen readers get the panel's name from the tab that controls it and the tab–panel relationship resolves in both directions.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/template-source-without-doc.md",
+      "sha256": "9d80dfc904b2d6d7ca80a719959b14cdd8c58ab942b0efa63af55515277df381",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`astryx doctor integration validate` and `astryx integration check` now warn `source_without_template_doc` when a `.tsx` directly in an integration's templates root has no same-stem template doc, so `astryx template` would never list it. The warning names the file and the doc to add. Files in subfolders, such as helpers a template imports, and test, spec or story files such as `stray.test.tsx` are not checked; a dotted template id such as `landing.page.tsx` is, and `integration check --strict` fails on the warning.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/text-truncation-follows-content.md",
+      "sha256": "1a5b01eb80bee4bcc23800d23cba6f4a27d86cbc1f30c6cab3d020efc9cba810",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A truncated `Text` or `Heading` (`maxLines`) now re-measures when its content changes, not only when its box resizes. A fixed-width single-line status whose message changed kept showing the first message in its truncation tooltip, and a new short message could keep a tooltip while a new long one lacked one. `useTruncation` now also observes the element's text, so the tooltip text and the truncated state follow the current content.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/text-truncation-tooltip-off-no-measure.md",
+      "sha256": "f5449939ac1dbe76667fddbbb549d90c634bceb7cd5a41c25d1ce5ea38130484",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "perf",
+      "headline": "`Text` and `Heading` with `maxLines` and `hasTruncateTooltip={false}` no longer measure their text or observe it for resizes and content changes. Only the tooltip uses that measurement, so with the tooltip off the text is cut by CSS alone, and a long table of truncated cells no longer pays a layout read per cell. Rendering is unchanged; with the tooltip enabled (the default) nothing changes.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/theme-build-check-reads-outside.md",
+      "sha256": "202e33dda2ce73c26a8d5219f1c936f4c0658fa8436c68c92fc6d8af6731b46c",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx theme build --check` and `themeBuild({check: true})` keep comparing outputs outside the working directory, as the latest release does, rather than refusing them with `ERR_PATH_TRAVERSAL` the way a build does. Check mode writes nothing, so the write confinement of `architecture:cli-surface/INV10` and `INV10a` does not apply to it: an absolute `--out` path outside the working directory, a theme file outside it whose outputs sit beside it, and `--family` with its root theme file outside it are each checked read-only. A relative `--out` path that escapes the working directory is still refused, as before. Builds keep refusing every one of these writes, so when such outputs are stale, the report no longer ends with a `Rebuild with:` command the build refuses. It names the nearest directory that contains the theme files and the outputs, and the build and check commands to run from there: each output's `Source:` header records the directory its build ran from, so the check passes only from that same directory. Stale outputs inside the working directory keep the `Rebuild with:` line.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/theme-build-confine-outputs.md",
+      "sha256": "b823176709530968cccc1da6223b53deb3084230fdb91ea7a1503d2aa404a937",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx theme build` and `themeBuild()` now write only inside the working directory (`cwd` for the API), as `architecture:cli-surface/INV10` requires; under `architecture:cli-surface/INV10a` the refusal is a compatible fix. Each of these builds now fails with `ERR_PATH_TRAVERSAL` before anything is written: an absolute `--out` path outside the working directory, a theme file outside it whose outputs would go beside it, and `--family` with its root theme file outside it. Paths inside the working directory still build, including through a symlink. To migrate, run the build from a folder that holds the theme file and its outputs, or pass an `--out` path inside that folder; API callers pass a `cwd` that holds them.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/toggle-button-caller-onclick.md",
+      "sha256": "ae1d54f255094fd79a97492aec4e3f4c54fd7594e26f26f9f74b49341a553c48",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`ToggleButton` keeps toggling when it also receives an `onClick`, for example from a wrapper that renders it as its trigger. That `onClick` used to replace the toggle's own click handling, so `onPressedChange` never ran and a `ToggleButtonGroup` member never asked its group to toggle (`pressedChangeAction` still ran). The caller's `onClick` now runs first and the toggle request follows. On a standalone `ToggleButton`, calling `preventDefault()` in that `onClick` cancels the request: neither `onPressedChange` nor `pressedChangeAction` runs.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/tooltip-disable-drops-pending-show.md",
+      "sha256": "5f83fe11267cba9a577af69ebd2189d9e22e025010024bf1cc55c88c3704a562",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`useTooltip` (and every component built on it, such as `Button`'s `tooltip` prop) now drops a show that is still waiting out its delay when `isEnabled` turns `false`. Before, hovering a trigger and then disabling its tooltip within the delay let the timer fire anyway: the tooltip opened after its triggers were turned off, with no pointer-leave listener left to close it. A pending hide still runs, and an enabled tooltip is unchanged.",
+      "contributors": [
+        "cixzhang"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/tooltip-svg-trigger-opens.md",
+      "sha256": "6177f8b2f7e5f6371cbb69bd186ce780b5d86658a4586e036fdbe3d835d0edc1",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "Tooltip: an icon-only trigger now opens instead of throwing. The layer passed its trigger to `showPopover` as the invoker `source`, which the Popover API declares as an `HTMLElement`; a caller-rendered icon is an `SVGElement`, whose dictionary conversion throws before the popover opens, so the hint never appeared. An icon trigger now reaches `showPopover` without a source — positioning is unchanged, since the layer is anchored by its anchor-name pair, and only the invoker's focus order is given up.",
+      "contributors": [
+        "rapsealk"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/topnav-drawer-collapsed-inert.md",
+      "sha256": "205d532786f4f72ccf823d925b2d118b74f5cd91a451f80c5bd73e95e15f5659",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "A collapsed `TopNavMenu` or `TopNavMegaMenu` section in the mobile drawer is now `inert` and hidden from assistive technology, so Tab no longer moves focus onto links that are not shown and screen readers no longer list them under a section announced as collapsed.",
+      "contributors": [
+        "kyu-rong"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/topnav-drawer-focus-ring-clip.md",
+      "sha256": "19df2a7f1c07b0e0a707498b8b6eceb71c56172cbe94a10fe2ac4ca2e8499c5b",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "An expanded `TopNavMenu` or `TopNavMegaMenu` section in the mobile drawer no longer clips the focus ring of its items. The section still clips while collapsed and while it animates open or closed.",
+      "contributors": [
+        "kyu-rong"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/treelist-nested-full-width.md",
+      "sha256": "91017d4712cce176584dabd7284adc9a43706c0b5e1cb72943166e7919df2df2",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "`TreeList`: nested rows now span the full width of the list, like root rows, so their hover and selected fill lines up with the rows above them. Before, a nested row started at its indent. The indent now sits inside the row, so chevrons, icons and labels stay exactly where they were. The indent area is now part of the row, so it shows hover feedback, and clicking it activates the row: clicking a folder's indent toggles the folder, and clicking a row whose only action is its link anywhere outside its label follows the link, as Enter already did: modifier keys are kept, so Cmd/Ctrl-click opens a new tab, and a middle-click opens one too. Controls in a row's start or end content keep their own clicks, including role-based ones such as a `role=\"switch\"` element, which no longer also toggle the row or run its `onClick`. Guide lines draw above the rows, so a hover or selected fill doesn't break them, and they let clicks pass through to the row underneath. The one exception is a row with keyboard focus: it draws above the guides so they never cut its focus ring, which means that if it is also filled (selected or hovered), its fill covers the guides at that row. Padding set on a row through the `tree-list-item` theme target or an item's `className`, `style` or `xstyle` still composes with the indent. `--tree-list-indent` still retunes the indent step. There is no supported way to keep the old inset rows.",
+      "contributors": [
+        "kentonquatman"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/typeahead-searchsource-clear-loading.md",
+      "sha256": "24d77e3fa13b9c3f45a4b3d1dfb87377fdd6ed6b6e97043fbb15571de93f2b2c",
+      "packages": [
+        {
+          "name": "@astryxdesign/core",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`Typeahead`, `Tokenizer`, and `PowerSearch`: clear loading state and stop busy indicator when search source is replaced (#7457)",
+      "contributors": [
+        "Geervan"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/typescript-fix-in-skip-reasons.md",
+      "sha256": "3268ad491fd52f6cff3fbe5f77a7a777c954e5032b726e376367db2f54d3ec8b",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "feat",
+      "headline": "The doc-type and prop checks in `integration check` and `doctor integration validate|components` read types with `@typescript/typescript6`, the TypeScript 6 API package TypeScript publishes for tools, when the project installs it and its own `typescript` is missing or has no JavaScript compiler API, as TypeScript 7 does. When no usable TypeScript is found, the skip reason now ends with the remedy: add `@typescript/typescript6` on TypeScript 7, or install TypeScript 5.0 through 6 (`npm install -D typescript@6`).",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/upgrade-cli-older-than-core.md",
+      "sha256": "f19d57afa7acfed82f1c8409299af28b7fca93909189c7b6d480ffc2ea7018c6",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx upgrade` no longer reports your code as up to date when the CLI is older than the installed `@astryxdesign/core`. Core codemods ship inside the CLI, so an older CLI has none for the releases after its own version. It used to print \"No changes needed\" and \"No codemods available for this version range\" and exit 0 while the code still needed those releases' migrations. It now warns once that it cannot finish, prints the same upgrade pinned to the CLI release that matches your Core (such as `cd <project> && npx @astryxdesign/cli@<core-version> upgrade --from <old-version> --path <source-dir> --apply`), and ends with \"Upgrade incomplete\". That command changes to the folder the run used and names the directory it scanned as an absolute path, both with symbolic links resolved, so it upgrades the same code wherever you paste it. It is written for a POSIX shell, or for PowerShell on Windows. `upgrade.status` (`no_codemods` and `config_fixable`) and `upgrade.run` gain an optional `cliBehindCore` field with `cliVersion` and `command`, present only in that case. The codemods the CLI has still run, and the exit status and every existing field are unchanged.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    },
+    {
+      "path": ".changeset/verify-theme-module-own-styles.md",
+      "sha256": "caf8d0df43e68c246cddc5780d8ac41f5a764b349453d1cda064f2b72e3bda5a",
+      "packages": [
+        {
+          "name": "@astryxdesign/cli",
+          "bump": "patch"
+        }
+      ],
+      "category": "fix",
+      "headline": "`astryx integration verify` accepts a theme module that loads the theme's own styles. Such a module imports the theme's exported stylesheet and font stylesheet for their side effects, and re-exports from the module `astryx theme build` writes either everything or only its theme, under the theme's export name. Verify also finds that built module by the name `theme build` gives it, the theme's own name, so a theme whose name differs from its slug no longer fails to rebuild. Any other difference from the built module still fails with `theme_module_stale`, and for a module that re-exports the theme, the message now says what is wrong.",
+      "contributors": [
+        "josephfarina"
+      ],
+      "body": ""
+    }
+  ]
+}
