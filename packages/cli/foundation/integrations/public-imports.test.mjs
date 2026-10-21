@@ -23,7 +23,10 @@ import {
   integrationAddComponent,
   integrationAddTemplate,
 } from '../../api/integration/add-contribution.mjs';
-import {integrationCheck} from '../../api/integration/check/check.mjs';
+import {
+  integrationCheck,
+  strictIssues,
+} from '../../api/integration/check/check.mjs';
 import {CLI_ROOT} from '../fs/paths.mjs';
 
 const CODES = new Set([
@@ -616,4 +619,83 @@ describe('imports listed as not checked', () => {
       fs.rmSync(out, {recursive: true, force: true});
     }
   }, 60_000);
+});
+
+describe('which Core and which package', () => {
+  it("lists Core imports as not checked when the found core is a workspace's own package", async () => {
+    // An npm-workspaces monorepo: its own packages/core is @acme/core, and
+    // the integration lives in packages/widgets.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-workspace-'));
+    try {
+      const put = (/** @type {string} */ rel, /** @type {string} */ text) => {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), {recursive: true});
+        fs.writeFileSync(path.join(root, rel), text);
+      };
+      put(
+        'package.json',
+        JSON.stringify({
+          name: 'acme-monorepo',
+          private: true,
+          workspaces: ['packages/*'],
+        }),
+      );
+      put(
+        'packages/core/package.json',
+        JSON.stringify({
+          name: '@acme/core',
+          version: '1.0.0',
+          exports: {'.': './index.js'},
+        }),
+      );
+      put(
+        'packages/widgets/package.json',
+        JSON.stringify({
+          name: '@acme/widgets',
+          version: '1.0.0',
+          type: 'module',
+          exports: {'./templates/account-card': './templates/account-card.tsx'},
+        }),
+      );
+      put(
+        'packages/widgets/astryx.integration.mjs',
+        "export default {templates: './templates'};\n",
+      );
+      put('packages/widgets/templates/account-card.doc.mjs', BLOCK());
+      put(
+        'packages/widgets/templates/account-card.tsx',
+        "import {Button} from '@astryxdesign/core/Button';\nexport default function A() {\n  return <Button />;\n}\n",
+      );
+      const result = await validateIntegration(undefined, {
+        cwd: path.join(root, 'packages/widgets'),
+      });
+      expect(
+        result.data.issues.filter(i => i.code === 'template_private_import'),
+      ).toEqual([]);
+      expect(result.data.publicImports?.unchecked).toEqual([
+        expect.objectContaining({
+          file: 'templates/account-card.tsx',
+          specifier: '@astryxdesign/core/Button',
+        }),
+      ]);
+    } finally {
+      fs.rmSync(root, {recursive: true, force: true});
+    }
+  });
+
+  it('with no package name, runs only the checks that need none and reports the rest skipped', async () => {
+    pkg(p => delete p.name);
+    write(
+      'templates/account-card.tsx',
+      "import {AcmeWidget} from '../components/AcmeWidget';\nimport {X} from '@acme/widgets/nope';\nexport default function C() {\n  return <AcmeWidget label={X} />;\n}\n",
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(await codes()).toEqual(['template_import_outside_root']);
+    expect(result.data.publicImports).toMatchObject({
+      status: 'skipped',
+      reason: expect.stringContaining('no "name"'),
+    });
+    // What `integration check --strict` fails on from validate: the skip.
+    const {skipped} = strictIssues('validate', result);
+    expect(skipped.map(each => each.code)).toEqual(['public_imports_skipped']);
+  });
 });

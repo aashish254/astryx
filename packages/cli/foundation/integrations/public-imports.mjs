@@ -349,7 +349,8 @@ function exportsFix(exportsField, state, subpath, target) {
 /**
  * @typedef {object} Context
  * @property {string} packageDir
- * @property {string} name
+ * @property {string | null} name the package name; null when package.json has
+ *   none, and then no import of the package's own name is judged
  * @property {unknown} exportsField
  * @property {string | null} coreDir
  * @property {any} corePkg
@@ -445,6 +446,8 @@ function undeclaredOwnImport(ctx, statement, subpath) {
 async function componentIssues(ctx, integration) {
   /** @type {Issue[]} */
   const issues = [];
+  // Every component check compares imports with the package's own name.
+  if (ctx.name == null) return issues;
   let records;
   try {
     records = discoverIntegrationComponents(integration);
@@ -629,7 +632,7 @@ async function templateIssues(ctx, integration) {
       ctx.packageDir,
       subpath,
     );
-    if (declaration.state !== 'declared') {
+    if (ctx.name != null && declaration.state !== 'declared') {
       issues.push(
         issueWarning(
           'template_import_not_exported',
@@ -652,7 +655,7 @@ async function templateIssues(ctx, integration) {
           issues.push(
             issueWarning(
               'template_import_outside_root',
-              `Template "${id}" (${shown}) imports "${spec}", a path outside the templates root; \`astryx template\` copies only the template into an app, where that path does not exist. Fix: import it through the package's public name (e.g. '${ctx.name}/…' declared in package.json "exports"), or move the code into the template.`,
+              `Template "${id}" (${shown}) imports "${spec}", a path outside the templates root; \`astryx template\` copies only the template into an app, where that path does not exist. Fix: import it through the package's public name (e.g. '${ctx.name ?? '<package name>'}/…' declared in package.json "exports"), or move the code into the template.`,
             ),
           );
         }
@@ -660,7 +663,7 @@ async function templateIssues(ctx, integration) {
       }
       const parts = splitSpecifier(spec);
       if (!parts) continue;
-      if (parts.pkg === ctx.name) {
+      if (ctx.name != null && parts.pkg === ctx.name) {
         const undeclared = undeclaredOwnImport(ctx, statement, parts.subpath);
         if (undeclared && unbuiltOutput(ctx, parts.subpath, undeclared)) {
           ctx.unchecked.push({
@@ -723,19 +726,40 @@ export async function publicImportIssues(packageDir, integration) {
   /** @type {PublicImportsReport} */
   const report = {status: 'checked', findings: [], unchecked: []};
   const pkg = readJson(path.join(packageDir, 'package.json'));
-  if (!isRecord(pkg) || typeof pkg.name !== 'string')
-    return {issues: [], report};
+  if (!isRecord(pkg)) {
+    return {
+      issues: [],
+      report: {
+        status: 'skipped',
+        reason: 'package.json could not be read, so no import was checked',
+        findings: [],
+        unchecked: [],
+      },
+    };
+  }
+  const name =
+    typeof pkg.name === 'string' && pkg.name !== '' ? pkg.name : null;
+  if (name == null) {
+    report.status = 'skipped';
+    report.reason =
+      'package.json has no "name", so imports of the package\'s own name were not checked; only template imports outside the templates root and of Core were';
+  }
   // The Core installed beside the package, which its templates' imports
   // resolve against; never the CLI's own copy, which may be another release.
-  const coreDir =
-    pkg.name === CORE ? packageDir : findProjectCoreDir(packageDir);
+  // A workspace's own `packages/core` (another package) is not it: then Core
+  // counts as not installed and its imports are listed as not checked.
+  const foundCore = name === CORE ? packageDir : findProjectCoreDir(packageDir);
+  const foundCorePkg = foundCore
+    ? readJson(path.join(foundCore, 'package.json'))
+    : null;
+  const isCore = isRecord(foundCorePkg) && foundCorePkg.name === CORE;
   /** @type {Context} */
   const ctx = {
     packageDir,
-    name: pkg.name,
+    name,
     exportsField: pkg.exports,
-    coreDir,
-    corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
+    coreDir: isCore ? foundCore : null,
+    corePkg: isCore ? foundCorePkg : null,
     unchecked: report.unchecked,
     files: Array.isArray(pkg.files)
       ? pkg.files
