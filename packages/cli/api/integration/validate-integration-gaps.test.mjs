@@ -121,7 +121,7 @@ describe('a name that differs from its file name', () => {
     expect(issues.map(issue => issue.code)).toEqual(['doc_name_mismatch']);
     expect(issues[0].severity).toBe('warning');
     expect(issues[0].message).toBe(
-      'Component doc "AcmeWidget.doc.mjs" sets name: \'AcmeWidgets\', but Astryx lists the component as "AcmeWidget" (its file name), and `astryx component AcmeWidget` prints `import {AcmeWidgets}`. Fix: set name: \'AcmeWidget\' in AcmeWidget.doc.mjs.',
+      'Component doc "AcmeWidget.doc.mjs" sets name: \'AcmeWidgets\', but AcmeWidget.tsx does not export AcmeWidgets, so Astryx lists the component as "AcmeWidget" (its file name), and `astryx component AcmeWidget` prints `import {AcmeWidgets}`. Fix: set name: \'AcmeWidget\' in AcmeWidget.doc.mjs.',
     );
 
     const fixed = follow(dir, {
@@ -144,6 +144,19 @@ describe('a name that differs from its file name', () => {
       'export function AcmeWidget() { return null; }\nexport const AcmeWidgets = AcmeWidget;\n',
     ],
     ['an export * from another package', "export * from '@acme/ui';\n"],
+    [
+      'a destructured export',
+      'const parts = {AcmeWidgets: () => null};\nexport const {AcmeWidgets} = parts;\n',
+    ],
+    [
+      'a TypeScript namespace export',
+      'export namespace AcmeWidgets {\n  export const Root = () => null;\n}\n',
+    ],
+    ['a TypeScript enum export', 'export enum AcmeWidgets {\n  Small,\n}\n'],
+    [
+      'an export assignment',
+      'const AcmeWidgets = () => null;\nexport = {AcmeWidgets};\n',
+    ],
   ])(
     'reports no name mismatch when the code does not contradict the doc: %s',
     async (_label, source) => {
@@ -171,6 +184,36 @@ describe('a name that differs from its file name', () => {
 
     expect(only(await issuesOf(dir), 'doc_name_mismatch')).toContain(
       "sets name: 'AcmeWidgets'",
+    );
+  });
+
+  it('proposes the export a kebab-case source holds, never its file name', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({components: './components'}),
+      'components/acme-widget.doc.mjs': componentDoc('AcmeWidgets'),
+      'components/acme-widget.tsx': componentSource('AcmeWidget'),
+    });
+
+    const message = only(await issuesOf(dir), 'doc_name_mismatch');
+    expect(message).toBe(
+      'Component doc "acme-widget.doc.mjs" sets name: \'AcmeWidgets\', but acme-widget.tsx does not export AcmeWidgets, so Astryx lists the component as "acme-widget" (its file name), and `astryx component acme-widget` prints `import {AcmeWidgets}`. Fix: set name: \'AcmeWidget\' in acme-widget.doc.mjs, the component acme-widget.tsx exports.',
+    );
+    const fixed = follow(dir, {
+      write: {'components/acme-widget.doc.mjs': componentDoc('AcmeWidget')},
+    });
+    expect(await issuesOf(fixed)).toEqual([]);
+  });
+
+  it('names no single export when a source exports several components', async () => {
+    const dir = writePackage({
+      [MANIFEST]: manifest({components: './components'}),
+      'components/acme-widget.doc.mjs': componentDoc('AcmeWidgets'),
+      'components/acme-widget.tsx':
+        'export function AcmeWidget() { return null; }\nexport function AcmeGizmo() { return null; }\n',
+    });
+
+    expect(only(await issuesOf(dir), 'doc_name_mismatch')).toContain(
+      'Fix: set name in acme-widget.doc.mjs to the component acme-widget.tsx exports (AcmeGizmo, AcmeWidget).',
     );
   });
 
@@ -470,7 +513,32 @@ describe('roots', () => {
 });
 
 describe('package.json', () => {
-  it('warns about a missing name, and every check stops without crashing', async () => {
+  it('warns about a missing name and keeps checking, without crashing any check', async () => {
+    const dir = writePackage(
+      {
+        [MANIFEST]: manifest({components: './components', docs: './docs'}),
+        'components/AcmeWidget.doc.mjs': componentDoc('AcmeWidget'),
+        'docs/deploying.doc.mjs': topic('deploying'),
+      },
+      {version: '1.0.0'},
+    );
+
+    const result = await integrationCheck({cwd: dir});
+    for (const check of result.data.checks) {
+      expect(
+        check.response.data.issues.map(issue => [issue.code, issue.severity]),
+      ).toEqual([
+        ['invalid_package_json', 'warning'],
+        ['invalid_component', 'error'],
+      ]);
+    }
+    expect(result.data.checks[0].response.data.issues[0].message).toBe(
+      'package.json has no "name", so npm cannot pack or publish the package and Astryx cannot check its components and docs against other packages. Fix: add "name": "@your-scope/your-package" to package.json.',
+    );
+    expect(result.data.failed).toBe(true);
+  });
+
+  it('fails only --strict on a missing name when nothing else is wrong', async () => {
     const dir = writePackage(
       {
         [MANIFEST]: manifest({docs: './docs'}),
@@ -479,19 +547,7 @@ describe('package.json', () => {
       {version: '1.0.0'},
     );
 
-    const result = await integrationCheck({cwd: dir});
-    for (const check of result.data.checks) {
-      expect(check.response.data.issues).toEqual([
-        {
-          code: 'invalid_package_json',
-          severity: 'warning',
-          message:
-            'package.json has no "name", so npm cannot pack or publish the package and Astryx has no package to file its contributions under; nothing else was checked. Fix: add "name": "@your-scope/your-package" to package.json.',
-        },
-      ]);
-    }
-    expect(result.data.errors).toBe(0);
-    expect(result.data.failed).toBe(false);
+    expect((await integrationCheck({cwd: dir})).data.failed).toBe(false);
     expect((await integrationCheck({cwd: dir, strict: true})).data.failed).toBe(
       true,
     );

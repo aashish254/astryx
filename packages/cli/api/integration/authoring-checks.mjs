@@ -45,6 +45,7 @@ import {
   validateLocalIntegration,
 } from './validate-integration.mjs';
 import {rootProblem} from '../../foundation/integrations/validate-contributions.mjs';
+import {normalizeProviderId} from '../../foundation/identity/provider-identity.mjs';
 
 /** @param {string} value */
 export function shellArg(value) {
@@ -63,6 +64,13 @@ async function resolveIntegration(pkg, cwd) {
     : await validateLocalIntegration(cwd);
   const integration = resolved.found ? resolved.integration : undefined;
   if (!integration) return resolved;
+  // The checks below compare a package with Core and others by its name; a
+  // package without one (validate warned about it) has nothing to compare.
+  try {
+    normalizeProviderId(integration.name);
+  } catch {
+    return {...resolved, integration: undefined};
+  }
   // A root that is not a readable folder is reported in the issues; the
   // checks read nothing from it rather than fail on it.
   const usable = {...integration};

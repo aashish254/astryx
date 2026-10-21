@@ -310,11 +310,79 @@ export function moduleExportSource(file, exportName, seen = new Set()) {
 }
 
 /**
+ * Whether an exported declaration provably does not bind `exportName`: every
+ * name it binds is read, and none is it. A pattern (`export const {a} = b`)
+ * or a declaration whose name this read cannot see proves nothing.
+ * @param {any} declaration
+ * @param {string} exportName
+ */
+function declarationLacks(declaration, exportName) {
+  if (declaration == null) return true;
+  if (declaration.type === 'VariableDeclaration') {
+    return declaration.declarations.every(
+      (/** @type {any} */ item) =>
+        item.id?.type === 'Identifier' && item.id.name !== exportName,
+    );
+  }
+  const name = declaration.id?.name;
+  return typeof name === 'string' && name !== exportName;
+}
+
+/**
+ * Every runtime name a module exports that this read can see, or null when
+ * it cannot see them all: an `export *`, `export =`, CommonJS exports, or a
+ * file that does not parse.
+ * @param {string} file
+ * @returns {string[] | null}
+ */
+export function moduleExportNames(file) {
+  let text;
+  let ast;
+  try {
+    if (!fs.statSync(file).isFile()) return null;
+    text = moduleText(file);
+    ast = parseModule(file);
+  } catch {
+    return null;
+  }
+  if (/\bmodule\.exports\b|\bexports\.[$\w]/u.test(text)) return null;
+  if (
+    nodesOfType(ast.program, 'TSExportAssignment').length > 0 ||
+    nodesOfType(ast.program, 'ExportAllDeclaration').length > 0
+  ) {
+    return null;
+  }
+  /** @type {Set<string>} */
+  const names = new Set();
+  for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
+    if (node.exportKind === 'type') continue;
+    const declaration = node.declaration;
+    if (declaration?.type === 'VariableDeclaration') {
+      for (const item of declaration.declarations) {
+        if (item.id?.type !== 'Identifier') return null;
+        names.add(item.id.name);
+      }
+    } else if (declaration != null) {
+      if (!runtimeDefault(declaration)) continue;
+      if (typeof declaration.id?.name !== 'string') return null;
+      names.add(declaration.id.name);
+    }
+    for (const specifier of node.specifiers ?? []) {
+      if (specifier.exportKind === 'type') continue;
+      const exported = specifier.exported?.name ?? specifier.exported?.value;
+      if (typeof exported === 'string') names.add(exported);
+    }
+  }
+  return [...names].sort();
+}
+
+/**
  * Whether a module provably does not export `exportName` at runtime, read
  * without executing it. True only when every export the module writes can be
  * followed: an `export ... from` another package, a specifier that resolves
- * to no local file, CommonJS exports, or a file that does not parse leaves
- * it unproven, and the answer is false.
+ * to no local file, a destructured or otherwise unreadable declaration,
+ * `export =`, CommonJS exports, or a file that does not parse leaves it
+ * unproven, and the answer is false.
  * @param {string} file
  * @param {string} exportName
  * @param {Set<string>} [seen]
@@ -335,9 +403,11 @@ export function moduleLacksExport(file, exportName, seen = new Set()) {
     return false;
   }
   if (/\bmodule\.exports\b|\bexports\.[$\w]/u.test(text)) return false;
+  // `export =` hands the module to one value this read does not follow.
+  if (nodesOfType(ast.program, 'TSExportAssignment').length > 0) return false;
   for (const node of nodesOfType(ast.program, 'ExportNamedDeclaration')) {
     if (node.exportKind === 'type') continue;
-    if (declarationExports(node.declaration, exportName)) return false;
+    if (!declarationLacks(node.declaration, exportName)) return false;
     for (const specifier of node.specifiers ?? []) {
       if (specifier.exportKind === 'type') continue;
       const exported = specifier.exported?.name ?? specifier.exported?.value;

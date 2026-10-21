@@ -2004,11 +2004,11 @@ describe('integrationPackCheck', () => {
     const result = await integrationPackCheck({cwd: tmpDir});
 
     expect(result.data.packable).toBe(false);
-    expect(result.data.issues).toEqual([
-      expect.objectContaining({
-        code: 'invalid_package_json',
-        severity: 'error',
-      }),
+    expect(
+      result.data.issues.map(issue => [issue.code, issue.severity]),
+    ).toEqual([
+      ['invalid_package_json', 'error'],
+      ['pack_failed', 'error'],
     ]);
   });
 

@@ -445,20 +445,13 @@ export async function validateLocalIntegration(cwd = process.cwd()) {
 
   // npm publishes nothing without a name and a version, and the name is the
   // provider ID every reader keys the package's contributions on.
+  // A package without one is still checked, under a placeholder name.
   const fields = packageJsonFieldIssues(pkg, pkgJsonPath);
-  if (typeof pkg.name !== 'string' || pkg.name === '') {
-    return {
-      found: true,
-      name: '(local package)',
-      version: typeof pkg.version === 'string' ? pkg.version : undefined,
-      manifestFile: manifests[0],
-      issues: fields,
-    };
-  }
-
+  const name =
+    typeof pkg.name === 'string' && pkg.name !== '' ? pkg.name : '(local package)';
   const result = await validateAtPackageDir(
     packageDir,
-    {name: pkg.name, version: pkg.version},
+    {name, version: pkg.version},
     {scanUnreachable: true},
   );
   result.issues.unshift(...fields);
@@ -481,7 +474,7 @@ function packageJsonFieldIssues(pkg, pkgJsonPath) {
     issues.push(
       warning(
         'invalid_package_json',
-        `${shown} has no "name", so npm cannot pack or publish the package and Astryx has no package to file its contributions under; nothing else was checked. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
+        `${shown} has no "name", so npm cannot pack or publish the package and Astryx cannot check its components and docs against other packages. Fix: add "name": "@your-scope/your-package" to ${shown}.`,
       ),
     );
   }

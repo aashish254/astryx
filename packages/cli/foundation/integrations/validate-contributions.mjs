@@ -51,7 +51,11 @@ import {discoverIntegrationCodemods} from '../../assets/codemods/integration-dis
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
 import * as componentDiscovery from '../discovery/component-discovery.mjs';
 import {loadComponentDoc} from '../discovery/component-loader.mjs';
-import {moduleLacksExport} from '../discovery/module-exports.mjs';
+import {
+  moduleExportNames,
+  moduleExportsName,
+  moduleLacksExport,
+} from '../discovery/module-exports.mjs';
 import {discoverIntegrationDocs} from '../discovery/docs-discovery.mjs';
 import {discoverIntegrationThemes} from '../discovery/theme-discovery.mjs';
 
@@ -688,10 +692,25 @@ async function checkComponentDocNames(components, issues, root, skip) {
       continue;
     }
     const file = path.basename(record.docPath);
+    const source = path.basename(record.sourcePath);
+    // The name to propose: the file name when the source exports it, else
+    // the one component the source exports, which discovery then lists.
+    let fix;
+    if (moduleExportsName(record.sourcePath, record.name)) {
+      fix = `Fix: set name: '${record.name}' in ${file}.`;
+    } else {
+      const components = (moduleExportNames(record.sourcePath) ?? []).filter(
+        each => /^[A-Z][A-Za-z0-9]*$/u.test(each),
+      );
+      fix =
+        components.length === 1
+          ? `Fix: set name: '${components[0]}' in ${file}, the component ${source} exports.`
+          : `Fix: set name in ${file} to the component ${source} exports${components.length > 1 ? ` (${components.join(', ')})` : ''}.`;
+    }
     issues.push(
       issueWarning(
         'doc_name_mismatch',
-        `Component doc "${slash(path.relative(root, record.docPath))}" sets name: '${name}', but Astryx lists the component as "${record.name}" (its file name), and \`astryx component ${record.name}\` prints \`import {${name}}\`. Fix: set name: '${record.name}' in ${file}.`,
+        `Component doc "${slash(path.relative(root, record.docPath))}" sets name: '${name}', but ${source} does not export ${name}, so Astryx lists the component as "${record.name}" (its file name), and \`astryx component ${record.name}\` prints \`import {${name}}\`. ${fix}`,
       ),
     );
   }
