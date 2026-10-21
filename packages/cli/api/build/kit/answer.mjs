@@ -26,15 +26,22 @@ const THIN_KIT = 3;
  * The kit for a request. `blocks` re-orders the blocks build names itself:
  * each keeps build's own entry (its score and reason), and a name build did
  * not give is dropped, so the kit never lists more blocks than build's own.
+ * Blocks of the same name from two packages are both kept.
  *
  * @param {import('./signals.mjs').KitSignals} signals
  * @param {string[]} [blocks] block names; build's own when omitted
  * @returns {import('../build.type.mjs').BuildKitResponse}
  */
 export function kitAnswer(signals, blocks = signals.kitBlocks) {
-  const own = new Map(signals.blocks.map(b => [b.name, b]));
-  const named = [...new Set(blocks)].flatMap(name => {
-    const entry = own.get(name);
+  // Entries by name, in build's order: two packages can ship a block with the
+  // same name, and each name in `blocks` takes the next entry of that name, so
+  // both stay listed.
+  /** @type {Map<string, import('../build.type.mjs').BuildKitResponse['data']['blocks']>} */
+  const own = new Map();
+  for (const b of signals.blocks)
+    own.set(b.name, [...(own.get(b.name) ?? []), b]);
+  const named = blocks.flatMap(name => {
+    const entry = own.get(name)?.shift();
     return entry ? [entry] : [];
   });
 
