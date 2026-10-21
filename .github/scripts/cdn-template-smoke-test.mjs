@@ -29,6 +29,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {pageAssetUrls, primeCdnAssets} from './lib/cdn-asset-priming.mjs';
 import {resolvePublishedCdnVersion} from './lib/cdn-version.mjs';
 
 const ROOT = path.resolve(
@@ -95,7 +96,27 @@ if (rendered !== pinned) {
   );
 }
 
-// ── 3. Serve it, so the page loads the way a deployed one would ──────────────
+// ── 3. Prime the CDN, so the browser's requests hit a built asset ───────────
+// Both CDNs build a package on the first request that reaches them for it, and a
+// request that arrives mid-build is answered with an error document that is then
+// cached. A page pinned to a version published minutes ago therefore loads its
+// CSS as `text/plain`, which Chromium rejects as an opaque response
+// (net::ERR_BLOCKED_BY_ORB) and `networkidle` never settles on. Asking for the
+// same URLs over plain HTTP starts and finishes the build first, and turns the
+// remaining case into a line that names the asset instead of a navigation
+// timeout at the end of a 17-minute run.
+const assets = pageAssetUrls(fs.readFileSync(pagePath, 'utf8'));
+const {cold} = await primeCdnAssets(assets);
+if (cold.length > 0) {
+  fail(
+    `${cold.length} CDN asset(s) never served — the CDN has not built ${rendered}, which no change in this repo can fix`,
+    cold.map(({url, reason}) => `        ${url} :: ${reason}`).join('\n'),
+  );
+  fs.rmSync(tmpDir, {recursive: true, force: true});
+  process.exit(1);
+}
+
+// ── 4. Serve it, so the page loads the way a deployed one would ─────────────
 const server = http.createServer((req, res) => {
   const body = fs.readFileSync(pagePath);
   res.writeHead(200, {'content-type': 'text/html; charset=utf-8'});
@@ -139,7 +160,7 @@ async function render() {
   }
 }
 
-// ── 4. Render, retrying once so a blip at a CDN is not a red build ───────────
+// ── 5. Render, retrying once so a blip at a CDN is not a red build ───────────
 let result;
 for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
   result = await render();
@@ -153,7 +174,7 @@ for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
 }
 server.close();
 
-// ── 5. Report ────────────────────────────────────────────────────────────────
+// ── 6. Report ────────────────────────────────────────────────────────────────
 console.log(`\n${PAGE} @ ${rendered}`);
 for (const [label, entries] of [
   ['console error', result.consoleErrors],
