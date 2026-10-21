@@ -142,19 +142,23 @@ describe('why a notice did not print (diagnostic state)', () => {
     const stateDir = tempDir('state');
     expect(takeNotice('global', {stateDir, now: 1000})).toBe(true);
     expect(takeNotice('global', {stateDir, now: 2000})).toBe(false);
-    expect(readGlobalState(stateDir).noticeSkips).toEqual({
+    const skips = () =>
+      JSON.parse(
+        fs.readFileSync(path.join(stateDir, 'notice-skips.json'), 'utf8'),
+      );
+    expect(skips()).toEqual({
       global: {reason: 'already-shown', at: 2000},
     });
+    // Kept out of the state file.
+    expect(readGlobalState(stateDir)).not.toHaveProperty('noticeSkips');
     // Within the hour: not rewritten.
     expect(takeNotice('global', {stateDir, now: 3000})).toBe(false);
-    expect(readGlobalState(stateDir).noticeSkips?.global.at).toBe(2000);
+    expect(skips().global.at).toBe(2000);
     // After it: recorded again.
     expect(takeNotice('global', {stateDir, now: 2000 + 60 * 60_000})).toBe(
       false,
     );
-    expect(readGlobalState(stateDir).noticeSkips?.global.at).toBe(
-      2000 + 60 * 60_000,
-    );
+    expect(skips().global.at).toBe(2000 + 60 * 60_000);
     expect(lastNoticeSkip({stateDir})).toEqual({
       key: 'global',
       reason: 'already-shown',
@@ -187,6 +191,27 @@ describe('why a notice did not print (diagnostic state)', () => {
       reason: 'lock-timeout',
       at: 5,
     });
+  }, 10_000);
+
+  it('records a lock-timeout while another run holds the lock, waiting only once', () => {
+    const stateDir = tempDir('state');
+    updateGlobalState({latest: '0.7.1'}, stateDir);
+    const lockDir = path.join(stateDir, '.lock-state');
+    fs.mkdirSync(lockDir);
+    fs.writeFileSync(
+      path.join(lockDir, 'owner.json'),
+      JSON.stringify({pid: process.pid, host: os.hostname(), at: Date.now()}),
+    );
+    const started = Date.now();
+    expect(takeNotice('global', {stateDir, now: 7})).toBe(false);
+    // One lock wait (2 s), not a second one to record the skip.
+    expect(Date.now() - started).toBeLessThan(3500);
+    expect(lastNoticeSkip({stateDir})).toEqual({
+      key: 'global',
+      reason: 'lock-timeout',
+      at: 7,
+    });
+    fs.rmSync(lockDir, {recursive: true});
   }, 10_000);
 });
 
