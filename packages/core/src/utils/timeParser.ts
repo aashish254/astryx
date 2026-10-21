@@ -384,8 +384,11 @@ export function adjustTime(
   }
 
   // A non-finite delta would spin the wrap-around forever (-Infinity) or
-  // produce "NaN:NaN" (NaN) — return the input unchanged instead.
-  if (!Number.isFinite(deltaMinutes)) {
+  // produce "NaN:NaN" (NaN), and a fractional one is never rounded on the way
+  // out — formatISOTime pads "30.5" to two characters and leaves it, so the
+  // caller gets back a value that is no longer a time. Steps are whole
+  // minutes: return the input unchanged instead.
+  if (!Number.isInteger(deltaMinutes)) {
     return time;
   }
 
