@@ -163,15 +163,28 @@ function allStrings(doc) {
 }
 
 /**
- * The 1-based line of a file that holds the text, or null.
+ * Where a file next holds the text, at or after a cursor (a 0-based line and
+ * column), else the first place it holds it, else null. A doc's strings are
+ * read in file order, so moving the cursor past each match puts a command the
+ * topic writes twice on its own line.
  *
  * @param {string[]} lines
  * @param {string} written
- * @returns {number | null}
+ * @param {{line: number, column: number}} cursor
+ * @returns {{line: number, column: number} | null}
  */
-function lineOf(lines, written) {
-  const at = lines.findIndex(line => line.includes(written));
-  return at < 0 ? null : at + 1;
+function locate(lines, written, cursor) {
+  for (let at = cursor.line; at < lines.length; at++) {
+    const column = lines[at].indexOf(
+      written,
+      at === cursor.line ? cursor.column : 0,
+    );
+    if (column >= 0) return {line: at, column};
+  }
+  const first = lines.findIndex(line => line.includes(written));
+  return first < 0
+    ? null
+    : {line: first, column: lines[first].indexOf(written)};
 }
 
 /**
@@ -204,9 +217,14 @@ export async function findRunnerCommands(discovered) {
     } catch {
       // The doc loaded, so only the line number is lost.
     }
+    let cursor = {line: 0, column: 0};
     for (const {text, section} of allStrings(doc)) {
       for (const {written, bare, download} of runnerCommandsIn(text)) {
-        const line = lineOf(lines, written);
+        const place = locate(lines, written, cursor);
+        if (place) {
+          cursor = {line: place.line, column: place.column + written.length};
+        }
+        const line = place ? place.line + 1 : null;
         const where = section ? ` (section "${section}")` : '';
         found.push({
           topic: name,
