@@ -53,8 +53,8 @@ depends only on runtimes it can maintain.
 
 ## Non-goals
 
-- The order in which platforms ship (OQ2), each platform's supported OS versions
-  (OQ4), and where the portable entry lives (OQ7).
+- The order in which platforms ship (OQ2) and each platform's supported OS
+  versions (OQ4).
 - Exact performance thresholds (OQ1). This record owns what is measured and how
   approaches are compared.
 - The internals of any one platform's implementation, once it satisfies this
@@ -249,8 +249,10 @@ depends only on runtimes it can maintain.
   build time, so a core contract change reaches every native platform on its next
   build; generated Swift and Kotlin bindings carry nothing from core at run time.
   A package-boundary check enforces both directions: core never imports native,
-  and native never imports core outside the portable entry. Where the portable
-  entry lives is OQ7.
+  and native never imports core outside the portable entry. The portable entry
+  is an entry of `@astryxdesign/core` (DEC-8). It makes `react-dom` and StyleX
+  optional peers of core and keeps resolved token values apart from the web theme
+  compiler.
 
 ### Platform support
 
@@ -276,8 +278,8 @@ depends only on runtimes it can maintain.
   unchanged: `defineTheme` and `DefinedTheme` gain nothing.
 - The `theme` and `cli` consumer docs and every component's documentation gain
   platform marking when the first native contract ships.
-- `@astryxdesign/native` does not exist yet, and core has no portable entry
-  yet. Core peer-depends on `react-dom` and StyleX, and its theme entry includes
+- `@astryxdesign/native` does not exist yet, and `@astryxdesign/core` has no
+  portable entry yet. Core peer-depends on `react-dom` and StyleX, and its theme entry includes
   the web theme compiler.
 - No native platform is supported yet. Every shipped component supports the web
   only, and its props form its web contract.
@@ -394,6 +396,20 @@ only through the portable entry (FR16).
 Rejected: native types and implementations inside `@astryxdesign/core`, because
 every web consumer would carry them and core's API would grow with each platform.
 
+### DEC-8 — The portable entry is an entry of `@astryxdesign/core`
+
+**Reference:** `spec:AST-082/DEC-8`
+**Decider:** cixzhang, 2026-10-21
+
+The core contracts, the theme definition, and token resolution already live in
+core, so a portable entry inside core moves no existing code while native is
+canary-only. Native depends on core's exact version, as other canary-only
+packages do. This decision is revisited before `@astryxdesign/native` joins the
+stable release group (FR15).
+
+Rejected: a separate shared package now, because it moves code and adds a
+package to the release group before any native platform has shipped.
+
 ## Open questions
 
 - **OQ1 — What thresholds make a candidate supported?** (`human-design`)
@@ -421,13 +437,6 @@ every web consumer would carry them and core's API would grow with each platform
   `aria-*` or `data-*` input still type-checks. Options: a lint rule, a
   development warning with the input not applied, or both. Recommendation: both,
   with the runtime change shipped as a breaking change under FR14.
-- **OQ7 — Where does the portable entry live?** (`human-api`) Options: an entry
-  inside `@astryxdesign/core`, with `react-dom` and StyleX made optional peers and
-  the token values separated from the web theme compiler; or a small shared
-  package holding the contracts and theme resolution, which both core and native
-  depend on. Recommendation: an entry inside core while native is canary-only,
-  because it moves no existing code, revisited before native's first stable
-  release.
 - **OQ8 — How does a file shared by web and native code import components?**
   (`human-api`) Options: shared files import only core contract types and
   non-visual logic, and each platform's files import its own components; or a
