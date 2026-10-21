@@ -224,6 +224,24 @@ describe('icon.search: an exact query reads as a name or a meaning', () => {
     lines.data.map = {close: 'x'};
     expect(ranked(lines, 'close')[0]).toEqual(['x', 100, 'definition "close"']);
   });
+
+  it('an icon matches the words of every definition it is mapped to, after its own words', () => {
+    // The data file lists only the icon's own name; `delete`'s words
+    // (trash, bin, discard) and its name come from the definition.
+    const lines = set([
+      ['basket', ['basket']],
+      ['pile', ['pile', 'discard']],
+    ]);
+    lines.data.map = {delete: 'basket'};
+    expect(ranked(lines, 'bin')).toEqual([['basket', 90, 'word "bin"']]);
+    // The icon's own tag ranks before a definition word.
+    expect(ranked(lines, 'discard').map(([id]) => id)).toEqual([
+      'pile',
+      'basket',
+    ]);
+    // The record still shows the icon's own words.
+    expect(rankIcons([lines], 'bin')[0].words).toEqual(['basket']);
+  });
 });
 
 describe('icon.detail', () => {

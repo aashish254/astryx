@@ -37,6 +37,7 @@ import {
   resolveIconModule,
 } from './icon-set-discovery.mjs';
 import {
+  exportScalarType,
   exportValueKind,
   moduleExportNames,
   moduleExportOrigin,
@@ -427,31 +428,57 @@ export function assertIconExport(file, module, exportName) {
   }
 }
 
+/** A SCREAMING_CASE name: two or more capitals, digits, or underscores. */
+const SCREAMING_CASE_RE = /^[A-Z][A-Z0-9_]+$/u;
+
 /**
  * The library exports that can be icons: PascalCase components and, when the
- * set declares an adapter, also data exports (objects and strings), camelCase
- * included. `default` and `Icon` are left out.
+ * set declares an adapter, also data exports, camelCase included: objects,
+ * and plain strings only in a library whose candidates are all strings.
+ * Left out: `default`, `Icon`, SCREAMING_CASE constants, number and boolean
+ * exports, and `exclude`.
  * @param {string} file
- * @param {{adapter?: boolean}} [options]
- * @returns {Array<{name: string, adapt: boolean}>}
+ * @param {{adapter?: boolean, exclude?: string[]}} [options] `exclude`: export
+ *   names that are not icons
+ * @returns {Array<{name: string, adapt: boolean, scalar: string | null}>}
  */
-function iconCandidates(file, {adapter = false} = {}) {
-  /** @type {Array<{name: string, adapt: boolean}>} */
+function iconCandidates(file, {adapter = false, exclude = []} = {}) {
+  const skipped = new Set(exclude);
+  /** @type {Array<{name: string, adapt: boolean, scalar: string | null}>} */
   const out = [];
   for (const name of moduleExportNames(file)) {
-    if (name === 'default' || name === 'Icon') continue;
+    if (name === 'default' || name === 'Icon' || skipped.has(name)) continue;
+    // SCREAMING_CASE names are constants (`README`, `VERSION`), not icons.
+    if (SCREAMING_CASE_RE.test(name)) continue;
     const kind = exportValueKind(file, name);
     if (kind === 'component' && /^[A-Z][A-Za-z0-9]*$/u.test(name)) {
-      out.push({name, adapt: false});
+      out.push({name, adapt: false, scalar: null});
     } else if (
       adapter &&
       kind === 'data' &&
       /^[A-Za-z][A-Za-z0-9]*$/u.test(name)
     ) {
-      out.push({name, adapt: true});
+      const scalar = exportScalarType(file, name);
+      // A number or a boolean draws nothing; a string may be SVG markup.
+      if (scalar === 'number' || scalar === 'boolean') continue;
+      out.push({name, adapt: true, scalar});
     }
   }
-  return out;
+  // A plain string is an icon only in a library of strings (SVG markup); next
+  // to components or icon objects it is a stray constant.
+  return out.some(each => each.scalar == null)
+    ? out.filter(each => each.scalar == null)
+    : out;
+}
+
+/**
+ * The names the library prefix is computed over: the icon-like candidates
+ * (stray constants are already left out by {@link iconCandidates}).
+ * @param {Array<{name: string, scalar: string | null}>} candidates
+ * @returns {string[]}
+ */
+function prefixNames(candidates) {
+  return candidates.map(each => each.name);
 }
 
 /**
@@ -488,7 +515,13 @@ export function libraryPrefix(names) {
  * @returns {{id: string, name: string}}
  */
 export function iconNaming(name, prefix) {
-  const words = iconIdOf(name).split('-').slice(prefix.length);
+  const all = iconIdOf(name).split('-');
+  // Only a name that starts with the prefix, and has more after it, loses it.
+  const strip =
+    all.length > prefix.length &&
+    prefix.every((word, index) => all[index] === word);
+  if (!strip) prefix = [];
+  const words = all.slice(prefix.length);
   const id = words.join('-');
   const pascal = words
     .map(word => word[0].toUpperCase() + word.slice(1))
@@ -503,10 +536,10 @@ export function iconNaming(name, prefix) {
  * The library prefix of the module an icon is read from
  * ({@link libraryPrefix} over its icon exports).
  * @param {string} file
- * @param {{adapter?: boolean}} [options]
+ * @param {{adapter?: boolean, exclude?: string[]}} [options]
  */
 export function modulePrefix(file, options) {
-  return libraryPrefix(iconCandidates(file, options).map(each => each.name));
+  return libraryPrefix(prefixNames(iconCandidates(file, options)));
 }
 
 /**
@@ -516,24 +549,25 @@ export function modulePrefix(file, options) {
  * its id and the name the set exports it as from the name, the library
  * prefix left out ({@link libraryPrefix}).
  * @param {string} file
- * @param {{adapter?: boolean}} [options] whether the set declares an adapter
+ * @param {{adapter?: boolean, exclude?: string[]}} [options] `adapter`:
+ *   whether the set declares one; `exclude`: export names that are not icons
  * @returns {Array<{export: string, id: string, name: string, adapt: boolean}>}
  */
 export function libraryIcons(file, options = {}) {
   const candidates = iconCandidates(file, options);
-  /** @type {Map<string, {names: string[], adapt: boolean}>} */
+  /** @type {Map<string, {names: string[], adapt: boolean, scalar: string | null}>} */
   const byOrigin = new Map();
-  for (const {name, adapt} of candidates) {
+  for (const {name, adapt, scalar} of candidates) {
     const origin = moduleExportOrigin(file, name);
     if (!origin) continue;
     const key = `${origin.file}\0${origin.name}`;
-    const entry = byOrigin.get(key) ?? {names: [], adapt};
+    const entry = byOrigin.get(key) ?? {names: [], adapt, scalar};
     entry.names.push(name);
     byOrigin.set(key, entry);
   }
-  /** @type {Array<[string, string, boolean]>} */
+  /** @type {Array<[string, string, boolean, string | null]>} */
   const chosen = [];
-  for (const [key, {names, adapt}] of byOrigin) {
+  for (const [key, {names, adapt, scalar}] of byOrigin) {
     const local = key.split('\0')[1];
     const withIcon = names.filter(name => name.endsWith('Icon'));
     const preferred =
@@ -542,9 +576,11 @@ export function libraryIcons(file, options = {}) {
       [...(withIcon.length > 0 ? withIcon : names)].sort(
         (a, b) => a.length - b.length || (a < b ? -1 : 1),
       )[0];
-    chosen.push([key, preferred, adapt]);
+    chosen.push([key, preferred, adapt, scalar]);
   }
-  const prefix = libraryPrefix(chosen.map(([, name]) => name));
+  const prefix = libraryPrefix(
+    prefixNames(chosen.map(([, name, , scalar]) => ({name, scalar}))),
+  );
   /** @type {Map<string, {export: string, id: string, name: string, adapt: boolean}>} */
   const byId = new Map();
   for (const [, preferred, adapt] of chosen) {
@@ -825,6 +861,8 @@ export function readGeneratedStatements(text, label) {
  * @param {import('../../authoring/doctypes/icon-set/type').IconSetData} data
  *   the data file as it will be written
  * @param {GeneratedIcon[]} icons
+ * @param {string[]} [remove] export names to drop, with the import an
+ *   adapted one reads: the icons a refreshed library no longer has
  * @returns {{js: string, dts: string | null}}
  */
 export function generatedModuleText(
@@ -833,6 +871,7 @@ export function generatedModuleText(
   before,
   data,
   icons,
+  remove = [],
 ) {
   const file = path.join(packageDir, generated);
   const fileDir = path.dirname(file);
@@ -850,7 +889,15 @@ export function generatedModuleText(
   // Written once, below: the adapter's import, React's createElement, and
   // the theme map.
   const adapterImport = new RegExp(`\\bas ${ADAPTER_LOCAL}\\b`, 'u');
+  const dropped = [...new Set(remove)].map(
+    name =>
+      new RegExp(
+        `(?:\\bas ${name}(?:Source)?\\}|^export const ${name} = |^export \\{${name}\\} |^import ${name}Source )`,
+        'u',
+      ),
+  );
   const managed = (/** @type {string} */ line) =>
+    dropped.some(pattern => pattern.test(line)) ||
     adapterImport.test(line) ||
     line === REACT_IMPORT ||
     (themeName != null && line.startsWith(`export const ${themeName} = `));
@@ -953,6 +1000,64 @@ export function generatedModuleText(
 }
 
 /**
+ * Every name the generated module already exports one library export as: `export {featherSun as SunIcon} from '…'` or the import an adapted
+ * icon reads (`import {featherSun as SunIconSource} from '…'`). Adding the
+ * same library export again then reuses that icon instead of naming a new
+ * one.
+ * @param {string} packageDir
+ * @param {string} generated
+ * @param {string} from the source module: a specifier, or a ./ path
+ * @param {string} source the source export, or `default`
+ * @returns {string[]}
+ */
+export function generatedNamesOf(packageDir, generated, from, source) {
+  /** @type {string[]} */
+  const names = [];
+  const file = path.join(packageDir, generated);
+  if (!fs.existsSync(file)) return names;
+  let statements;
+  try {
+    statements = generatedStatements(fs.readFileSync(file, 'utf-8'), generated);
+  } catch {
+    return names;
+  }
+  let specifier = from;
+  if (from.startsWith('./')) {
+    specifier = path
+      .relative(path.dirname(file), path.join(packageDir, from))
+      .split(path.sep)
+      .join('/');
+    if (!specifier.startsWith('.')) specifier = `./${specifier}`;
+  }
+  const tail = ` from '${specifier}';`;
+  for (const statement of statements) {
+    if (!statement.endsWith(tail)) continue;
+    const head = statement.slice(0, -tail.length);
+    if (source === 'default') {
+      const plain = /^import (\w+)Source$/u.exec(head);
+      if (plain) names.push(plain[1]);
+      const named = /^export \{default as (\w+)\}$/u.exec(head);
+      if (named) names.push(named[1]);
+      continue;
+    }
+    if (head === `export {${source}}`) names.push(source);
+    const reexport = new RegExp(`^export \\{${source} as (\\w+)\\}$`, 'u').exec(
+      head,
+    );
+    if (reexport) names.push(reexport[1]);
+    const adapted = new RegExp(
+      `^import \\{${source} as (\\w+)Source\\}$`,
+      'u',
+    ).exec(head);
+    if (adapted) names.push(adapted[1]);
+    if (head === `import {${source}}` && source.endsWith('Source')) {
+      names.push(source.slice(0, -'Source'.length));
+    }
+  }
+  return names;
+}
+
+/**
  * Write the set's generated module and its declaration file
  * ({@link generatedModuleText}). Returns whether either changed, and a
  * function that puts both back.
@@ -960,9 +1065,16 @@ export function generatedModuleText(
  * @param {string} generated
  * @param {import('../../authoring/doctypes/icon-set/type').IconSetData} data
  * @param {GeneratedIcon[]} icons
+ * @param {string[]} [remove] export names to drop ({@link generatedModuleText})
  * @returns {{changed: boolean, files: string[], undo: () => void}}
  */
-export function writeGeneratedIcons(packageDir, generated, data, icons) {
+export function writeGeneratedIcons(
+  packageDir,
+  generated,
+  data,
+  icons,
+  remove = [],
+) {
   const file = assertWithin(generated, packageDir, {
     label: 'generated icons module',
   });
@@ -973,6 +1085,7 @@ export function writeGeneratedIcons(packageDir, generated, data, icons) {
     before,
     data,
     icons,
+    remove,
   );
   const typesRel = generatedTypesPath(generated);
   const typesFile = typesRel ? path.join(packageDir, typesRel) : null;

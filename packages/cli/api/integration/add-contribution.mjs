@@ -1214,11 +1214,25 @@ function quoteJs(value) {
  * discoverable; `integration check` then names every built-in icon
  * definition it still has to map.
  * @param {string} name  icon set name (kebab-case)
- * @param {{cwd?: string, dryRun?: boolean, from?: string}} options
+ * @param {{cwd?: string, dryRun?: boolean, from?: string, exclude?: string[] | string}} options
  * @returns {Promise<import('./integration-authoring.type.mjs').IntegrationAddResponse>}
  */
 async function addIconSet(name, options) {
   const {cwd = process.cwd(), dryRun = false, from} = options;
+  const exclude =
+    typeof options.exclude === 'string'
+      ? options.exclude
+          .split(',')
+          .map(each => each.trim())
+          .filter(Boolean)
+      : (options.exclude ?? []);
+  if (exclude.length > 0 && from == null) {
+    throw new AstryxError(
+      '--exclude names library exports to leave out, so it needs --from.',
+      undefined,
+      ERROR_CODES.ERR_INVALID_ARGUMENT,
+    );
+  }
   if (!KEBAB_NAME_RE.test(name)) {
     throw new AstryxError(
       `Invalid icon set name "${name}": use lowercase kebab-case starting with a letter.`,
@@ -1294,6 +1308,7 @@ async function addIconSet(name, options) {
       cwd,
       dryRun,
       from,
+      exclude,
       packageDir,
       rootPath,
       manifestPath: projectPath(path.relative(packageDir, manifestFile)),
@@ -1322,7 +1337,7 @@ async function addIconSet(name, options) {
     const source = await iconAuthoring(() =>
       resolveIconSource(from, {packageDir, pkg}),
     );
-    const found = libraryIcons(source.file);
+    const found = libraryIcons(source.file, {exclude});
     if (found.length === 0) {
       throw new AstryxError(
         `"${from}" exports no icon components this command can read. If its icons are data (objects or SVG strings), run \`astryx integration add icon-set ${name}\`, declare an "adapter" in ${name}.icons.json, and run this command again; or add icons one at a time with \`astryx icon add <Export> --from ${from}\`.`,
@@ -1535,11 +1550,11 @@ async function iconAuthoring(step) {
  * them), the generated module gains the new exports, `map` keeps every entry
  * whose icon still exists, and the receipt names the entries that lost theirs.
  * @param {string} name
- * @param {{cwd: string, dryRun: boolean, from: string, packageDir: string, rootPath: string, manifestPath: string}} options
+ * @param {{cwd: string, dryRun: boolean, from: string, exclude: string[], packageDir: string, rootPath: string, manifestPath: string}} options
  */
 async function refreshIconSet(
   name,
-  {cwd, dryRun, from, packageDir, rootPath, manifestPath},
+  {cwd, dryRun, from, exclude, packageDir, rootPath, manifestPath},
 ) {
   return iconAuthoring(async () => {
     const where = await findLocalIconSet(cwd, name);
@@ -1547,6 +1562,7 @@ async function refreshIconSet(
     const source = resolveIconSource(from, where);
     const found = libraryIcons(source.file, {
       adapter: Boolean(set.data.adapter),
+      exclude,
     });
     const previous = new Map(set.data.icons.map(icon => [icon.id, icon]));
     const icons = found.map(icon => {
@@ -1588,6 +1604,10 @@ async function refreshIconSet(
           source: icon.export,
           adapt: icon.adapt,
         })),
+        // The icons the library no longer has leave the module too.
+        set.data.icons
+          .filter(icon => !ids.has(icon.id))
+          .map(icon => icon.export),
       );
       files.push(...written.files);
       try {
@@ -1779,7 +1799,7 @@ const KIND_OPTIONS = {
   codemod: new Set(['cwd', 'dryRun', 'to']),
   'agent-doc': new Set(['cwd', 'dryRun']),
   theme: new Set(['cwd', 'dryRun', 'from']),
-  'icon-set': new Set(['cwd', 'dryRun', 'from']),
+  'icon-set': new Set(['cwd', 'dryRun', 'from', 'exclude']),
   'icon-definition': new Set([
     'cwd',
     'dryRun',
@@ -1856,6 +1876,7 @@ export async function integrationAdd(kind, name, options = {}) {
         cwd: options.cwd,
         dryRun: options.dryRun,
         from: options.from,
+        exclude: options.exclude,
       });
     case 'icon-definition':
       return integrationAddIconDefinition(name, options);

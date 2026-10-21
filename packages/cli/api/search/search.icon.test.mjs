@@ -30,6 +30,9 @@ beforeAll(() => {
   // A "table" icon, so the word matches a Core component and an icon alike.
   const data = /** @type {any} */ ({...glyphsData(), module: '@acme/glyphs'});
   data.icons.push({id: 'table', export: 'HomeIcon', words: ['table', 'grid']});
+  // An icon whose own words are only its name, mapped to `archive`.
+  data.icons.push({id: 'basket', export: 'HomeIcon', words: ['basket']});
+  data.map = {...data.map, archive: 'basket'};
   cwd = writeIconSetProject(tmp, {packages: [{data}]});
   fs.mkdirSync(path.join(cwd, 'node_modules', '@astryxdesign'), {
     recursive: true,
@@ -65,6 +68,12 @@ describe('search: icon domain', () => {
     const iconAt = data.results.findIndex(result => result.domain === 'icon');
     expect(component).toBeGreaterThanOrEqual(0);
     expect(iconAt).toBeGreaterThan(component);
+  });
+
+  it('an icon answers to the words of the definition it is mapped to', async () => {
+    // `store` is a word of the archive definition, not of the icon.
+    const {data} = await search('store', {cwd, type: 'icon'});
+    expect(data.results.map(result => result.name)).toContain('glyphs/basket');
   });
 
   it('--type icon keeps only icons', async () => {

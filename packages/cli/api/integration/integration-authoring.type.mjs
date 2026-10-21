@@ -40,9 +40,11 @@
 /**
  * @typedef {IntegrationAddBaseOptions & {
  *   from?: string,
+ *   exclude?: string[] | string,
  * }} IntegrationAddIconSetOptions
  * `from`: a module whose every icon component the set wraps: a package, a
- * package subpath, or a ./ path in the package.
+ * package subpath, or a ./ path in the package. `exclude`: export names of
+ * that module that are not icons; a string is split on commas.
  */
 
 /**
@@ -76,6 +78,7 @@
  * @property {string} [description]
  * @property {string[] | string} [words]
  * @property {string} [icon]
+ * @property {string[] | string} [exclude]
  */
 
 /**

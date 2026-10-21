@@ -78,7 +78,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "The CLI reads the library's exports without running them and refuses a name the module does not export, suggesting close names. It adds the icon as `BinIcon` (id `bin`, words from its name and the definition), writes `export {Bin as BinIcon} from '@acme/glyph-library';` to the set's generated module, and sets `map.delete = \"bin\"`. Running it again changes nothing.",
+          text: "The CLI reads the library's exports without running them and refuses a name the module does not export, suggesting close names. It adds the icon as `BinIcon` (id `bin`, words from its name), writes `export {Bin as BinIcon} from '@acme/glyph-library';` to the set's generated module, and sets `map.delete = \"bin\"`. Running it again changes nothing. Do not copy the definition's words into the icon: `astryx icon` and `astryx search` match an icon by its own words and by the name and words of every definition it is mapped to.",
         },
         {
           type: 'prose',
@@ -110,7 +110,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: 'A library whose icons are data (objects or SVG strings) has no components to find: create the set, declare an `adapter` in its data file (see library shapes), and run the command again; every data export then becomes an icon through the adapter. When every icon export shares a leading word, such as `feather` in `featherEye` and `featherSun`, ids and export names leave it out: `featherEye` becomes id `eye`, exported as `EyeIcon`. `icon add` follows the same rule, so its commands need no `--id`.',
+          text: 'A library whose icons are data (objects or SVG strings) has no components to find: create the set, declare an `adapter` in its data file (see library shapes), and run the command again; every data export then becomes an icon through the adapter. When every icon export shares a leading word, such as `feather` in `featherEye` and `featherSun`, ids and export names leave it out: `featherEye` becomes id `eye`, exported as `EyeIcon`. The prefix is read over icon-like exports only: SCREAMING_CASE constants (`README`, `VERSION`), number and boolean exports, and, next to components or icon objects, plain strings are never icons. Leave out any other export that is not an icon with `--exclude meta,version`. `icon add` reads the prefix the same way, and reuses the icon an export already has, so its commands need no `--id`.',
         },
       ],
     },

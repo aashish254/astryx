@@ -87,6 +87,12 @@ export const doc = {
         'For theme: the slug of an existing theme to fork. For icon-set: a module whose every icon component the set wraps. Only valid for theme and icon-set.',
     },
     {
+      name: 'options.exclude',
+      type: 'string[] | string',
+      description:
+        'For icon-set with from: export names of the library that are not icons; a string is split on commas.',
+    },
+    {
       name: 'options.set',
       type: 'string',
       description:

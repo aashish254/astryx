@@ -115,6 +115,8 @@ import {templateLookupIds} from '../../foundation/discovery/template-adapter.mjs
 import {listAvailableThemes} from '../theme/_adapter.mjs';
 import {loadIconSets} from '../icon/_adapter.mjs';
 import {definitionsByIcon} from '../../foundation/discovery/icon-set-discovery.mjs';
+import {astryxDefinitionsByName} from '../../foundation/discovery/icon-definition-discovery.mjs';
+import {withDefinitionWords} from '../../foundation/discovery/icon-ranking.mjs';
 import {
   guideEntry,
   loadDocsCatalog,
@@ -2150,16 +2152,26 @@ async function gatherIcons(cwd) {
   } catch {
     return [];
   }
+  const astryx = astryxDefinitionsByName();
   return sets.flatMap(set => {
     const byIcon = definitionsByIcon(set.data);
+    const own = new Map(
+      (set.definitions ?? []).map(each => [each.doc.name, each.doc]),
+    );
     return set.data.icons.map(icon => {
       const module = icon.module ?? set.data.module;
+      // An icon also answers to the words of every definition it draws.
+      const matched = withDefinitionWords(
+        icon,
+        byIcon.get(icon.id) ?? [],
+        name => astryx.get(name) ?? own.get(name),
+      );
       return {
         domain: /** @type {const} */ ('icon'),
         name: `${set.name}/${icon.id}`,
         keywords: [
           icon.id.replace(/-/g, ' '),
-          ...icon.words,
+          ...matched.words,
           ...(byIcon.get(icon.id) ?? []),
         ],
         description: '',

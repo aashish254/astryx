@@ -34,6 +34,7 @@
  */
 
 import {definitionsByIcon} from './icon-set-discovery.mjs';
+import {astryxDefinitionsByName} from './icon-definition-discovery.mjs';
 
 /** @typedef {import('./icon-set-discovery.mjs').DiscoveredIconSet} DiscoveredIconSet */
 /** @typedef {import('../../authoring/doctypes/icon-set/type').IconSetIcon} IconSetIcon */
@@ -222,6 +223,33 @@ export function scoreIcon(query, icon, leading = 'meaning', definitions = []) {
 }
 
 /**
+ * The icon with the words it matches by: its own words, then the name (read
+ * as words) and words of every definition the set's `map` names it for, so
+ * `bin` finds the icon mapped to `delete` without the data file repeating
+ * the definition's words. The icon's own words keep their places, so its
+ * own tags still rank first.
+ * @param {IconSetIcon} icon
+ * @param {string[]} definitions
+ * @param {(name: string) => {name: string, words: string[]} | undefined} lookup
+ * @returns {IconSetIcon}
+ */
+export function withDefinitionWords(icon, definitions, lookup) {
+  if (definitions.length === 0) return icon;
+  const words = [...icon.words];
+  for (const name of definitions) {
+    const doc = lookup(name);
+    const humanized = name
+      .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+      .toLowerCase();
+    for (const word of [humanized, ...(doc?.words ?? [])]) {
+      const lower = word.toLowerCase();
+      if (!words.includes(lower)) words.push(lower);
+    }
+  }
+  return {...icon, words};
+}
+
+/**
  * Every icon in `sets` that answers the query, ranked (FR6).
  * @param {DiscoveredIconSet[]} sets in tie order
  * @param {string} query
@@ -229,13 +257,25 @@ export function scoreIcon(query, icon, leading = 'meaning', definitions = []) {
  */
 export function rankIcons(sets, query) {
   const term = query.trim().toLowerCase();
+  const astryx = astryxDefinitionsByName();
   /** @type {Array<{set: DiscoveredIconSet, icon: IconSetIcon, definitions: string[], match: IconMatch, setIndex: number}>} */
   const hits = [];
   sets.forEach((set, setIndex) => {
     const byIcon = definitionsByIcon(set.data);
+    const own = new Map(
+      (set.definitions ?? []).map(each => [each.doc.name, each.doc]),
+    );
     for (const icon of set.data.icons) {
       const definitions = byIcon.get(icon.id) ?? [];
-      const match = matchIcon(term, icon, definitions);
+      const match = matchIcon(
+        term,
+        withDefinitionWords(
+          icon,
+          definitions,
+          name => astryx.get(name) ?? own.get(name),
+        ),
+        definitions,
+      );
       if (match) hits.push({set, icon, definitions, match, setIndex});
     }
   });

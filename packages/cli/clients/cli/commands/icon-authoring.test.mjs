@@ -193,9 +193,8 @@ describe('icon add', () => {
     const data = dataOf('outline');
     expect(data.map).toEqual({delete: 'bin'});
     expect(data.icons[0]).toMatchObject({id: 'bin', export: 'BinIcon'});
-    expect(data.icons[0].words).toEqual(
-      expect.arrayContaining(['bin', 'trash']),
-    );
+    // Only its own words: the definition's words are matched, not copied.
+    expect(data.icons[0].words).toEqual(['bin']);
     expect(data.icons[0]).not.toHaveProperty('module');
     const again = await json(args);
     expect(again.body.data.changed).toBe(false);
@@ -601,6 +600,127 @@ describe('a library of icon data, through the adapter', () => {
       expect(codes, code).not.toContain(code);
     }
   }, 60_000);
+});
+
+describe('the library prefix ignores constants', () => {
+  beforeEach(() => {
+    const lib = path.join(pkg, 'node_modules', '@acme', 'glyph-data');
+    fs.mkdirSync(lib, {recursive: true});
+    fs.writeFileSync(
+      path.join(lib, 'package.json'),
+      JSON.stringify({
+        name: '@acme/glyph-data',
+        version: '1.0.0',
+        type: 'module',
+        exports: {'.': './index.js'},
+      }),
+    );
+    fs.writeFileSync(
+      path.join(lib, 'index.js'),
+      [
+        "export const glyphEye = {path: 'M1 1'};",
+        "export const glyphTrash = {path: 'M2 2'};",
+        "export const glyphX = {path: 'M3 3'};",
+        "export const README = 'See the docs.';",
+        "export const notes = 'Some notes.';",
+        'export const count = 5;',
+        "export const meta = {kind: 'meta'};",
+        '',
+      ].join('\n'),
+    );
+    fs.mkdirSync(path.join(pkg, 'src'));
+    fs.writeFileSync(
+      path.join(pkg, 'src', 'adapt.js'),
+      'export function adapt(data) { return () => null; }\n',
+    );
+  });
+
+  /** Create the set with an adapter. */
+  const setUp = async () => {
+    await runCli(['integration', 'add', 'icon-set', 'outline'], pkg);
+    const file = path.join(pkg, 'icon-sets', 'outline', 'outline.icons.json');
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    data.adapter = {module: './src/adapt.js', export: 'adapt'};
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  };
+  const exportsOf = () =>
+    dataOf('outline').icons.map((/** @type {any} */ i) => i.export);
+  const wrap = (/** @type {string[]} */ extra = []) =>
+    json([
+      'integration',
+      'add',
+      'icon-set',
+      'outline',
+      '--from',
+      '@acme/glyph-data',
+      ...extra,
+    ]);
+
+  it('skips SCREAMING_CASE names, numbers, and stray strings; --exclude drops a non-icon object, and the refresh prunes the old exports', async () => {
+    await setUp();
+    // meta is shaped like an icon, so it keeps the prefix off.
+    expect((await wrap()).code).toBe(0);
+    expect(exportsOf()).toEqual([
+      'GlyphEyeIcon',
+      'GlyphTrashIcon',
+      'GlyphXIcon',
+      'MetaIcon',
+    ]);
+    expect((await wrap(['--exclude', 'meta'])).code).toBe(0);
+    expect(exportsOf()).toEqual(['EyeIcon', 'TrashIcon', 'XIcon']);
+    const generated = fs.readFileSync(
+      path.join(pkg, 'icon-sets', 'outline', 'outline.generated.js'),
+      'utf-8',
+    );
+    expect(generated).not.toContain('Glyph');
+    expect(generated).not.toContain('README');
+    expect(generated).not.toContain('notes');
+    // icon add reuses the icon the wrap already made for an export, even
+    // though meta keeps its own prefix off.
+    const added = await json([
+      'icon',
+      'add',
+      'glyphTrash',
+      '--from',
+      '@acme/glyph-data',
+      '--definition',
+      'delete',
+    ]);
+    expect(added.code).toBe(0);
+    expect(added.body.data.icon).toMatchObject({
+      id: 'trash',
+      export: 'TrashIcon',
+    });
+    expect(exportsOf()).toEqual(['EyeIcon', 'TrashIcon', 'XIcon']);
+  });
+
+  it('--exclude needs --from', async () => {
+    const res = await json([
+      'integration',
+      'add',
+      'icon-set',
+      'outline',
+      '--exclude',
+      'README',
+    ]);
+    expect(res.code).toBe(1);
+    expect(res.body.error).toContain('--from');
+  });
+
+  it('a library of SVG strings keeps its strings as icons', async () => {
+    fs.writeFileSync(
+      path.join(pkg, 'node_modules', '@acme', 'glyph-data', 'index.js'),
+      [
+        "export const glyphEye = '<svg/>';",
+        "export const glyphSun = '<svg/>';",
+        "export const VERSION = '1.0.0';",
+        '',
+      ].join('\n'),
+    );
+    await setUp();
+    expect((await wrap()).code).toBe(0);
+    expect(exportsOf()).toEqual(['EyeIcon', 'SunIcon']);
+  });
 });
 
 describe('module resolution', () => {

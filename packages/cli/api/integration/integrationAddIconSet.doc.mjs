@@ -33,6 +33,18 @@ export const doc = {
         'Validate and return the same receipt without writing; data.written is false and data.dryRun is true.',
       default: 'false',
     },
+    {
+      name: 'options.from',
+      type: 'string',
+      description:
+        "A module whose every icon the set wraps: a package, a subpath, or a ./ path in the package. Components always; data exports too once the set declares an adapter. Run again to refresh the set's icons.",
+    },
+    {
+      name: 'options.exclude',
+      type: 'string[] | string',
+      description:
+        'With from: export names that are not icons; a string is split on commas. SCREAMING_CASE names and number or boolean exports are always left out.',
+    },
   ],
   returns: [
     {

@@ -107,7 +107,7 @@ export const doc = {
           name: 'icons[].words',
           type: 'string[]',
           description:
-            "Lower-case terms a person might search for, the words of the icon's own name included; at least one.",
+            "Lower-case terms a person might search for, the words of the icon's own name included; at least one. Do not copy the words of the definitions `map` names the icon for: search already matches the icon by them.",
           required: true,
           example: "['trash', 'delete', 'remove', 'bin']",
         },

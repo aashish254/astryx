@@ -822,6 +822,56 @@ export function exportValueKind(file, exportName) {
 }
 
 /**
+ * The scalar type of an export's static value: `string` for a string or a
+ * template literal with no expressions, `number` or `boolean` for those
+ * literals; null for anything else, or when the value cannot be read.
+ * @param {string} file
+ * @param {string} exportName
+ * @returns {'string' | 'number' | 'boolean' | null}
+ */
+export function exportScalarType(file, exportName) {
+  const origin = moduleExportOrigin(file, exportName);
+  if (!origin) return null;
+  let ast;
+  try {
+    ast = parseModule(origin.file);
+  } catch {
+    return null;
+  }
+  /** @param {any} node */
+  const typeOf = node => {
+    const value = withoutTypeWrappers(node);
+    if (value?.type === 'StringLiteral') return 'string';
+    if (value?.type === 'TemplateLiteral' && value.expressions.length === 0) {
+      return 'string';
+    }
+    if (value?.type === 'NumericLiteral') return 'number';
+    if (value?.type === 'BooleanLiteral') return 'boolean';
+    return null;
+  };
+  if (origin.name === 'default') {
+    const [node] = nodesOfType(ast.program, 'ExportDefaultDeclaration');
+    return node ? typeOf(node.declaration) : null;
+  }
+  for (const statement of ast.program.body) {
+    const declaration =
+      statement.type === 'ExportNamedDeclaration'
+        ? statement.declaration
+        : statement;
+    if (declaration?.type !== 'VariableDeclaration') continue;
+    for (const declarator of declaration.declarations) {
+      if (
+        declarator.id?.type === 'Identifier' &&
+        declarator.id.name === origin.name
+      ) {
+        return typeOf(declarator.init);
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Where a top-level binding of a parsed module comes from: an import from a
  * local module is followed to its origin; anything else is declared here.
  * @param {any} ast

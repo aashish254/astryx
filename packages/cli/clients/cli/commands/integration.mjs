@@ -239,6 +239,7 @@ export function registerIntegration(program) {
           description: options.description,
           words: options.words,
           icon: options.icon,
+          exclude: options.exclude,
         });
       } catch (error) {
         const err =

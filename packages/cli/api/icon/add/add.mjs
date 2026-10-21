@@ -37,6 +37,7 @@ import {
   mappableDefinitions,
   exportValueKind,
   generatedModulePath,
+  generatedNamesOf,
   iconNaming,
   modulePrefix,
   variantExportName,
@@ -132,7 +133,17 @@ export function iconAdd(exportName, options) {
       shared.every((word, index) => nameWords[index] === word)
         ? shared
         : [];
-    const naming = iconNaming(exportName, prefix);
+    // A library export the set already has keeps its icon's name and id.
+    const already = generatedNamesOf(
+      packageDir,
+      generated,
+      source.module,
+      sourceExport,
+    );
+    const known = set.data.icons.find(each => already.includes(each.export));
+    const naming = known
+      ? {id: known.id, name: known.export}
+      : iconNaming(exportName, prefix);
     const id = givenId ?? naming.id;
     const variantValues = {
       ...(appearance != null ? {appearance} : {}),
@@ -193,15 +204,8 @@ export function iconAdd(exportName, options) {
         ERROR_CODES.ERR_NOT_FOUND,
       );
     }
-    const definitionWords = mapped
-      ? (created?.words ??
-        set.definitions.find(each => each.doc.name === mapped)?.doc.words ??
-        astryxIconDefinitions().definitions.find(
-          each => each.doc.name === mapped,
-        )?.doc.words ??
-        [])
-      : [];
-
+    // The icon keeps only its own words: search also matches it by the
+    // words of every definition it is mapped to, so they are not copied.
     const icons = set.data.icons.map(each => ({...each}));
     const existing = icons.find(each => each.id === id);
     if (asVariant) {
@@ -235,12 +239,11 @@ export function iconAdd(exportName, options) {
           ERROR_CODES.ERR_FILE_EXISTS,
         );
       }
-      existing.words = [...new Set([...existing.words, ...definitionWords])];
     } else {
       icons.push({
         id,
         export: setName,
-        words: [...new Set([...id.split('-'), ...definitionWords])],
+        words: id.split('-'),
       });
     }
     const map = {...(set.data.map ?? {})};

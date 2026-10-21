@@ -64,6 +64,12 @@ export const doc = {
         'For theme: an existing theme slug to fork instead of a blank scaffold; the new theme copies the base and has no link back, and package.json `dependencies` gains the npm packages the copied files import (other than Core and React). For icon-set: a module whose every icon component the set wraps (a package, a subpath, or a ./ path); run again to refresh. Only valid for theme and icon-set',
     },
     {
+      flag: '--exclude <names>',
+      param: 'options.exclude',
+      description:
+        'For icon-set with --from: comma-separated export names of the library that are not icons',
+    },
+    {
       flag: '--set <name>',
       param: 'options.set',
       description:

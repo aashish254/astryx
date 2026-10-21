@@ -39,6 +39,7 @@ export {
   mappableDefinitions,
   resolveIconSource,
   generatedModulePath,
+  generatedNamesOf,
   iconExportName,
   iconNaming,
   modulePrefix,

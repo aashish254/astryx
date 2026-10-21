@@ -235,6 +235,11 @@ set is installed.
   | 60    | starts one of its `words`                                                                                                                  | `word "<word>" starts with "<query>"` |
   | 40    | is inside its `id` or one of its `words`, or, for a query of several words, every query word starts a part of its `id` or one of its words | `partial "<text>"`                    |
 
+  An icon's words, for matching here and in search (FR8), are its own
+  `words` followed by the name (read as words) and the words of every
+  definition its set's `map` names it for; the data file does not repeat a
+  definition's words, and a match reports the icon's own `words`.
+
   An exact match is a name match or a meaning match. It is a name match when
   the query equals the icon's `id` (spaces read as `-`, reason `id "<id>"`)
   or one of its `words` that is also a part of the `id` (`trash` for
@@ -447,9 +452,14 @@ set is installed.
     removed.
   - Leading words every icon export of a library shares (`feather` in
     `featherEye` and `featherSun`) are a library prefix: ids and export
-    names leave them out (`featherEye` is id `eye`, `EyeIcon`). `icon add`
-    applies the same rule from the source module's exports, so its commands
-    need no `--id`.
+    names leave them out (`featherEye` is id `eye`, `EyeIcon`). The prefix
+    is read over icon-like exports only: SCREAMING_CASE names, number and
+    boolean exports, and plain strings next to components or icon objects
+    are never icons, and `--exclude <names>` leaves out any other export.
+    `icon add` reads the prefix the same way and reuses the icon the
+    generated module already has for the same library export, so its
+    commands need no `--id`. An added icon's `words` are its own name's
+    words.
   - `integration add icon-definition <name> --description --words [--icon]
 [--set]` writes one of the set's own definitions and, with `--icon`, its
     `map` entry. A name Astryx has is refused.
