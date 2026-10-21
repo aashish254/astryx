@@ -768,6 +768,37 @@ describe.skipIf(!POSIX)(
       }
     }, 240_000);
 
+    it("a host's door names the upgrade step of the project update notice, printed as the run ends (b32)", () => {
+      const pc = computer();
+      const g = globalCli('npm', '9.0.0', {root: pc.home});
+      globalState(pc, {
+        latest: '9.0.5',
+        checkOkAt: Date.now(),
+        firstRunAt: Date.now() - 2 * 24 * 60 * 60_000,
+      });
+      const dir = makeProject({core: '9.0.0'});
+      writeJson(path.join(dir, 'package-lock.json'), {lockfileVersion: 3});
+      // A host that runs the CLI inside its door, as the programmatic entry does.
+      const host = path.join(tempDir('host'), 'host.mjs');
+      fs.writeFileSync(
+        host,
+        [
+          "import {pathToFileURL} from 'node:url';",
+          `const at = rel => pathToFileURL(${JSON.stringify(g.dir)} + '/' + rel).href;`,
+          "const {runWithCliDoor} = await import(at('foundation/env/cli-command.mjs'));",
+          "const {startRun} = await import(at('foundation/release/handoff.mjs'));",
+          `await runWithCliDoor('host astryx', () => startRun({cliRoot: ${JSON.stringify(g.dir)}, argv: ['--version']}));`,
+          '',
+        ].join('\n'),
+      );
+      const r = run(host, [], {cwd: dir, pc});
+      expect(r.status).toBe(0);
+      expect(r.notice).toEqual([
+        available('9.0.0', '9.0.5'),
+        'To upgrade, run: npm install @astryxdesign/core@9.0.5 @astryxdesign/cli@9.0.5, then host astryx upgrade --from 9.0.0 --apply',
+      ]);
+    });
+
     it('G23 the newest release needs a newer Node: the global copy answers, and the notice and doctor name the Node first', () => {
       const pc = computer();
       const g = globalCli('npm', '9.0.0', {root: pc.home});
