@@ -118,7 +118,7 @@ export const doc = {
     },
     {
       code: 'ERR_PATH_TRAVERSAL',
-      when: 'the template output path resolves outside cwd (for example through a symlinked src directory), or, with removeAgents, a managed agent-docs file at the project root or in cwd resolves outside that folder through a symlink',
+      when: 'the template output path resolves outside cwd (for example through a symlinked src directory), or, with removeAgents, a managed agent-docs file in cwd, or at the project root when run there, resolves outside that folder through a symlink (run below the root, a project-root file is left as it is with a note)',
     },
   ],
   examples: [

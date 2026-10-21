@@ -30,6 +30,7 @@ import {
 } from '../../assets/codemods/integration-discovery.mjs';
 import {runIntegrationCodemods} from '../../assets/codemods/integration-runner.mjs';
 import {
+  AgentDocsHomeError,
   installAgentDocs,
   inspectAgentDocs,
   renderAgentDocsBlock,
@@ -377,12 +378,21 @@ export function applyAgentDocsRefresh(plan) {
         `Agent docs look stale but couldn't be refreshed. Run \`${formatCliCommand('astryx init --features agents')}\` to reinstall the block.`,
       );
     }
-  } catch {
+  } catch (err) {
     summary.action = 'error';
     summary.refreshed = false;
-    logger.warn(
-      `Could not refresh agent docs. Run \`${formatCliCommand('astryx init --features agents')}\` to update them manually.`,
-    );
+    if (err instanceof AgentDocsHomeError) {
+      // init refuses this folder too, so pointing at it would loop: say why,
+      // and what to do instead.
+      logger.warn(
+        `Agent docs not refreshed: ${err.dir} is the home folder or a settings folder in it, which every project's agents read. ` +
+          'To keep agent docs, move the project into a folder of its own; otherwise update or remove the Astryx block there by hand.',
+      );
+    } else {
+      logger.warn(
+        `Could not refresh agent docs. Run \`${formatCliCommand('astryx init --features agents')}\` to update them manually.`,
+      );
+    }
   }
   return summary;
 }

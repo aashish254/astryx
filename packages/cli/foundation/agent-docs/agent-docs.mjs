@@ -326,6 +326,8 @@ export class AgentDocsHomeError extends Error {
       `Agent docs are not written into the home folder, or into a settings folder in it outside a project (${dir}): agents read the files there in every project. Run init inside a project folder.`,
     );
     this.name = 'AgentDocsHomeError';
+    /** The refused folder. */
+    this.dir = dir;
   }
 }
 
