@@ -771,3 +771,38 @@ describe('a fresh scaffold passes the checks', () => {
     });
   }
 });
+
+describe('export * cycles and repeated checks', () => {
+  beforeEach(() => {
+    pkg(p => {
+      p.exports['./a'] = './lib/a.ts';
+      p.exports['./b'] = './lib/b.ts';
+    });
+    write('lib/a.ts', "export const A = 1;\nexport * from './b';\n");
+    write('lib/b.ts', "export * from './a';\nexport const B = 2;\n");
+  });
+
+  it('reads every name through an export * cycle, from either side', async () => {
+    write(
+      'templates/account-card.tsx',
+      "import {A, B} from '@acme/widgets/a';\nimport {A as A2, B as B2} from '@acme/widgets/b';\nimport {AcmeWidget} from '@acme/widgets/components/AcmeWidget';\nexport default function C() {\n  return <AcmeWidget label={String(A + B + A2 + B2)} />;\n}\n",
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('rereads a re-exported module on a second check in the same process', async () => {
+    write('lib/b.ts', 'export const B = 2;\n');
+    write('lib/c.ts', "export * from './b';\n");
+    pkg(p => {
+      p.exports['./c'] = './lib/c.ts';
+    });
+    write(
+      'templates/account-card.tsx',
+      "import {C} from '@acme/widgets/c';\nexport default function T() {\n  return <div>{C}</div>;\n}\n",
+    );
+    expect(await codes()).toEqual(['template_import_missing_name']);
+    // Fix only the re-exported module: c.ts itself does not change.
+    write('lib/b.ts', 'export const B = 2;\nexport const C = 3;\n');
+    expect(await codes()).toEqual([]);
+  });
+});

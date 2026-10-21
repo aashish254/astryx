@@ -367,14 +367,11 @@ function exportsFix(exportsField, state, subpath, target) {
 
 // ── Module export names ─────────────────────────────────────────────
 
-/** @type {Map<string, {stamp: string, value: {names: Set<string>, complete: boolean}}>} */
-const exportNameCache = new Map();
-
-/** @param {string} file */
-function stampOf(file) {
-  const s = fs.statSync(file);
-  return `${s.size}:${s.mtimeMs}:${s.ino}`;
-}
+/**
+ * Export lists read during one public-import check, by file. Scoped to that
+ * check, so a later check in the same process rereads every module.
+ * @typedef {Map<string, {names: Set<string>, complete: boolean}>} ExportNameCache
+ */
 
 /** @param {string} specifier @param {string} fromFile */
 function resolveRelative(specifier, fromFile) {
@@ -394,27 +391,47 @@ function resolveRelative(specifier, fromFile) {
  * complete: an `export *` from another package, `export =`, or a module that
  * does not parse leaves it incomplete, and then no name is judged missing.
  * @param {string} file
- * @param {Set<string>} [seen]
+ * @param {ExportNameCache} [cache] export lists already read in this check
  * @returns {{names: Set<string>, complete: boolean}}
  */
-export function moduleExportNames(file, seen = new Set()) {
+export function moduleExportNames(file, cache = new Map()) {
+  const {names, complete} = readExportNames(file, cache, []);
+  return {names, complete};
+}
+
+/**
+ * One module's export list, following local `export *` declarations. `stack`
+ * holds the modules whose lists are being read: an `export *` that reaches one
+ * of them closes a cycle, and a list read through a cycle the module does not
+ * close is not cached, since it lacks what the module on the stack exports.
+ * @param {string} file
+ * @param {ExportNameCache} cache
+ * @param {string[]} stack
+ * @returns {{names: Set<string>, complete: boolean, cycleTo: Set<string>}}
+ */
+function readExportNames(file, cache, stack) {
   /** @type {Set<string>} */
   const names = new Set();
-  if (seen.has(file)) return {names, complete: true};
-  seen.add(file);
-  let stamp;
-  try {
-    stamp = stampOf(file);
-  } catch {
-    return {names, complete: false};
+  /** @type {Set<string>} */
+  const cycleTo = new Set();
+  if (stack.includes(file)) {
+    cycleTo.add(file);
+    return {names, complete: true, cycleTo};
   }
-  const cached = exportNameCache.get(file);
-  if (cached?.stamp === stamp) return cached.value;
+  const cached = cache.get(file);
+  if (cached) return {...cached, cycleTo};
+  /** @param {boolean} complete */
+  const done = complete => {
+    cycleTo.delete(file);
+    const value = {names, complete};
+    if (cycleTo.size === 0) cache.set(file, value);
+    return {...value, cycleTo};
+  };
   // A CommonJS module's exports cannot be read from declarations: leave it
   // unjudged rather than read it as exporting nothing. That is any .cjs/.cts
   // file, any file (built `dist/*.js` included) with no ES module import or
   // export, and any file that also assigns `module.exports` or `exports.*`.
-  if (/\.c[jt]s$/u.test(file)) return {names, complete: false};
+  if (/\.c[jt]s$/u.test(file)) return done(false);
   let complete = true;
   let ast;
   let text;
@@ -423,7 +440,7 @@ export function moduleExportNames(file, seen = new Set()) {
     ast = parseModuleText(text);
     if (ast.errors?.length) complete = false;
   } catch {
-    return {names, complete: false};
+    return done(false);
   }
   const esm = ast.program.body.some(
     (/** @type {any} */ node) =>
@@ -433,9 +450,9 @@ export function moduleExportNames(file, seen = new Set()) {
       node.type === 'ExportAllDeclaration' ||
       node.type === 'TSExportAssignment',
   );
-  if (!esm) return {names, complete: false};
+  if (!esm) return done(false);
   if (/\b(?:module\.exports|exports\.[\w$]+)\s*=/u.test(text)) {
-    return {names, complete: false};
+    return done(false);
   }
   for (const node of ast.program.body) {
     if (node.type === 'ExportDefaultDeclaration') names.add('default');
@@ -449,8 +466,8 @@ export function moduleExportNames(file, seen = new Set()) {
           else complete = false;
         }
       }
-      for (const s of /** @type {any[]} */ (node.specifiers ?? [])) {
-        const exported = s.exported?.name ?? s.exported?.value;
+      for (const sp of /** @type {any[]} */ (node.specifiers ?? [])) {
+        const exported = sp.exported?.name ?? sp.exported?.value;
         if (exported) names.add(exported);
       }
     } else if (node.type === 'ExportAllDeclaration') {
@@ -467,23 +484,23 @@ export function moduleExportNames(file, seen = new Set()) {
         complete = false;
         continue;
       }
-      const inner = moduleExportNames(target, seen);
+      const inner = readExportNames(target, cache, [...stack, file]);
       for (const name of inner.names) if (name !== 'default') names.add(name);
       if (!inner.complete) complete = false;
+      for (const each of inner.cycleTo) cycleTo.add(each);
     }
   }
-  const value = {names, complete};
-  exportNameCache.set(file, {stamp, value});
-  return value;
+  return done(complete);
 }
 
 /**
  * The names an import statement asks for that the module provably lacks.
  * @param {ImportStatement} statement
  * @param {string[]} files candidate targets on disk
+ * @param {ExportNameCache} cache
  * @returns {string[] | null} null when it cannot be judged
  */
-function missingNames(statement, files) {
+function missingNames(statement, files, cache) {
   // A type-only name may live only in a declaration file: not judged.
   const wanted = statement.names
     .filter(binding => !binding.typeOnly)
@@ -496,7 +513,7 @@ function missingNames(statement, files) {
   /** @type {Set<string>} */
   const seen = new Set();
   for (const file of files) {
-    const {names, complete} = moduleExportNames(file);
+    const {names, complete} = moduleExportNames(file, cache);
     if (wanted.every(name => names.has(name))) return [];
     if (!complete) incomplete = true;
     for (const name of names) seen.add(name);
@@ -525,6 +542,7 @@ function uncheckedReason(files) {
  * @property {string | null} coreDir
  * @property {any} corePkg
  * @property {PublicImportUnchecked[]} unchecked what could not be judged
+ * @property {ExportNameCache} exportNames export lists read in this check
  */
 
 /** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportUnchecked} PublicImportUnchecked */
@@ -559,7 +577,7 @@ function judgeOwnImport(ctx, statement, subpath) {
     };
   }
   const files = existingTargets(ctx.packageDir, declaration);
-  const missing = missingNames(statement, files);
+  const missing = missingNames(statement, files, ctx.exportNames);
   return {
     undeclared: null,
     missing,
@@ -585,7 +603,12 @@ function subpathExporting(ctx, name, preferred) {
   for (const key of keys) {
     const declaration = declarationIn(ctx.exportsField, ctx.packageDir, key);
     const files = existingTargets(ctx.packageDir, declaration);
-    if (files.some(file => moduleExportNames(file).names.has(name))) return key;
+    if (
+      files.some(file =>
+        moduleExportNames(file, ctx.exportNames).names.has(name),
+      )
+    )
+      return key;
   }
   return null;
 }
@@ -688,7 +711,7 @@ async function componentIssues(ctx, integration) {
           names: list.map(r => ({imported: r.name, typeOnly: false})),
           namespace: false,
         };
-        const missing = missingNames(statement, files);
+        const missing = missingNames(statement, files, ctx.exportNames);
         if (missing == null) {
           ctx.unchecked.push({
             file: shownDoc,
@@ -746,6 +769,7 @@ async function componentIssues(ctx, integration) {
         const missing = missingNames(
           statement,
           existingTargets(ctx.packageDir, declaration),
+          ctx.exportNames,
         );
         return Array.isArray(missing) && missing.length === 0;
       };
@@ -779,7 +803,9 @@ async function componentIssues(ctx, integration) {
         );
       const sourceHasAll =
         source != null &&
-        values.every(name => moduleExportNames(source).names.has(name));
+        values.every(name =>
+          moduleExportNames(source, ctx.exportNames).names.has(name),
+        );
       const target = atSubpath
         ? `./${rel(ctx.packageDir, atSubpath)}`
         : sourceHasAll && sourceTarget
@@ -877,7 +903,7 @@ async function templateIssues(ctx, integration) {
     // `astryx template` copies the source as written, but the package's
     // public import, the gallery preview and a page that renders the
     // template import its default export.
-    const exported = text ? moduleExportNames(file) : null;
+    const exported = text ? moduleExportNames(file, ctx.exportNames) : null;
     if (exported?.complete && !exported.names.has('default')) {
       const named = [...exported.names].find(name => /^[A-Z]/.test(name));
       const fix = named
@@ -988,6 +1014,7 @@ export async function publicImportIssues(packageDir, integration) {
     coreDir,
     corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
     unchecked: report.unchecked,
+    exportNames: new Map(),
   };
   const issues = [
     ...(await componentIssues(ctx, integration)),
