@@ -12,6 +12,7 @@
 import {describe, it, expect} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import {createRef} from 'react';
+import * as stylex from '@stylexjs/stylex';
 import {VisuallyHidden} from './VisuallyHidden';
 
 describe('VisuallyHidden', () => {
@@ -65,9 +66,10 @@ describe('VisuallyHidden', () => {
   });
 
   it('does not forward the styling props its own contract omits', () => {
-    // The props are reached through an untyped spread, which is how they get
-    // past the `Omit` in practice: a cast, a ` {...consumerProps}` object, or
-    // plain JavaScript. The type is only the first line of defence here.
+    // `className` and `style` are off the interface, and they are reached here
+    // through an untyped spread, which is how they get past the `Omit` in
+    // practice: a cast, a `{...consumerProps}` object, or plain JavaScript. The
+    // type is only the first line of defence here.
     const stylingProps: Record<string, unknown> = {
       xstyle: {color: 'red'},
       className: 'consumer-track',
@@ -84,6 +86,20 @@ describe('VisuallyHidden', () => {
     expect(el).not.toHaveAttribute('xstyle');
     expect(el.getAttribute('class') ?? '').not.toContain('consumer-track');
     expect(el.getAttribute('style') ?? '').not.toContain('static');
+  });
+
+  it('still accepts a typed xstyle, and ignores it', () => {
+    // Released 0.7.2 accepted `xstyle` through `BaseProps`, so narrowing it out
+    // of `VisuallyHiddenProps` would make code that compiles today stop
+    // compiling. It stays declared and deprecated, and the runtime drop is what
+    // keeps the stray attribute off the element. Written as a typed prop on
+    // purpose: this line is the tripwire if the interface is ever narrowed early.
+    const overrides = stylex.create({tint: {color: 'red'}});
+    render(<VisuallyHidden xstyle={overrides.tint}>Hidden</VisuallyHidden>);
+    const el = screen.getByText('Hidden');
+
+    expect(el).not.toHaveAttribute('xstyle');
+    expect(el.getAttribute('style') ?? '').not.toContain('color');
   });
 
   it('gives an icon-only control an accessible name', () => {

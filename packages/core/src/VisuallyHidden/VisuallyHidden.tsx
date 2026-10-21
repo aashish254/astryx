@@ -16,18 +16,25 @@
 
 import {createElement, type ElementType, type ReactNode, type Ref} from 'react';
 import type {BaseProps} from '../BaseProps';
+import type {StyleXStyles} from '@stylexjs/stylex';
 import * as stylex from '@stylexjs/stylex';
 
 /**
  * VisuallyHidden is deliberately styling-free: it exists to *not* be seen, so it
- * intentionally omits `xstyle`/`className`/`style`. The clip block is fixed and
- * non-overridable — styling a visually-hidden node is always a mistake. The
- * accessibility pass-throughs from `BaseProps` (`aria-*`, `role`, `id`,
- * `data-*`, event handlers) remain, since the live-region use case needs them.
+ * omits `className`/`style` and applies a fixed, non-overridable clip block —
+ * styling a visually-hidden node is always a mistake. The accessibility
+ * pass-throughs from `BaseProps` (`aria-*`, `role`, `id`, `data-*`, event
+ * handlers) remain, since the live-region use case needs them.
+ *
+ * `xstyle` stays declared, and marked deprecated, because released 0.7.2
+ * accepted it through `BaseProps`: narrowing the interface would force every
+ * consumer to edit code, which is a `[breaking]` change for a planned minor
+ * (`spec:AST-017/FR53`). Removing it from this interface is the follow-up once a
+ * minor is planned.
  */
 export interface VisuallyHiddenProps extends Omit<
   BaseProps<HTMLElement>,
-  'className' | 'style' | 'xstyle'
+  'className' | 'style'
 > {
   /** Ref forwarded to the rendered element. */
   ref?: React.Ref<HTMLElement>;
@@ -44,6 +51,16 @@ export interface VisuallyHiddenProps extends Omit<
    * @default 'span'
    */
   as?: ElementType;
+
+  /**
+   * Ignored: VisuallyHidden has no styling surface. The clip block is the only
+   * style applied, and nothing a caller passes can displace it.
+   *
+   * @deprecated Remove this prop. `xstyle` stays only so that code written
+   * against 0.7.2 keeps compiling; it is not applied to the element, and it used
+   * to be spread onto the DOM as a stray `xstyle="[object Object]"` attribute.
+   */
+  xstyle?: StyleXStyles;
 }
 
 const styles = stylex.create({
@@ -92,17 +109,17 @@ export function VisuallyHidden({
   ref,
   ...rest
 }: VisuallyHiddenProps) {
-  // The type omits the styling props; take them back off at runtime so a cast
-  // cannot reach the element either. `xstyle` is not a valid attribute, so
-  // spreading it writes xstyle="[object Object]" into the DOM, and a cast
-  // `style` keeps the last word on `position` and un-hides the node.
+  // `className` and `style` are off the interface, and the deprecated `xstyle`
+  // is off by intent. Take all three back off at runtime so a cast cannot reach
+  // the element either: `xstyle` is not a valid attribute, so spreading it writes
+  // xstyle="[object Object]" into the DOM, and a cast `style` keeps the last word
+  // on `position` and un-hides the node.
   const {
     xstyle: _xstyle,
     className: _className,
     style: _style,
     ...props
   } = rest as typeof rest & {
-    xstyle?: unknown;
     className?: unknown;
     style?: unknown;
   };
