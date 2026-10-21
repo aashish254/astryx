@@ -59,11 +59,13 @@ import {
 import {
   blockComponentsReport,
   componentDocNamesReport,
+  INVALID_CLI_COMMAND,
   validateLoadedIntegration,
   issueError as error,
   issueWarning as warning,
   rootProblem,
 } from '../../foundation/integrations/validate-contributions.mjs';
+import {formatCliCommand} from '../../foundation/env/package-manager.mjs';
 
 export {validateLoadedIntegration};
 
@@ -79,6 +81,8 @@ export {validateLoadedIntegration};
  * @property {string} [manifestFile] Absolute path to the loaded manifest.
  * @property {'no_package_json'} [reason] Why nothing was validated (internal).
  * @property {Issue[]} issues
+ * @property {Array<{code: string, message: string}>} [notes] Information that
+ *   fails nothing, such as `invalid_cli_command` (a malformed `cliCommand`).
  * @property {import('../../foundation/integrations/integrations.mjs').LoadedIntegration} [integration]
  */
 
@@ -136,7 +140,7 @@ function unreadThemeFolderIssues(packageDir, loaded) {
     let fix;
     if (THEME_SLUG_RE.test(name)) {
       const stem = `${name.replace(/-([a-z0-9])/gu, (_, character) => character.toUpperCase())}Theme`;
-      fix = `if it is a theme, add ${stem}.ts and ${stem}.doc.mjs to it (\`astryx integration add theme ${name}\` writes both) and move its code into ${stem}.ts; if not, ${hide}.`;
+      fix = `if it is a theme, add ${stem}.ts and ${stem}.doc.mjs to it (\`${formatCliCommand(`integration add theme ${name}`, packageDir)}\` writes both) and move its code into ${stem}.ts; if not, ${hide}.`;
     } else {
       fix = `${hide}; a theme folder needs a lower-kebab name.`;
     }
@@ -319,11 +323,14 @@ async function validateAtPackageDir(
   let unknownKeys;
   /** @type {string | undefined} */
   let agentDocsError;
+  /** @type {string | undefined} */
+  let cliCommandError;
   try {
-    ({manifest, unknownKeys, agentDocsError} = await loadManifest(
-      manifestFile,
-      `Integration manifest (${path.basename(manifestFile)})`,
-    ));
+    ({manifest, unknownKeys, agentDocsError, cliCommandError} =
+      await loadManifest(
+        manifestFile,
+        `Integration manifest (${path.basename(manifestFile)})`,
+      ));
   } catch (err) {
     issues.push(error('invalid_manifest', /** @type {any} */ (err).message));
     return result;
@@ -382,6 +389,8 @@ async function validateAtPackageDir(
     themes: resolveRoot(manifest.themes, 'themes'),
     issuesUrl: manifest.issuesUrl,
     agentDocs: manifest.agentDocs,
+    cliCommand: manifest.cliCommand,
+    __cliCommandError: cliCommandError,
     __agentDocsError: agentDocsError,
     __unknownKeys: unknownKeys,
     __spec: identity.name,
@@ -393,7 +402,17 @@ async function validateAtPackageDir(
 
   // Roots + contribution checks are shared with validateLoadedIntegration so
   // the everyday-command nudge runs the exact same validators.
-  issues.push(...(await validateLoadedIntegration(loaded)));
+  // A malformed `cliCommand` is an info note beside the issues, not an issue:
+  // `integration check --strict` fails on any warning, and a new failure code
+  // joins only in a minor release (architecture:cli-surface INV35). Doctor's
+  // project check still warns about it.
+  for (const issue of await validateLoadedIntegration(loaded)) {
+    if (issue.code === INVALID_CLI_COMMAND) {
+      (result.notes ??= []).push({code: issue.code, message: issue.message});
+    } else {
+      issues.push(issue);
+    }
+  }
   if (loaded.themes && !rootProblem(loaded.themes))
     issues.push(...unreadThemeFolderIssues(packageDir, loaded));
   // What the docs say that no reader serves: a prop listed twice, an
@@ -647,6 +666,7 @@ export async function validateIntegration(pkg, options = {}) {
   const blockComponents = integration
     ? await blockComponentsReport(integration)
     : undefined;
+  const notes = result.found ? (result.notes ?? []) : [];
   return {
     type: 'integration.validate',
     data: {
@@ -666,6 +686,7 @@ export async function validateIntegration(pkg, options = {}) {
               },
             ]
           : result.issues,
+      ...(notes.length > 0 ? {notes} : {}),
       ...(docTypes ? {docTypes} : {}),
       ...(docNames ? {docNames} : {}),
       ...(blockComponents ? {blockComponents} : {}),

@@ -49,6 +49,7 @@ export const doc = {
       cli: 'astryx doctor integration components @acme/widgets --json',
     },
   ],
+  outsideProject: 'same',
   exitCodes: [
     {
       code: 0,
