@@ -143,11 +143,7 @@ export function registerBuild(program) {
         count: matchCount,
         empty: !hasResults,
         directMatch,
-        // Icons have no result kind of their own; they count as mixed.
-        fallbackKind:
-          options.type == null || options.type === 'icon'
-            ? 'mixed'
-            : options.type,
+        fallbackKind: options.type ?? 'mixed',
       });
 
       if (json) {
