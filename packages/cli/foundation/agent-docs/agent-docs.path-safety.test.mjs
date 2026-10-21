@@ -837,6 +837,60 @@ describe('below the project root, an AGENTS.md left as it is', () => {
   }, 60_000);
 });
 
+describe('round 6: an ignored .claude/CLAUDE.md follows the usual rule; --agent claude refreshes a kept copy', () => {
+  const OLD = '<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->';
+
+  it('strips the block from an ignored .claude/CLAUDE.md once the ignored root CLAUDE.md holds it', () => {
+    const {project} = layout();
+    fs.writeFileSync(
+      path.join(project, '.gitignore'),
+      '/CLAUDE.md\n.claude/\n',
+    );
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, `# Team\n\n${OLD}\n`);
+
+    const written = installAgentDocs(project, {renderedBlock: BLOCK});
+
+    expect(written).toEqual([
+      'AGENTS.md',
+      'CLAUDE.md',
+      '.claude/CLAUDE.md',
+      'GEMINI.md',
+    ]);
+    expect(fs.readFileSync(copy, 'utf-8').trimEnd()).toBe('# Team');
+    expect(fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf-8')).toContain(
+      BLOCK,
+    );
+
+    // --agent claude follows the same rule.
+    fs.writeFileSync(copy, `# Team\n\n${OLD}\n`);
+    installAgentDocs(project, {agent: 'claude', renderedBlock: BLOCK});
+    expect(fs.readFileSync(copy, 'utf-8').trimEnd()).toBe('# Team');
+  });
+
+  it('keeps and refreshes a committed .claude/CLAUDE.md block with --agent claude beside an ignored root', () => {
+    const {project} = layout();
+    fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    fs.mkdirSync(path.join(project, '.claude'));
+    const copy = path.join(project, '.claude', 'CLAUDE.md');
+    fs.writeFileSync(copy, `# Team\n\n${OLD}\n`);
+
+    const written = installAgentDocs(project, {
+      agent: 'claude',
+      renderedBlock: BLOCK,
+    });
+
+    expect(written).toEqual(['CLAUDE.md', '.claude/CLAUDE.md']);
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(`# Team\n\n${BLOCK}\n`);
+    expect(fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf-8')).toBe(
+      `# Mine\n\n${BLOCK}\n`,
+    );
+  });
+});
+
 describe('init exit codes and output', () => {
   it('an ignored GEMINI.md with notes: written through, exit 0, nothing on stderr', async () => {
     const {project} = layout();

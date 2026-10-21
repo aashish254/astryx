@@ -86,11 +86,11 @@ export const doc = {
   exitCodes: [
     {
       code: 0,
-      when: 'success, including agent docs that could not be written for a reason other than a path escape, such as running in the home folder or in a settings folder in it outside a project, or a GEMINI.md skipped because it resolves outside the project (reported as docsError)',
+      when: 'success, including agent docs left unwritten in three soft cases, each reported as docsError with one note: running in the home folder, or in a settings folder in it outside a project; a GEMINI.md that resolves outside the project; and, when init runs below the project root, a project-root agent file that resolves outside the project',
     },
     {
       code: 1,
-      when: 'an unknown --agent or feature, an --agent-docs-path outside the project, --remove-agents combined with install options, or --all with --features (ERR_INVALID_ARGUMENT)',
+      when: 'an unknown --agent or feature, an --agent-docs-path outside the project, --remove-agents combined with install options, or --all with --features (ERR_INVALID_ARGUMENT); or, when init runs at the project root, an agent file 0.7.1 also wrote there that resolves outside the project (ERR_PATH_TRAVERSAL, docsError path-safety, nothing written)',
     },
   ],
   related: ['doctor', 'upgrade', 'build', 'theme'],

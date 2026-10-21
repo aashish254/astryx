@@ -1116,19 +1116,18 @@ function repositoryRootOf(dir) {
 }
 
 /**
- * Whether .claude/CLAUDE.md keeps a copy beside root CLAUDE.md: while the
- * project ignores root CLAUDE.md (a fresh clone lacks it), a .claude/CLAUDE.md
- * the project commits gets the copy, and one that already holds a block keeps
- * it (DEC-2: an extra copy beats none).
+ * Whether .claude/CLAUDE.md keeps a copy beside root CLAUDE.md (INV31): while
+ * the project ignores root CLAUDE.md (a fresh clone lacks it), a
+ * .claude/CLAUDE.md the project commits gets the copy too (DEC-2: an extra
+ * copy beats none). One the project ignores follows the usual rule: its block
+ * goes once root CLAUDE.md holds one. An ignore file that cannot be read
+ * keeps the copy.
  * @param {string} targetDir
  * @returns {boolean}
  */
 function claudeDirKeepsCopy(targetDir) {
   if (!rootClaudeIgnored(targetDir)) return false;
-  return (
-    hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD)) ||
-    !ignoredHere(targetDir, CLAUDE_DIR_MD, false)
-  );
+  return !ignoredHere(targetDir, CLAUDE_DIR_MD, false);
 }
 
 /**
@@ -1164,8 +1163,9 @@ function skipEscaping(targetDir, rels, onSkipped) {
 function rootClaudeHolds(targetDir, block) {
   // A root CLAUDE.md the project ignores is not in a fresh clone, so it never
   // stands in for a committed copy in .claude/CLAUDE.md (an extra copy beats
-  // none, DEC-2).
-  if (rootClaudeIgnored(targetDir)) return false;
+  // none, DEC-2). An ignored .claude/CLAUDE.md is not in one either, so the
+  // usual rule holds for it.
+  if (claudeDirKeepsCopy(targetDir)) return false;
   try {
     const content = fs.readFileSync(path.join(targetDir, CLAUDE_MD), 'utf-8');
     const found = findManagedBlock(content);
@@ -1686,22 +1686,30 @@ export function installAgentDocs(
       claudeRoot && !(keepDirCopy && agent === 'all')
         ? inject.filter(p => p !== CLAUDE_DIR_MD)
         : inject;
-    const strip =
-      claudeRoot && !keepDirCopy && hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD))
-        ? [CLAUDE_DIR_MD]
-        : [];
+    const dirHasBlock = hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD));
+    const strip = claudeRoot && !keepDirCopy && dirHasBlock ? [CLAUDE_DIR_MD] : [];
+    // A kept copy the preset does not write in full (`claude`) is refreshed
+    // where it is, so it never stays on an older release.
+    const refresh =
+      keepDirCopy && dirHasBlock && !injectAll.includes(CLAUDE_DIR_MD) ? [CLAUDE_DIR_MD] : [];
     // A path that escapes the project refuses the run, as in 0.7.0; below the
     // project root, where 0.7.1 wrote nothing, it is skipped and reported.
     const escaping = refuseEscapes
       ? new Set()
-      : skipEscaping(targetDir, [...injectAll, ...create, ...strip], onSkipped);
+      : skipEscaping(targetDir, [...injectAll, ...create, ...strip, ...refresh], onSkipped);
     const injectHere = injectAll.filter(p => !escaping.has(p));
+    const refreshHere = refresh.filter(p => !escaping.has(p));
     const createHere = create.filter(p => !escaping.has(p));
     const stripHere = escaping.has(CLAUDE_MD) ? [] : strip.filter(p => !escaping.has(p));
-    assertTargetsWithin(targetDir, [...injectHere, ...createHere, ...stripHere]);
+    assertTargetsWithin(targetDir, [...injectHere, ...createHere, ...stripHere, ...refreshHere]);
     for (const p of injectHere) {
       injectXdsBlock(path.join(targetDir, p), compressedIndex);
       written.push(p);
+    }
+    for (const p of refreshHere) {
+      if (injectXdsBlock(path.join(targetDir, p), compressedIndex, {onlyReplace: true})) {
+        written.push(p);
+      }
     }
     for (const p of createHere) {
       const filePath = path.join(targetDir, p);
