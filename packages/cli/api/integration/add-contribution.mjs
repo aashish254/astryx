@@ -6,9 +6,7 @@
  *
  * Dispatches component, doc, template, codemod, and agent-doc. Theme
  * delegates to the dedicated same-stem descriptor writer. Every root-based kind shares: first add creates the manifest; one shared
- * writer; never creates `files`/`exports`, but adds a component's or template's
- * subpath to an exports map the package already has (unless a wildcard covers
- * it); atomic staged writes; no clobber;
+ * writer; never creates `files`/`exports`; atomic staged writes; no clobber;
  * dry-run receipt predicts real run; post-write verify through the real
  * discovery/parser seam.
  */
@@ -296,7 +294,6 @@ async function addComponent(name, options) {
     packageFile,
     rootPath,
     path.basename(manifestFile),
-    // Added to an exports map the package already has (never creates one).
     [{subpath: extensionlessPath, target: sourcePath}],
   );
   if (pkgUpdate != null) {
@@ -710,7 +707,6 @@ async function addTemplate(name, options) {
     packageFile,
     rootPath,
     path.basename(manifestFile),
-    // Added to an exports map the package already has (never creates one).
     [{subpath: extensionlessPath, target: sourcePath}],
   );
   if (pkgUpdate != null) {

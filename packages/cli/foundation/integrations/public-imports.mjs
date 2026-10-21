@@ -552,6 +552,14 @@ function judgeOwnImport(ctx, statement, subpath) {
   }
   if (declaration.state !== 'declared')
     return {undeclared: declaration, missing: null, reason: null};
+  if (subpath === '.' && declaration.value == null) {
+    return {
+      undeclared: null,
+      missing: null,
+      reason:
+        'package.json has no "exports", and the root module "main" names is not read, so the names it imports were not checked',
+    };
+  }
   const files = existingTargets(ctx.packageDir, declaration);
   const missing = missingNames(statement, files);
   return {
@@ -633,7 +641,14 @@ async function componentIssues(ctx, integration) {
         record.name,
       );
     const split = splitSpecifier(specifier);
-    const folder = path.basename(path.dirname(docPath));
+    // The entry that exports this component alone, and the doc import that
+    // uses it: never one component's file as the package root or folder.
+    const entryKey = sourceTarget
+      ? sourceTarget.replace(/\.[cm]?[jt]sx?$/u, '')
+      : null;
+    const perComponent = entryKey
+      ? `add "${entryKey}": "${sourceTarget}" to package.json "exports" and set import: '${ctx.name}${entryKey.slice(1)}' in the doc`
+      : null;
     const gives = authored
       ? `gives import "${specifier}"`
       : `has no import, so apps are told to import from "${specifier}"`;
@@ -687,7 +702,7 @@ async function componentIssues(ctx, integration) {
           const there = subpathExporting(ctx, name, declared);
           const fix = there
             ? `set import: '${ctx.name}${there === '.' ? '' : there.slice(1)}' in the doc (that subpath exports it), or export "${name}" from the module "${specifier}" loads.`
-            : `export "${name}" from the module "${specifier}" loads, or export a subpath for it${sourceTarget ? `: add "./${folder}": "${sourceTarget}" to package.json "exports" (the CLI then derives import '${ctx.name}/${folder}'), or set import to the subpath you export` : ''}.`;
+            : `export "${name}" from the module "${specifier}" loads${perComponent ? `, or ${perComponent}` : ''}.`;
           issues.push(
             issueWarning(
               'component_import_missing_name',
@@ -703,7 +718,7 @@ async function componentIssues(ctx, integration) {
         issues.push(
           issueWarning(
             'component_import_not_exported',
-            `Component doc "${shownDoc}" ${gives}, but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
+            `Component doc "${shownDoc}" ${gives}, but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${split.subpath === '.' && perComponent ? `${perComponent}.` : exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
           ),
         );
       }
@@ -714,30 +729,65 @@ async function componentIssues(ctx, integration) {
      * doc's own import, when it differs from the example's and is declared;
      * else the subpath the component's source is already exported under;
      * else the exact `exports` entry to add for the example's subpath.
-     * @param {string} specifier
+     * Another subpath is offered only when its module provably exports every
+     * value name the statement imports.
+     * @param {ImportStatement} statement
      * @param {string} subpath
      * @param {SubpathDeclaration} undeclared
      */
-    const exampleFix = (specifier, subpath, undeclared) => {
+    const exampleFix = (statement, subpath, undeclared) => {
+      /** @param {string} candidate */
+      const provides = candidate => {
+        const declaration = declarationIn(
+          ctx.exportsField,
+          ctx.packageDir,
+          candidate,
+        );
+        if (declaration.state !== 'declared' || declaration.value == null)
+          return false;
+        const missing = missingNames(
+          statement,
+          existingTargets(ctx.packageDir, declaration),
+        );
+        return Array.isArray(missing) && missing.length === 0;
+      };
       const own = authored ? splitSpecifier(authored) : null;
       if (
         authored &&
-        authored !== specifier &&
+        authored !== statement.source &&
         own?.pkg === ctx.name &&
-        declarationIn(ctx.exportsField, ctx.packageDir, own.subpath).state ===
-          'declared'
+        provides(own.subpath)
       ) {
         return `import from '${authored}' in the example, as the doc's import does.`;
       }
-      if (declared && declared !== subpath) {
+      if (declared && declared !== subpath && provides(declared)) {
         return `import from '${ctx.name}${declared.slice(1)}' in the example (already exported).`;
       }
-      return exportsFix(
-        ctx.exportsField,
-        undeclared.state,
-        subpath,
-        sourceTarget ?? `./${subpath.slice(2)}.tsx`,
-      );
+      // The entry for the example's own subpath: the file there, or the
+      // component's source when it exports every name, else a placeholder.
+      const values = statement.names
+        .filter(binding => !binding.typeOnly)
+        .map(binding => binding.imported);
+      const atSubpath = [
+        '',
+        ...MODULE_EXTENSIONS,
+        ...MODULE_EXTENSIONS.map(ext => `/index${ext}`),
+      ]
+        .map(ext => path.resolve(ctx.packageDir, `${subpath.slice(2)}${ext}`))
+        .find(
+          file =>
+            file.startsWith(path.resolve(ctx.packageDir) + path.sep) &&
+            isFile(file),
+        );
+      const sourceHasAll =
+        source != null &&
+        values.every(name => moduleExportNames(source).names.has(name));
+      const target = atSubpath
+        ? `./${rel(ctx.packageDir, atSubpath)}`
+        : sourceHasAll && sourceTarget
+          ? sourceTarget
+          : `<the file that exports ${values.join(', ') || 'them'}>`;
+      return exportsFix(ctx.exportsField, undeclared.state, subpath, target);
     };
 
     const examples = Array.isArray(doc.examples) ? doc.examples : [];
@@ -766,7 +816,7 @@ async function componentIssues(ctx, integration) {
           issues.push(
             issueWarning(
               'example_import_not_exported',
-              `Component doc "${shownDoc}" example ${label} imports "${statement.source}", but ${whyUndeclared(undeclared, parts.subpath)}, so the example fails when an app copies it. Fix: ${exampleFix(statement.source, parts.subpath, undeclared)}`,
+              `Component doc "${shownDoc}" example ${label} imports "${statement.source}", but ${whyUndeclared(undeclared, parts.subpath)}, so the example fails when an app copies it. Fix: ${exampleFix(statement, parts.subpath, undeclared)}`,
             ),
           );
         } else if (missing && missing.length > 0) {

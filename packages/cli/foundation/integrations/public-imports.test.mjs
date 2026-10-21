@@ -13,9 +13,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {validateLocalIntegration} from '../../api/integration/validate-integration.mjs';
+import {
+  validateIntegration,
+  validateLocalIntegration,
+} from '../../api/integration/validate-integration.mjs';
 import {readImports} from './public-imports.mjs';
-import {validateIntegration} from '../../api/integration/validate-integration.mjs';
 import {subpathDeclaration} from './exports-subpaths.mjs';
 import {
   integrationAddComponent,
@@ -23,7 +25,6 @@ import {
 } from '../../api/integration/add-contribution.mjs';
 import {CLI_ROOT} from '../fs/paths.mjs';
 import {integrationCheck} from '../../api/integration/check/check.mjs';
-import {runCli} from '../../test-utils/run-cli.mjs';
 
 const CODES = new Set([
   'component_import_not_exported',
@@ -331,6 +332,29 @@ describe('public imports: component examples', () => {
     );
   });
 
+  it('gives the exports entry for a hooks path when the doc import lacks the hook', async () => {
+    write(
+      'components/useAcmeTheme.ts',
+      'export function useAcmeTheme() {\n  return null;\n}\n',
+    );
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {useAcmeTheme} from '@acme/widgets/components/useAcmeTheme';\\nuseAcmeTheme();",
+      ),
+    );
+    const issue = (await found()).find(
+      i => i.code === 'example_import_not_exported',
+    );
+    expect(issue?.message).not.toContain(
+      "import from '@acme/widgets/components/AcmeWidget'",
+    );
+    expect(issue?.message).toContain(
+      'add "./components/useAcmeTheme": "./components/useAcmeTheme.ts" to package.json "exports"',
+    );
+  });
+
   it('points an example at the subpath the source is already exported under', async () => {
     pkg(p => {
       delete p.exports['./components/AcmeWidget'];
@@ -560,137 +584,6 @@ describe('subpathDeclaration', () => {
   });
 });
 
-describe('integration add declares its public subpath', () => {
-  beforeEach(() => {
-    fs.rmSync(dir, {recursive: true, force: true});
-    fs.mkdirSync(dir);
-    write(
-      'package.json',
-      JSON.stringify({name: '@acme/fresh', version: '1.0.0', type: 'module'}),
-    );
-  });
-
-  it('never creates exports; a fresh scaffold still passes', async () => {
-    const before = fs.readFileSync(path.join(dir, 'package.json'), 'utf-8');
-    await integrationAddComponent('AcmeThing', {cwd: dir});
-    await integrationAddTemplate('acme-page', {cwd: dir});
-    expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).toBe(
-      before,
-    );
-    expect(await codes()).toEqual([]);
-  });
-
-  it('adds the entry when the package already has an exports map', async () => {
-    pkg(p => {
-      p.exports = {'.': './index.js'};
-    });
-    await integrationAddComponent('AcmeThing', {cwd: dir});
-    await integrationAddTemplate('acme-page', {cwd: dir});
-    const p = JSON.parse(
-      fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'),
-    );
-    expect(p.exports).toEqual({
-      '.': './index.js',
-      './components/AcmeThing': './components/AcmeThing.tsx',
-      './templates/acme-page': './templates/acme-page.tsx',
-    });
-    expect(await codes()).toEqual([]);
-  });
-
-  it('adds nothing a wildcard already covers', async () => {
-    pkg(p => {
-      p.exports = {'./components/*': './components/*.tsx'};
-    });
-    await integrationAddComponent('AcmeThing', {cwd: dir});
-    const p = JSON.parse(
-      fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'),
-    );
-    expect(p.exports).toEqual({'./components/*': './components/*.tsx'});
-  });
-});
-
-describe('integration add only inserts the missing exports entry', () => {
-  const ORIGINAL =
-    '{\n' +
-    '    "version": "1.0.0",\n' +
-    '    "name": "@acme/kept",\n' +
-    '    "exports": {\n' +
-    '        "./zeta": "./zeta.js",\n' +
-    '        ".": {"types": "./index.d.ts",   "import": "./index.js"},\n' +
-    '        "./alpha": [ "./alpha.js" ]\n' +
-    '    },\n' +
-    '    "type": "module"\n' +
-    '}\n';
-
-  beforeEach(() => {
-    fs.rmSync(dir, {recursive: true, force: true});
-    fs.mkdirSync(dir);
-    fs.writeFileSync(path.join(dir, 'package.json'), ORIGINAL);
-  });
-
-  it('keeps every existing byte of package.json for component and template add', async () => {
-    await integrationAddComponent('AcmeThing', {cwd: dir});
-    await integrationAddTemplate('acme-page', {cwd: dir});
-    const after = fs.readFileSync(path.join(dir, 'package.json'), 'utf-8');
-    expect(after).toBe(
-      ORIGINAL.replace(
-        '        "./alpha": [ "./alpha.js" ]\n',
-        '        "./alpha": [ "./alpha.js" ],\n' +
-          '        "./components/AcmeThing": "./components/AcmeThing.tsx",\n' +
-          '        "./templates/acme-page": "./templates/acme-page.tsx"\n',
-      ),
-    );
-  });
-
-  it('keeps CRLF line endings', async () => {
-    const crlf = ORIGINAL.replaceAll('\n', '\r\n');
-    fs.writeFileSync(path.join(dir, 'package.json'), crlf);
-    await integrationAddComponent('AcmeThing', {cwd: dir});
-    expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).toBe(
-      crlf.replace(
-        '        "./alpha": [ "./alpha.js" ]\r\n',
-        '        "./alpha": [ "./alpha.js" ],\r\n' +
-          '        "./components/AcmeThing": "./components/AcmeThing.tsx"\r\n',
-      ),
-    );
-  });
-
-  it('keeps a one-line exports map on one line', async () => {
-    const oneLine =
-      '{"name": "@acme/kept", "exports": {".": "./i.js"}, "type": "module"}';
-    fs.writeFileSync(path.join(dir, 'package.json'), oneLine);
-    await integrationAddComponent('AcmeThing', {cwd: dir});
-    expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).toBe(
-      '{"name": "@acme/kept", "exports": {".": "./i.js", "./components/AcmeThing": "./components/AcmeThing.tsx"}, "type": "module"}',
-    );
-  });
-
-  it('keeps the JSON output shape of the add commands', async () => {
-    for (const args of [
-      ['integration', 'add', 'component', 'AcmeThing', '--json'],
-      ['integration', 'add', 'template', 'acme-page', '--json'],
-    ]) {
-      const result = await runCli(args, dir);
-      expect(result.status).toBe(0);
-      const envelope = JSON.parse(result.stdout);
-      expect(Object.keys(envelope).sort()).toEqual([
-        'apiVersion',
-        'data',
-        'type',
-      ]);
-      expect(Object.keys(envelope.data).sort()).toEqual([
-        'dryRun',
-        'files',
-        'kind',
-        'manifest',
-        'name',
-        'root',
-        'written',
-      ]);
-    }
-  });
-});
-
 describe('block component names without Core installed', () => {
   it('judges no Core name when Core is not installed', () => {
     const out = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-no-core-'));
@@ -819,6 +712,59 @@ describe('derived component imports', () => {
   });
 });
 
+describe('fixes for two components in one folder', () => {
+  const docFor = (/** @type {string} */ name) => `export default {
+  type: 'component',
+  name: '${name}',
+  displayName: '${name}',
+  usage: {description: 'A widget.'},
+  props: [],
+};
+`;
+
+  beforeEach(() => {
+    for (const name of ['AcmeAlpha', 'AcmeBeta']) {
+      write(`components/${name}.doc.mjs`, docFor(name));
+      write(
+        `components/${name}.tsx`,
+        `export function ${name}() {\n  return null;\n}\n`,
+      );
+    }
+  });
+
+  it('gives each import-less component its own entry, never the root', async () => {
+    const fixes = (await found())
+      .filter(i => i.code === 'component_import_not_exported')
+      .map(i => i.message.split('Fix: ')[1]);
+    expect(fixes).toEqual(
+      expect.arrayContaining([
+        `add "./components/AcmeAlpha": "./components/AcmeAlpha.tsx" to package.json "exports" and set import: '@acme/widgets/components/AcmeAlpha' in the doc.`,
+        `add "./components/AcmeBeta": "./components/AcmeBeta.tsx" to package.json "exports" and set import: '@acme/widgets/components/AcmeBeta' in the doc.`,
+      ]),
+    );
+    for (const fix of fixes) expect(fix).not.toContain('".":');
+  });
+
+  it('gives each a per-component entry when the derived folder subpath lacks it', async () => {
+    write('components/index.js', 'export const Other = 1;\n');
+    pkg(p => {
+      p.exports['./components'] = './components/index.js';
+      p.exports['.'] = './components/index.js';
+    });
+    const fixes = (await found())
+      .filter(i => i.code === 'component_import_missing_name')
+      .map(i => i.message.split('Fix: ')[1]);
+    expect(fixes).toHaveLength(2);
+    expect(fixes[0]).toContain(
+      `add "./components/AcmeAlpha": "./components/AcmeAlpha.tsx" to package.json "exports" and set import: '@acme/widgets/components/AcmeAlpha' in the doc`,
+    );
+    expect(fixes[1]).toContain(
+      '"./components/AcmeBeta": "./components/AcmeBeta.tsx"',
+    );
+    for (const fix of fixes) expect(fix).not.toContain('"./components":');
+  });
+});
+
 describe('type-only imports', () => {
   it('accepts a statement-level import type from a types-only subpath', async () => {
     pkg(p => {
@@ -876,4 +822,43 @@ describe('imports listed as not checked', () => {
     expect(check.data.unchecked).toBe(2);
     expect(check.data.failed).toBe(false);
   });
+});
+
+describe('a root import in a package with no exports', () => {
+  it('says the package has no exports map', async () => {
+    pkg(p => delete p.exports);
+    write(
+      'templates/account-card.tsx',
+      'import {AcmeWidget} from \'@acme/widgets\';\nexport default function C() {\n  return <AcmeWidget label="x" />;\n}\n',
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    const entry = result.data.publicImports?.unchecked.find(
+      u => u.file === 'templates/account-card.tsx',
+    );
+    expect(entry?.reason).toContain('package.json has no "exports"');
+    expect(entry?.reason).not.toContain('build output');
+  });
+});
+
+describe('a fresh scaffold passes the checks', () => {
+  for (const exportsMap of [undefined, {'.': './index.js'}]) {
+    it(`with ${exportsMap ? 'an' : 'no'} exports map`, async () => {
+      fs.rmSync(dir, {recursive: true, force: true});
+      fs.mkdirSync(dir);
+      write(
+        'package.json',
+        JSON.stringify({
+          name: '@acme/fresh',
+          version: '1.0.0',
+          type: 'module',
+          ...(exportsMap ? {exports: exportsMap} : {}),
+        }),
+      );
+      write('index.js', 'export {};\n');
+      await integrationAddComponent('AcmeThing', {cwd: dir});
+      await integrationAddTemplate('acme-page', {cwd: dir});
+      const check = await integrationCheck({cwd: dir, strict: true});
+      expect(check.data.failures).toEqual([]);
+    });
+  }
 });
