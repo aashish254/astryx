@@ -402,11 +402,18 @@ async function probe(page, target) {
   return page.evaluate(expectedDirection => {
     const outcome = window.__storyOutcome;
     if (expectedDirection != null) {
-      const actualDirection = getComputedStyle(document.documentElement).direction;
-      if (actualDirection !== expectedDirection) {
+      const directionRoot = document.querySelector('#storybook-root > [dir]');
+      if (directionRoot == null) {
         outcome.errors.push(
-          `direction mismatch — expected ${expectedDirection}, received ${actualDirection}`,
+          `direction mismatch — expected ${expectedDirection}, but the story direction wrapper is missing`,
         );
+      } else {
+        const actualDirection = getComputedStyle(directionRoot).direction;
+        if (actualDirection !== expectedDirection) {
+          outcome.errors.push(
+            `direction mismatch — expected ${expectedDirection}, received ${actualDirection}`,
+          );
+        }
       }
     }
     return outcome;

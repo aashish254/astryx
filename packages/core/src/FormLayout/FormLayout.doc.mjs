@@ -68,7 +68,7 @@ export const docsZh = {
       name: 'direction',
       type: "'vertical' | 'horizontal' | 'horizontal-labels'",
       description:
-        '控制字段排列方式。vertical 从上到下堆叠；horizontal 使用等宽网格列，并按逻辑行内方向排列；horizontal-labels 使用 CSS Grid，将标签放在输入框的行内起始侧（当视口宽度 <=480px 时折叠为垂直布局）。',
+        '控制字段排列方式。vertical 从上到下堆叠；horizontal 为每个字段使用一个 1fr 网格轨道，并按逻辑行内方向排列；horizontal-labels 使用 CSS Grid，将标签放在输入框的行内起始侧（当视口宽度 <=480px 时折叠为垂直布局）。',
       default: "'vertical'",
     },
     {
