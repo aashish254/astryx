@@ -64,6 +64,28 @@ describe('VisuallyHidden', () => {
     expect(el).toHaveAttribute('role', 'status');
   });
 
+  it('does not forward the styling props its own contract omits', () => {
+    // The props are reached through an untyped spread, which is how they get
+    // past the `Omit` in practice: a cast, a ` {...consumerProps}` object, or
+    // plain JavaScript. The type is only the first line of defence here.
+    const stylingProps: Record<string, unknown> = {
+      xstyle: {color: 'red'},
+      className: 'consumer-track',
+      style: {position: 'static'},
+    };
+    render(<VisuallyHidden {...stylingProps}>Hidden</VisuallyHidden>);
+    const el = screen.getByText('Hidden');
+
+    // VisuallyHidden documents itself as styling-free and its clip block as
+    // non-overridable, but the implementation spreads leftover props onto the
+    // element: `xstyle` reaches the DOM as the literal string "[object Object]",
+    // and a cast `style` wins the last-word race for `position`, un-hiding the
+    // node (or clipping real content) while keeping the a11y semantics.
+    expect(el).not.toHaveAttribute('xstyle');
+    expect(el.getAttribute('class') ?? '').not.toContain('consumer-track');
+    expect(el.getAttribute('style') ?? '').not.toContain('static');
+  });
+
   it('gives an icon-only control an accessible name', () => {
     render(
       <button type="button">

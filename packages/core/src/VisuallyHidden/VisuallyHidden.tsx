@@ -27,7 +27,7 @@ import * as stylex from '@stylexjs/stylex';
  */
 export interface VisuallyHiddenProps extends Omit<
   BaseProps<HTMLElement>,
-  'className' | 'style'
+  'className' | 'style' | 'xstyle'
 > {
   /** Ref forwarded to the rendered element. */
   ref?: React.Ref<HTMLElement>;
@@ -90,8 +90,22 @@ export function VisuallyHidden({
   children,
   as: element = 'span',
   ref,
-  ...props
+  ...rest
 }: VisuallyHiddenProps) {
+  // The type omits the styling props; take them back off at runtime so a cast
+  // cannot reach the element either. `xstyle` is not a valid attribute, so
+  // spreading it writes xstyle="[object Object]" into the DOM, and a cast
+  // `style` keeps the last word on `position` and un-hides the node.
+  const {
+    xstyle: _xstyle,
+    className: _className,
+    style: _style,
+    ...props
+  } = rest as typeof rest & {
+    xstyle?: unknown;
+    className?: unknown;
+    style?: unknown;
+  };
   return createElement(
     element,
     {
