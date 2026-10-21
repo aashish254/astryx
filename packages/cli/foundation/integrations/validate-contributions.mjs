@@ -51,6 +51,12 @@ import {MANIFEST_BASENAMES} from './integrations.mjs';
 import {discoverIntegrationCodemods} from '../../assets/codemods/integration-discovery.mjs';
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
 import * as componentDiscovery from '../discovery/component-discovery.mjs';
+import {loadComponentDoc} from '../discovery/component-loader.mjs';
+import {
+  moduleExportNames,
+  moduleExportsName,
+  moduleExportVerdict,
+} from '../discovery/module-exports.mjs';
 import {discoverIntegrationDocs} from '../discovery/docs-discovery.mjs';
 import {discoverIntegrationThemes} from '../discovery/theme-discovery.mjs';
 
@@ -471,7 +477,7 @@ async function checkComponents(integration, issues) {
   const root = /** @type {string} */ (integration.components);
   const files = componentDocFiles(root);
   try {
-    const {discovered, errors} = await discover(integration);
+    const {components, discovered, errors} = await discover(integration);
     /** @type {import('./contribution-fixes.mjs').FixContext | undefined} */
     let context;
     const byName = new Map(discovered.map(record => [record.name, record]));
@@ -522,6 +528,7 @@ async function checkComponents(integration, issues) {
         ),
       );
     }
+    await checkComponentDocNames(components, issues, root, files.caseMismatch);
     const overlap = integration.__packageDir
       ? newComponentDocNote(
           (context ??= createFixContext(integration.__packageDir, integration)),
@@ -647,6 +654,128 @@ function componentDocFiles(root) {
   };
   walk(root);
   return {caseMismatch, caseMismatchSources, duplicates};
+}
+
+/**
+ * Warn about a component doc whose `name` is not the name Astryx lists it
+ * under and that its source provably does not export. Discovery lists a doc
+ * under its file name unless its `name` is a different export of its source,
+ * so such a `name` still reaches readers: `astryx component` prints it in the
+ * import line, which then names something the source does not export. A family member is
+ * read through its family's doc and is not checked here.
+ * @param {Array<{name: string, docPath: string, sourcePath: string|null}>} components
+ * @param {Issue[]} issues
+ * @param {string} root
+ * @param {Map<string, string>} skip docs already reported, by path
+ */
+async function checkComponentDocNames(components, issues, root, skip) {
+  await judgeComponentDocNames(components, root, skip, issues, null);
+}
+
+/**
+ * Judge each component doc's `name` against its source: a warning when the
+ * source provably does not export it, and an entry in `unchecked` when the
+ * source's exports cannot all be read, so it is listed rather than judged.
+ * @param {Array<{name: string, docPath: string, sourcePath: string|null}>} components
+ * @param {string} root the components root
+ * @param {Map<string, string>} skip docs already reported, by path
+ * @param {Issue[] | null} issues where findings go, or null to drop them
+ * @param {Array<{docPath: string, name: string, reason: string}> | null} unchecked
+ */
+async function judgeComponentDocNames(
+  components,
+  root,
+  skip,
+  issues,
+  unchecked,
+) {
+  for (const record of components) {
+    if (componentDiscovery.isIntegrationMember(record)) continue;
+    if (skip.has(record.docPath)) continue;
+    // A doc with no source is its own error.
+    if (record.sourcePath == null) continue;
+    let doc;
+    try {
+      doc = await loadComponentDoc(record.docPath);
+    } catch {
+      continue;
+    }
+    const name = doc?.name;
+    if (typeof name !== 'string' || name === record.name) continue;
+    // Only what the code contradicts: the source must provably not export
+    // the name the doc gives.
+    const judged = moduleExportVerdict(record.sourcePath, name);
+    if (judged.verdict === 'exports') continue;
+    if (judged.verdict === 'unknown') {
+      unchecked?.push({docPath: record.docPath, name, reason: judged.reason});
+      continue;
+    }
+    if (issues == null) continue;
+    const file = path.basename(record.docPath);
+    const source = path.basename(record.sourcePath);
+    // The name to propose: the file name when the source exports it, else
+    // the one component the source exports, which discovery then lists.
+    let fix;
+    if (moduleExportsName(record.sourcePath, record.name)) {
+      fix = `Fix: set name: '${record.name}' in ${file}.`;
+    } else {
+      const exported = (moduleExportNames(record.sourcePath) ?? []).filter(
+        each => /^[A-Z][A-Za-z0-9]*$/u.test(each),
+      );
+      fix =
+        exported.length === 1
+          ? `Fix: set name: '${exported[0]}' in ${file}, the component ${source} exports.`
+          : `Fix: set name in ${file} to the component ${source} exports${exported.length > 1 ? ` (${exported.join(', ')})` : ''}.`;
+    }
+    issues.push(
+      issueWarning(
+        'doc_name_mismatch',
+        `Component doc "${slash(path.relative(root, record.docPath))}" sets name: '${name}', but ${source} does not export ${name}, so Astryx lists the component as "${record.name}" (its file name), and \`astryx component ${record.name}\` prints \`import {${name}}\`. ${fix}`,
+      ),
+    );
+  }
+}
+
+/**
+ * The component doc names the check could not judge, shaped like the doc type
+ * report so `integration check` counts them as not compared: each doc whose
+ * `name` differs from the name it is listed under and whose source's exports
+ * cannot all be read without running it. Its findings are always empty: a
+ * name the source provably lacks is a `doc_name_mismatch` issue instead.
+ * @param {LoadedIntegration} integration
+ * @returns {Promise<{status: 'checked', findings: [], unchecked: Array<{file: string, name: string, reason: string}>}>}
+ */
+export async function componentDocNamesReport(integration) {
+  /** @type {Array<{docPath: string, name: string, reason: string}>} */
+  const unchecked = [];
+  const root = integration.components;
+  if (root && !rootProblem(root)) {
+    try {
+      const {components} =
+        await componentDiscovery.discoverValidIntegrationComponents(
+          integration,
+        );
+      await judgeComponentDocNames(
+        components,
+        root,
+        componentDocFiles(root).caseMismatch,
+        null,
+        unchecked,
+      );
+    } catch {
+      // A components root discovery cannot read is reported as an issue.
+    }
+  }
+  const base = integration.__packageDir ?? root ?? '';
+  return {
+    status: 'checked',
+    findings: [],
+    unchecked: unchecked.map(entry => ({
+      file: slash(path.relative(base, entry.docPath)),
+      name: entry.name,
+      reason: entry.reason,
+    })),
+  };
 }
 
 /**

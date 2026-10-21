@@ -1,12 +1,13 @@
 {
   "checks": ["validate", "components", "templates", "docs"],
   "results": {
-    "validate": ["docTypes", "issues"],
+    "validate": ["docNames", "docTypes", "issues"],
     "components": ["conflicts", "issues", "propDrift"],
     "templates": ["conflicts", "issues"],
     "docs": ["copiedPassages", "findings", "fluff", "issues", "strayPointers"]
   },
   "reports": {
+    "docNames": "doc_names_skipped",
     "docTypes": "doc_types_skipped",
     "propDrift": "prop_drift_skipped"
   },
@@ -19,6 +20,8 @@
     "core_not_found",
     "default_mismatch",
     "doc_fluff",
+    "doc_name_mismatch",
+    "doc_names_skipped",
     "doc_types_skipped",
     "duplicate_component_doc",
     "duplicate_doc",
