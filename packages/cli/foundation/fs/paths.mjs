@@ -10,11 +10,10 @@ import * as fs from 'node:fs';
 import {createRequire} from 'node:module';
 import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {
-  activePackageSet,
-  packageSetDeclarations,
-  resolveFromPackageSet,
-} from '../runtime/package-root.mjs';
+import {listDir, pathExists} from './listing-cache.mjs';
+import {ERROR_CODES} from '../response/error-codes.mjs';
+import {carriedCore, runChoice} from '../release/run-context.mjs';
+import {findDeclaringPackage} from '../release/project.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,79 +21,153 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const CLI_ROOT = path.resolve(__dirname, '..', '..');
 
 /**
- * The base CLI's Core lookup. Keep this bounded, existence-only behavior when no
- * package set is active so installing this capability changes no ordinary run.
- * @param {string} startDir
- * @returns {string|null}
+ * The Core a command answers from: the project's (see
+ * {@link findProjectCoreDir}), else, when a copy other than the project's own
+ * CLI answers, the Core that copy carries (spec AST-081 FR3): the
+ * `@astryxdesign/core` of its own release, beside it or in the per-user
+ * release cache. Never fetches; {@link requireCoreDir} does.
+ *
+ * Commands that judge or change a project (`doctor`, `swizzle`, `upgrade`)
+ * read {@link findProjectCoreDir} instead, so a carried Core never passes a
+ * project check or lands in a folder that installed none.
+ *
+ * @param {string} [startDir]
+ * @returns {string | null}
  */
-export function findCoreDirWithoutPackageSet(startDir) {
-  let dir = startDir;
-  for (let i = 0; i < 5; i++) {
-    const source = path.join(dir, 'packages', 'core');
-    if (fs.existsSync(source)) return source;
+export function findCoreDir(startDir = process.cwd()) {
+  return findProjectCoreDir(startDir) ?? carriedCoreFor(startDir).dir;
+}
 
-    const installed = path.join(dir, 'node_modules', '@astryxdesign', 'core');
-    if (fs.existsSync(installed)) return installed;
-
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+/**
+ * Why a command that reads Core cannot run, when the answering release's own
+ * Core is needed and cannot be installed: outside a project, or in a project
+ * with nothing installed (spec AST-081 FR3).
+ * @param {{unavailable: string | null, version?: string, reason?: string}} found
+ * @param {boolean} inProject
+ * @returns {string}
+ */
+export function unavailableCoreMessage(found, inProject) {
+  const unwritable = /cannot be written/.test(found.unavailable ?? '');
+  if (inProject) {
+    const core = found.version ? `Core ${found.version}` : 'its Core';
+    const why = found.reason ? ` (${found.reason})` : '';
+    return `This project has no Core installed, and ${core} could not be downloaded${why}. Install the project's dependencies${unwritable ? ', or make that folder writable' : ''}, then run again.`;
   }
-  return null;
+  return `${found.unavailable}. Outside a project, commands that read Core use the Core of the release that answers; ${unwritable ? 'make that folder writable and run again' : 'run again when the package registry can be reached'}.`;
+}
+
+/**
+ * Like {@link findCoreDir}, but a copy that carries no Core installs its
+ * release's Core into the per-user cache first. Throws ERR_CORE_NOT_FOUND
+ * when there is no Core to answer from, and ERR_VERSIONS_UNAVAILABLE when the
+ * carried Core is needed and cannot be installed.
+ *
+ * @param {string} [startDir]
+ * @returns {string}
+ */
+export function requireCoreDir(startDir = process.cwd()) {
+  const found = findProjectCoreDir(startDir) ?? carriedCoreFor(startDir, true);
+  if (typeof found === 'string') return found;
+  if (found.unavailable) {
+    throw codedError(
+      unavailableCoreMessage(found, runChoice(startDir).inProject),
+      ERROR_CODES.ERR_VERSIONS_UNAVAILABLE,
+    );
+  }
+  if (found.dir) return found.dir;
+  throw codedError(
+    'Could not find @astryxdesign/core package',
+    ERROR_CODES.ERR_CORE_NOT_FOUND,
+  );
+}
+
+/**
+ * An Error carrying a stable error code, which the JSON envelope and every
+ * command's error output read the way they read an API error's.
+ * @param {string} message
+ * @param {string} code
+ * @returns {Error & {code: string}}
+ */
+function codedError(message, code) {
+  return Object.assign(new Error(message), {code});
+}
+
+/**
+ * The carried Core alone, for a caller that already looked for the project's
+ * Core its own way: the folder, or null when the copy answering in `startDir`
+ * is the project's own CLI or carries none.
+ * @param {string} startDir
+ * @param {{fetch?: boolean}} [options]
+ * @returns {string | null}
+ */
+export function findCarriedCoreDir(startDir, {fetch = false} = {}) {
+  return carriedCoreFor(startDir, fetch).dir;
+}
+
+/**
+ * The carried Core for a run in `startDir`, when the copy answering there is
+ * not the project's own CLI.
+ * @param {string} startDir
+ * @param {boolean} [fetch]
+ * @returns {{dir: string | null, unavailable: string | null, version?: string, reason?: string}}
+ */
+function carriedCoreFor(startDir, fetch = false) {
+  const carried = carriedCore({fetch: false});
+  if (!carried.dir && !fetch) return carried;
+  if (runChoice(startDir).copy === 'project') {
+    return {dir: null, unavailable: null};
+  }
+  return carried.dir ? carried : carriedCore({fetch: true});
 }
 
 /**
  * Find packages/core directory by walking up from startDir.
- * With a hosted package set, use the project Core the plan recorded, then the
- * set. With no set, preserve the base CLI lookup exactly.
+ * Also checks node_modules/@astryxdesign/core for installed usage.
+ *
+ * The project's Core only: in the folder or four above it, the reach every
+ * released version used, else from the folder of the package.json that makes
+ * the folder part of a project, however deep the folder is.
+ *
+ * @param {string} [startDir]
+ * @returns {string | null}
  */
-export function findCoreDir(startDir = process.cwd()) {
-  const set = activePackageSet();
-  if (!set) return findCoreDirWithoutPackageSet(startDir);
-  const projectCore = set.packages.find(
-    entry =>
-      entry.name === '@astryxdesign/core' &&
-      entry.source === 'project' &&
-      entry.dir != null,
-  )?.dir;
-  return projectCore ?? resolveFromPackageSet('@astryxdesign/core');
+export function findProjectCoreDir(startDir = process.cwd()) {
+  const near = findNearbyCoreDir(startDir);
+  if (near) return near;
+  // A folder deeper than that reach still belongs to the project the walk to
+  // its package.json finds, so its Core is looked up from there too (spec
+  // AST-081, a folder's project): never the carried Core in its place.
+  const declaring = findDeclaringPackage(startDir);
+  return declaring && declaring.dir !== path.resolve(startDir)
+    ? findNearbyCoreDir(declaring.dir)
+    : null;
 }
 
 /**
- * The Core the hosted planner sees in the project at `startDir`: a real Astryx
- * `packages/core`, an installed `node_modules/@astryxdesign/core`, or the
- * project's Yarn PnP resolution, never the active package set's.
- * @param {string} [startDir]
- * @returns {string|null}
+ * The Core installed in `startDir` or one of the four folders above it.
+ * @param {string} startDir
+ * @returns {string | null}
  */
-export function findProjectCoreDir(startDir = process.cwd()) {
-  let dir = path.resolve(startDir);
+function findNearbyCoreDir(startDir) {
+  let dir = startDir;
 
-  for (;;) {
-    const source = path.join(dir, 'packages', 'core');
-    if (isCorePackage(source)) return source;
+  for (let i = 0; i < 5; i++) {
+    const candidate = path.join(dir, 'packages', 'core');
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
 
-    const installed = path.join(dir, 'node_modules', '@astryxdesign', 'core');
-    if (isCorePackage(installed)) return installed;
+    const nodeModules = path.join(dir, 'node_modules', '@astryxdesign', 'core');
+    if (fs.existsSync(nodeModules)) {
+      return nodeModules;
+    }
 
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
 
-  return findPnpPackage(startDir, '@astryxdesign/core');
-}
-
-/** @param {string} dir */
-function isCorePackage(dir) {
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'),
-    );
-    return pkg?.name === '@astryxdesign/core';
-  } catch {
-    return false;
-  }
+  return null;
 }
 
 /**
@@ -179,17 +252,19 @@ export function findProjectRoot(startDir = process.cwd()) {
 }
 
 /**
- * Scan the nearest project node_modules the same way legacy external-package
- * discovery does. The hosted planner uses the package directories and versions
- * to report the exact packages a project-only run can see.
+ * Discover external Astryx-compatible packages from node_modules.
+ * Scans for packages with an "astryx" field in their package.json:
  *
- * @param {string} [startDir]
- * @returns {Array<{name: string, version: string | null, packageDir: string, category: string, docsDir: string, blocksDir: string | null}>}
+ *   { "astryx": { "docs": "./src", "category": "Common", "blocks": "./blocks/components" } }
+ *
+ * Returns array of { name, category, docsDir, blocksDir }.
  */
-export function scanLegacyExternalPackages(startDir = process.cwd()) {
-  /** @type {Array<{name: string, version: string | null, packageDir: string, category: string, docsDir: string, blocksDir: string | null}>} */
-  const packages = [];
+export function discoverExternalPackages(startDir = process.cwd()) {
+  /** @type {Array<{name: string, category: string, docsDir: string, blocksDir: string | null}>} */
+  const externals = [];
   let dir = startDir;
+
+  // Walk up to find node_modules
   let nodeModulesDir = null;
   for (let i = 0; i < 5; i++) {
     const candidate = path.join(dir, 'node_modules');
@@ -201,7 +276,8 @@ export function scanLegacyExternalPackages(startDir = process.cwd()) {
     if (parent === dir) break;
     dir = parent;
   }
-  if (!nodeModulesDir) return packages;
+
+  if (!nodeModulesDir) return externals;
 
   /** @param {string} searchDir */
   const scanDir = searchDir => {
@@ -213,6 +289,8 @@ export function scanLegacyExternalPackages(startDir = process.cwd()) {
       if (entry.name.startsWith('.') || entry.name === '.bin') continue;
 
       const fullPath = path.join(searchDir, entry.name);
+
+      // Recurse into scoped packages (@org/*)
       if (entry.name.startsWith('@')) {
         scanDir(fullPath);
         continue;
@@ -225,10 +303,8 @@ export function scanLegacyExternalPackages(startDir = process.cwd()) {
         const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
         if (pkg.name === '@astryxdesign/core') continue;
         if (pkg.astryx && pkg.astryx.docs) {
-          packages.push({
+          externals.push({
             name: pkg.name,
-            version: typeof pkg.version === 'string' ? pkg.version : null,
-            packageDir: fullPath,
             category: pkg.astryx.category || pkg.name,
             docsDir: path.resolve(fullPath, pkg.astryx.docs),
             blocksDir: pkg.astryx.blocks
@@ -243,80 +319,6 @@ export function scanLegacyExternalPackages(startDir = process.cwd()) {
   };
 
   scanDir(nodeModulesDir);
-  return packages;
-}
-
-/**
- * Discover external Astryx-compatible packages from node_modules.
- * Scans for packages with an "astryx" field in their package.json:
- *
- *   { "astryx": { "docs": "./src", "category": "Common", "blocks": "./blocks/components" } }
- *
- * Also reads the packages an active package set declares, when the
- * project's node_modules does not hold them.
- *
- * Returns array of { name, category, docsDir, blocksDir }.
- */
-export function discoverExternalPackages(startDir = process.cwd()) {
-  /** @type {Array<{name: string, category: string, docsDir: string, blocksDir: string | null}>} */
-  const externals = [];
-  const set = activePackageSet();
-  if (!set || set.mode === 'project') {
-    // With no hosted root serving the run, keep the installed CLI's discovery
-    // behavior: every installed legacy package remains visible.
-    return scanLegacyExternalPackages(startDir).map(
-      ({name, category, docsDir, blocksDir}) => ({
-        name,
-        category,
-        docsDir,
-        blocksDir,
-      }),
-    );
-  }
-
-  const found = new Set();
-
-  /** @param {string} packageDir */
-  const addPackage = packageDir => {
-    try {
-      const pkg = JSON.parse(
-        fs.readFileSync(path.join(packageDir, 'package.json'), 'utf-8'),
-      );
-      if (
-        typeof pkg.name !== 'string' ||
-        pkg.name === '@astryxdesign/core' ||
-        found.has(pkg.name) ||
-        !pkg.astryx?.docs
-      ) {
-        return;
-      }
-      found.add(pkg.name);
-      externals.push({
-        name: pkg.name,
-        category: pkg.astryx.category || pkg.name,
-        docsDir: path.resolve(packageDir, pkg.astryx.docs),
-        blocksDir: pkg.astryx.blocks
-          ? path.resolve(packageDir, pkg.astryx.blocks)
-          : null,
-      });
-    } catch {
-      // skip invalid JSON
-    }
-  };
-
-  // A plan enumerates only the project package directories it recorded. Never
-  // scan the caller's whole node_modules while a hosted set is active.
-  for (const entry of set.packages) {
-    if (entry.source === 'project' && entry.dir) addPackage(entry.dir);
-  }
-
-  // The active package set adds only packages its declaration list names; its
-  // node_modules is never scanned wholesale.
-  for (const name of packageSetDeclarations()) {
-    if (found.has(name) || name === '@astryxdesign/core') continue;
-    const pkgDir = resolveFromPackageSet(name);
-    if (pkgDir) addPackage(pkgDir);
-  }
   return externals;
 }
 
@@ -357,7 +359,7 @@ export function listComponents(coreDir) {
  * @returns {boolean}
  */
 export function existsCaseExact(targetPath, rootDir) {
-  if (!fs.existsSync(targetPath)) return false;
+  if (!pathExists(targetPath)) return false;
 
   const rel = path.relative(rootDir, targetPath);
   if (rel === '') return true;
@@ -368,7 +370,7 @@ export function existsCaseExact(targetPath, rootDir) {
   for (const segment of rel.split(path.sep)) {
     let entries;
     try {
-      entries = fs.readdirSync(dir);
+      entries = listDir(dir);
     } catch {
       return false;
     }

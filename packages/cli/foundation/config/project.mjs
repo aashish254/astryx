@@ -43,6 +43,16 @@ import {
   resolvePackageDir,
 } from '../integrations/integrations.mjs';
 import {loadAutolinkCandidates} from '../integrations/autolink.mjs';
+import {
+  computerInstallRoots,
+  loadComputerIntegrations,
+  scanComputerIntegrations,
+} from '../integrations/computer-integrations.mjs';
+import {relativeWithin, samePath} from '../fs/path-compare.mjs';
+import {isOutsideProject} from '../env/project-scope.mjs';
+import {cliVersion} from '../release/run-context.mjs';
+import {isGlobalCopy} from '../release/choose.mjs';
+import {astryxCommandsOnSearchPath} from '../env/search-path.mjs';
 import {resolveProviders} from '../integrations/provider-resolution.mjs';
 import {
   setProject as setDebugProject,
@@ -55,11 +65,12 @@ import {
   discoverValidIntegrationComponents,
 } from '../discovery/component-discovery.mjs';
 import {resolveComponentReplacements} from '../discovery/component-replacement.mjs';
-import {findCoreDir} from '../fs/paths.mjs';
+import {CLI_ROOT, findCoreDir} from '../fs/paths.mjs';
 import {
   applyTemplateReplacements,
   effectiveTemplateDiscovery,
   discoverAllUnresolved as discoverTemplates,
+  discoverCoreTemplates,
   discoverIntegrationTemplatesForOne,
 } from '../discovery/template-adapter.mjs';
 import {
@@ -77,6 +88,7 @@ import {
   selectIntegrationCodemods,
 } from '../../assets/codemods/integration-discovery.mjs';
 import {validateLoadedIntegration} from '../integrations/validate-contributions.mjs';
+import {recordDeclaredCliCommands} from '../env/cli-command.mjs';
 import {
   InMemoryConfigCache,
   cacheKey,
@@ -100,6 +112,80 @@ function errorMessage(err) {
 }
 
 /**
+ * The computer-level integrations (spec AST-081 FR12), read from package.json
+ * files only. Outside a project, those installed beside the running CLI;
+ * inside one, where the project's own CLI may be the copy that answers, those
+ * installed beside the CLI installed for the computer (see globalCliRoot).
+ * @param {string} [cwd]
+ * @returns {import('../integrations/computer-integrations.mjs').ComputerIntegrationCandidate[]}
+ */
+export function computerIntegrationCandidates(cwd = process.cwd()) {
+  try {
+    const cliRoot = isOutsideProject(cwd) ? CLI_ROOT : globalCliRoot(cwd);
+    return cliRoot
+      ? scanComputerIntegrations({cliRoot, release: cliVersion()})
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The CLI package whose install root holds the computer-level integrations
+ * for a folder inside a project: this copy when it was installed outside the
+ * project (installed for the computer, or in a tool's package set), else the
+ * first `astryx` on the search path that is installed for the computer. A
+ * project's own CLI and a release from the per-user cache are neither.
+ * @param {string} cwd
+ * @returns {string | null}
+ */
+function globalCliRoot(cwd) {
+  let folder = path.resolve(cwd);
+  try {
+    folder = fs.realpathSync(folder);
+  } catch {
+    // A folder that cannot be resolved is compared as written.
+  }
+  const own = computerInstallRoots(CLI_ROOT);
+  if (
+    own.length > 0 &&
+    !own.some(
+      root => samePath(root, folder) || relativeWithin(root, folder) != null,
+    )
+  ) {
+    return CLI_ROOT;
+  }
+  for (const command of astryxCommandsOnSearchPath()) {
+    if (command.cliRoot && isGlobalCopy(command.cliRoot)) {
+      return command.cliRoot;
+    }
+  }
+  return null;
+}
+
+/**
+ * The computer-level integrations a project could add (spec AST-081 FR12):
+ * those it does not install, whose peer ranges admit the release that
+ * answers, and whose manifest loads.
+ * @param {string} cwd
+ * @param {Set<string>} installed package names the project loads or declares
+ * @returns {Promise<import('../integrations/computer-integrations.mjs').ComputerIntegrationCandidate[]>}
+ */
+export async function availableComputerIntegrations(cwd, installed) {
+  const candidates = computerIntegrationCandidates(cwd).filter(
+    c => !c.incompatible && !installed.has(c.name),
+  );
+  if (candidates.length === 0) return [];
+  const loaded = await loadComputerIntegrations(candidates);
+  const usable = new Set(
+    loaded.flatMap(entry =>
+      entry.integration && !entry.integration.__loadError ? [entry.spec] : [],
+    ),
+  );
+  return candidates.filter(c => usable.has(c.name));
+}
+
+/**
  * Load the configured integrations one at a time, so a package that cannot
  * load at all (not installed, no manifest, more than one manifest, not a bare
  * name) becomes that entry's load-error marker instead of failing the project.
@@ -120,14 +206,13 @@ async function loadConfiguredIntegrations(specs, {cwd, fresh}) {
           cwd,
           fresh,
           resolveProviders: false,
-          usePackageSet: true,
         })),
       );
     } catch (err) {
       /** @type {string|undefined} */
       let packageDir;
       try {
-        packageDir = resolvePackageDir(spec, cwd, {usePackageSet: true});
+        packageDir = resolvePackageDir(spec, cwd);
       } catch {
         // Not a bare package name: there is no install location to record.
       }
@@ -440,7 +525,26 @@ export class Project {
     // existing consumer command doubles as the author's preview. A local copy
     // replaces the same installed package in place, preserving configured
     // precedence while making the source being edited authoritative.
-    const localIntegration = await loadLocalIntegrationSafely(projectDir, fresh);
+    const localIntegration = await loadLocalIntegrationSafely(
+      projectDir,
+      fresh,
+    );
+
+    // Outside a project, the integrations installed beside the running CLI
+    // load too (spec AST-081 FR12); a package the folder already loads keeps
+    // its own copy. Inside a project they never load.
+    const computer = isOutsideProject(cwd)
+      ? await loadComputerIntegrations(computerIntegrationCandidates(cwd), {
+          fresh,
+          exclude: [
+            ...loadedIntegrations.map(integration => integration.name),
+            ...autolinked.flatMap(candidate =>
+              candidate.integration ? [candidate.integration.name] : [],
+            ),
+            ...(localIntegration ? [localIntegration.name] : []),
+          ],
+        })
+      : [];
 
     // Autolinked and local packages can claim a provider ID that a configured
     // package already holds, so identity is resolved once over the final set.
@@ -451,6 +555,7 @@ export class Project {
         spec: integration.__spec,
       })),
       ...autolinked,
+      ...computer,
       ...(localIntegration
         ? [
             {
@@ -462,6 +567,9 @@ export class Project {
         : []),
     ]);
     loadedIntegrations = resolution.integrations;
+    // The picker (getCliInvocation) is synchronous, so the commands these
+    // integrations declare are recorded here, where they become known.
+    recordDeclaredCliCommands(projectDir, loadedIntegrations);
 
     // The debug recorder resolves its settings synchronously, long before any
     // command gets here, so this is where a project's `debug` block gets a
@@ -823,6 +931,85 @@ export class Project {
   }
 
   /**
+   * The components and templates this project reads, as links name them: by
+   * owner provider id, kind, and name (a template by its id).
+   * @returns {Promise<import('../discovery/docs-discovery.mjs').LinkableContributions>}
+   */
+  async #linkableContributions() {
+    /** @type {Map<string, string>} */
+    const providers = new Map([[CORE_PACKAGE, CORE_PACKAGE]]);
+    for (const integration of this.#loadedIntegrations) {
+      if (integration?.name) {
+        providers.set(
+          integration.name,
+          integration.providerId ?? integration.name,
+        );
+      }
+    }
+    const providerOf = (/** @type {string | undefined} */ pkg) =>
+      providers.get(pkg ?? CORE_PACKAGE) ?? pkg ?? CORE_PACKAGE;
+    // An active replacement answers to the Core name it replaces, so a link
+    // to that Core component has to select Core (spec:AST-035 FR11).
+    /** @type {Map<string, string>} */
+    const replacing = new Map();
+    if (this.#loadedIntegrations.length > 0) {
+      const {active} = await resolveComponentReplacements(
+        findCoreDir(this.#cwd),
+        this.#loadedIntegrations,
+      );
+      for (const each of active) {
+        replacing.set(`${each.package}\0${each.name}`, each.target);
+      }
+    }
+    const components = (await this.components()).map(record => {
+      const replaces = replacing.get(`${record.package}\0${record.name}`);
+      return {
+        providerId: providerOf(record.package),
+        package: record.package,
+        name: record.name,
+        docPath: record.docPath,
+        ...(replaces == null ? {} : {replaces}),
+      };
+    });
+    /** @param {any} template @param {string} pkg */
+    const linkable = (template, pkg) => ({
+      providerId: providerOf(pkg),
+      package: pkg,
+      type: template.type,
+      id: template.dirName,
+      name: template.name,
+      ...(template.displayName == null
+        ? {}
+        : {displayName: template.displayName}),
+      ...(template.description == null
+        ? {}
+        : {description: template.description}),
+      ...(typeof template.replaces === 'string'
+        ? {replaces: template.replaces}
+        : {}),
+    });
+    /** @param {any} template */
+    const isPageOrBlock = template =>
+      template.type === 'page' || template.type === 'block';
+    // Every Core template, a replaced one too, since `--package
+    // @astryxdesign/core` still opens it; everyone else's as unqualified
+    // lookups see them, an active replacement with the id it takes over.
+    const templates = [
+      ...(await discoverCoreTemplates())
+        .filter(isPageOrBlock)
+        .map(template => linkable(template, CORE_PACKAGE)),
+      .../** @type {any[]} */ (await this.templates())
+        .filter(
+          template =>
+            isPageOrBlock(template) &&
+            (template.package ?? CORE_PACKAGE) !== CORE_PACKAGE,
+        )
+        .map(template => linkable(template, template.package)),
+    ];
+    return {components, templates};
+  }
+
+  /**
    * The CLI's own doc topics plus the ones the configured integrations
    * contribute, resolved into one catalog: additions, replacements (with the
    * replaced name left as an alias), and extensions merged in configuration
@@ -839,6 +1026,8 @@ export class Project {
   async docs() {
     return this.#memo('docs', async () => {
       const catalog = DocsCatalog.fromBuiltins();
+      // Links name component, page, and block docs too (spec:AST-047 FR9).
+      catalog.setContributions(() => this.#linkableContributions());
       let rank = 0;
 
       for (const integration of this.#loadedIntegrations) {
@@ -862,7 +1051,10 @@ export class Project {
           // nothing and a reader gets the topic it was meant to replace.
           if (errors.length > 0) {
             for (const e of errors) {
-              catalog.addIssue({package: integration.name ?? pkg, message: e.message});
+              catalog.addIssue({
+                package: integration.name ?? pkg,
+                message: e.message,
+              });
             }
             continue;
           }

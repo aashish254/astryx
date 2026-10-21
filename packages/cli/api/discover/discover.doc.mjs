@@ -20,7 +20,8 @@ export const doc = {
     'the packages it could add, with what each one adds per kind. An @scope/name query shows one package with every ' +
     'version its source knows; @scope/name@version shows one version; @scope/name/Component returns an installed ' +
     "component's validated doc, and any other item path returns that item. A free-text term searches every item and " +
-    'package. Discover only reads: it prints the command that adds a package and never runs it.',
+    'package. Discover only reads: it prints the command that adds a package and never runs it.' +
+    " In global mode: with `cwd` outside a project, integrations installed next to this CLI package globally are listed as installed; inside a project, only the project's own are, and the compatible global ones are listed in `meta.available` with source `installed for this computer` and an `install` command. See {@link namespace:global} and {@link generic:computer-integrations}.",
   importPath: '@astryxdesign/cli/api',
   signature:
     'discover(query?: string, options?: DiscoverOptions): Promise<DiscoverListResponse | DiscoverDetailResponse | DiscoverDetailDocResponse | DiscoverItemResponse | DiscoverSearchResponse>',
@@ -89,7 +90,7 @@ export const doc = {
     {
       type: 'discover.list',
       description:
-        'The installed integrations (name, category, components, version, and a list per other kind they add). With a discover source, meta.available lists what the project could add and meta.sources reports each source. When the list is empty it carries meta.configured.',
+        'The installed integrations (name, category, components, version, and a list per other kind they add). With a discover source, meta.available lists what the project could add and meta.sources reports each source. Inside a project, an integration installed for the computer that the project does not install is also listed in meta.available, with source `installed for this computer` and the install command for the project in `install`. When the list is empty it carries meta.configured.',
     },
     {
       type: 'discover.detail',

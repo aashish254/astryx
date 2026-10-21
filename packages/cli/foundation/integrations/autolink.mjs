@@ -41,12 +41,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {findManifestPaths, loadIntegrations} from './integrations.mjs';
 import {resolveProviders} from './provider-resolution.mjs';
-import {
-  activePackageSet,
-  isBarePackageName,
-  packageSetDeclarations,
-  resolveFromPackageSet,
-} from '../runtime/package-root.mjs';
 
 /**
  * package.json fields whose keys name a dependency this project installs.
@@ -64,13 +58,17 @@ export const DEPENDENCY_FIELDS = Object.freeze([
 ]);
 
 /**
- * The base CLI's compatibility guard for a dependency key used below
- * node_modules. It predates hosted package sets and intentionally accepts
- * nested names that contain no traversal segments. Hosted-set declarations
- * use the stricter {@link isBarePackageName} check.
+ * Whether a dependency key is a bare package name safe to resolve.
+ *
+ * Mirrors the guard in {@link import('./integrations.mjs').resolvePackageDir}:
+ * a name is a directory under node_modules, so a path segment (`.`, `..`) or an
+ * absolute spec must never reach the resolver, which goes on to dynamically
+ * import what it finds.
+ *
  * @param {string} name
+ * @returns {boolean}
  */
-function isProjectDependencyName(name) {
+function isBarePackageName(name) {
   return (
     typeof name === 'string' &&
     name.length > 0 &&
@@ -111,7 +109,7 @@ export function readDeclaredDependencies(projectDir) {
       continue;
     }
     for (const name of Object.keys(entry)) {
-      if (seen.has(name) || !isProjectDependencyName(name)) continue;
+      if (seen.has(name) || !isBarePackageName(name)) continue;
       seen.add(name);
       declared.push({name, field});
     }
@@ -136,7 +134,7 @@ export function readDeclaredDependencies(projectDir) {
  *   directory and the directory whose node_modules holds it
  */
 export function resolveInstalledPackageDir(name, fromDir) {
-  if (!isProjectDependencyName(name)) return null;
+  if (!isBarePackageName(name)) return null;
   const segments = name.split('/');
   let dir = path.resolve(fromDir);
   for (let i = 0; i < 50; i++) {
@@ -148,48 +146,7 @@ export function resolveInstalledPackageDir(name, fromDir) {
     if (parent === dir) break;
     dir = parent;
   }
-  // Nothing installed it on the project's chain. An active package set
-  // (foundation/runtime/package-root.mjs) may carry it, when its plan admitted
-  // the name; its root is the directory whose node_modules holds it.
-  return resolveFromPackageSetRoot(name);
-}
-
-/**
- * The `field` recorded for a package an active package set declares rather
- * than the project's package.json (the approved hosted integration list).
- */
-const PACKAGE_SET_FIELD = 'package set';
-
-/**
- * `name` inside the active package set's root, never the project's chain.
- * @param {string} name
- * @returns {{packageDir: string, hostDir: string}|null}
- */
-function resolveFromPackageSetRoot(name) {
-  const packageDir = resolveFromPackageSet(name);
-  if (!packageDir) return null;
-  return {
-    packageDir,
-    hostDir: /** @type {string} */ (activePackageSet()?.root),
-  };
-}
-
-/**
- * The project's declared dependencies, then any the active package set
- * declares that the project does not, in that order. With no active set this
- * is exactly {@link readDeclaredDependencies}.
- * @param {string} projectDir
- * @returns {Array<{name: string, field: string}>}
- */
-function declaredWithPackageSet(projectDir) {
-  const declared = readDeclaredDependencies(projectDir);
-  const seen = new Set(declared.map(entry => entry.name));
-  for (const name of packageSetDeclarations()) {
-    if (seen.has(name) || !isBarePackageName(name)) continue;
-    seen.add(name);
-    declared.push({name, field: PACKAGE_SET_FIELD});
-  }
-  return declared;
+  return null;
 }
 
 /**
@@ -233,14 +190,8 @@ export function scanAutolinkCandidates(projectDir, {exclude = []} = {}) {
   /** @type {AutolinkCandidate[]} */
   const candidates = [];
 
-  for (const {name, field} of declaredWithPackageSet(projectDir)) {
-    // A name only the package set declares resolves only through the set: a
-    // copy the project happens to hold without declaring it is not the one
-    // the plan approved or recorded.
-    const resolved =
-      field === PACKAGE_SET_FIELD
-        ? resolveFromPackageSetRoot(name)
-        : resolveInstalledPackageDir(name, projectDir);
+  for (const {name, field} of readDeclaredDependencies(projectDir)) {
+    const resolved = resolveInstalledPackageDir(name, projectDir);
     if (!resolved) continue;
 
     if (findManifestPaths(resolved.packageDir).length !== 1) continue;

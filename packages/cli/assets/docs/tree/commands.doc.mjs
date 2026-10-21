@@ -13,7 +13,7 @@ export const docs = {
   name: 'commands',
   title: 'Commands',
   summary:
-    'Every command and subcommand: usage, options, examples, and exit codes.',
+    'Every command and subcommand: usage, options, examples, exit codes, and what it does outside a project.',
   keywords: ['commands', 'usage', 'options', 'flags'],
   placement: {parent: 'namespace:cli', slot: 'reference', order: 10},
   slots: {
@@ -21,5 +21,11 @@ export const docs = {
   },
   adopts: [
     {source: {group: 'cli/commands', kinds: ['command']}, into: 'commands'},
+  ],
+  blocks: [
+    {
+      type: 'prose',
+      text: "In global mode: every command declares what it does outside a project (`outsideProject`). Most answer as in a new project; some write nothing and name the project they need; a few, such as `doctor`, `init`, and `upgrade`, do something else. A command that does not answer as in a new project says exactly what it does in its `In global mode:` note, and the CLI's tests run every command in an empty folder to check what it does against its declared value. In a project, the project's version of Astryx runs every command, whichever astryx command you type. See {@link namespace:global}.",
+    },
   ],
 };

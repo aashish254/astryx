@@ -34,7 +34,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
-import {withoutPackageSet} from '../../foundation/runtime/package-root.mjs';
+import {integrationDocTypes} from '../docs/_adapter.mjs';
 import {
   THEME_SLUG_RE,
   unreadThemeFolders,
@@ -55,11 +55,13 @@ import {
 // The on-disk contribution validators live in foundation: Project and
 // integration-warnings need them too, and foundation must not depend on api.
 import {
+  INVALID_CLI_COMMAND,
   validateLoadedIntegration,
   issueError as error,
   issueWarning as warning,
   rootProblem,
 } from '../../foundation/integrations/validate-contributions.mjs';
+import {formatCliCommand} from '../../foundation/env/package-manager.mjs';
 
 export {validateLoadedIntegration};
 
@@ -75,6 +77,8 @@ export {validateLoadedIntegration};
  * @property {string} [manifestFile] Absolute path to the loaded manifest.
  * @property {'no_package_json'} [reason] Why nothing was validated (internal).
  * @property {Issue[]} issues
+ * @property {Array<{code: string, message: string}>} [notes] Information that
+ *   fails nothing, such as `invalid_cli_command` (a malformed `cliCommand`).
  * @property {import('../../foundation/integrations/integrations.mjs').LoadedIntegration} [integration]
  */
 
@@ -124,7 +128,7 @@ function unreadThemeFolderIssues(packageDir, loaded) {
     let fix;
     if (THEME_SLUG_RE.test(name)) {
       const stem = `${name.replace(/-([a-z0-9])/gu, (_, character) => character.toUpperCase())}Theme`;
-      fix = `if it is a theme, add ${stem}.ts and ${stem}.doc.mjs to it (\`astryx integration add theme ${name}\` writes both) and move its code into ${stem}.ts; if not, ${hide}.`;
+      fix = `if it is a theme, add ${stem}.ts and ${stem}.doc.mjs to it (\`${formatCliCommand(`integration add theme ${name}`, packageDir)}\` writes both) and move its code into ${stem}.ts; if not, ${hide}.`;
     } else {
       fix = `${hide}; a theme folder needs a lower-kebab name.`;
     }
@@ -283,11 +287,14 @@ async function validateAtPackageDir(
   let unknownKeys;
   /** @type {string | undefined} */
   let agentDocsError;
+  /** @type {string | undefined} */
+  let cliCommandError;
   try {
-    ({manifest, unknownKeys, agentDocsError} = await loadManifest(
-      manifestFile,
-      `Integration manifest (${path.basename(manifestFile)})`,
-    ));
+    ({manifest, unknownKeys, agentDocsError, cliCommandError} =
+      await loadManifest(
+        manifestFile,
+        `Integration manifest (${path.basename(manifestFile)})`,
+      ));
   } catch (err) {
     issues.push(error('invalid_manifest', /** @type {any} */ (err).message));
     return result;
@@ -319,6 +326,8 @@ async function validateAtPackageDir(
     themes: resolveRoot(manifest.themes),
     issuesUrl: manifest.issuesUrl,
     agentDocs: manifest.agentDocs,
+    cliCommand: manifest.cliCommand,
+    __cliCommandError: cliCommandError,
     __agentDocsError: agentDocsError,
     __unknownKeys: unknownKeys,
     __spec: identity.name,
@@ -329,7 +338,17 @@ async function validateAtPackageDir(
 
   // Roots + contribution checks are shared with validateLoadedIntegration so
   // the everyday-command nudge runs the exact same validators.
-  issues.push(...(await validateLoadedIntegration(loaded)));
+  // A malformed `cliCommand` is an info note beside the issues, not an issue:
+  // `integration check --strict` fails on any warning, and a new failure code
+  // joins only in a minor release (architecture:cli-surface INV35). Doctor's
+  // project check still warns about it.
+  for (const issue of await validateLoadedIntegration(loaded)) {
+    if (issue.code === INVALID_CLI_COMMAND) {
+      (result.notes ??= []).push({code: issue.code, message: issue.message});
+    } else {
+      issues.push(issue);
+    }
+  }
   if (loaded.themes && !rootProblem(loaded.themes))
     issues.push(...unreadThemeFolderIssues(packageDir, loaded));
   if (scanUnreachable) {
@@ -451,28 +470,24 @@ export async function validateInstalledIntegration(spec, cwd = process.cwd()) {
  * "nothing was checked" rather than "checked and healthy".
  *
  * This is the seam that keeps the CLI a thin wrapper: the command handler calls
- * this and only chooses how to render (human vs --json) + the exit code. It
- * always validates the project's own install, with any hosted package set
- * suspended for the whole check.
+ * this and only chooses how to render (human vs --json) + the exit code.
  *
  * @param {string} [pkg] installed package name; omit to validate the cwd package
  * @param {{cwd?: string}} [options]
  * @returns {Promise<import('./validate-integration.type.mjs').ValidateIntegrationResponse>}
  */
-export function validateIntegration(pkg, options = {}) {
-  return withoutPackageSet(() => validateIntegrationFromProject(pkg, options));
-}
-
-/**
- * @param {string | undefined} pkg
- * @param {{cwd?: string}} options
- * @returns {Promise<import('./validate-integration.type.mjs').ValidateIntegrationResponse>}
- */
-async function validateIntegrationFromProject(pkg, options) {
+export async function validateIntegration(pkg, options = {}) {
   const {cwd = process.cwd()} = options;
   const result = pkg
     ? await validateInstalledIntegration(pkg, cwd)
     : await validateLocalIntegration(cwd);
+  // Each doc the package ships, against the published authoring type for its
+  // kind, read with the project's own compiler. Findings are warnings only.
+  const integration = result.found ? result.integration : undefined;
+  const docTypes = integration
+    ? await integrationDocTypes(integration, cwd)
+    : undefined;
+  const notes = result.found ? (result.notes ?? []) : [];
   return {
     type: 'integration.validate',
     data: {
@@ -492,6 +507,8 @@ async function validateIntegrationFromProject(pkg, options) {
               },
             ]
           : result.issues,
+      ...(notes.length > 0 ? {notes} : {}),
+      ...(docTypes ? {docTypes} : {}),
     },
   };
 }

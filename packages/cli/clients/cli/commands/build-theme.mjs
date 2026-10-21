@@ -34,6 +34,7 @@ import * as path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {getCliInvocation} from '../../../foundation/env/package-manager.mjs';
+import {isOutsideProject} from '../../../foundation/env/project-scope.mjs';
 import {jsonOut} from '../../../foundation/response/json.mjs';
 import {
   emit,
@@ -112,9 +113,11 @@ function resolveCliBin() {
  * @param {{out?: string, iconsSpecifier?: string, detail?: string}} options -
  *   Parsed command options that affect generated output, plus the detail
  *   level the user chose.
+ * @param {(child: import('node:child_process').ChildProcess) => void} [onSpawn] -
+ *   Receives the child, so a watcher that stops can stop it too.
  * @returns {Promise<number>}
  */
-function runThemeBuildOnceChild(file, options) {
+function runThemeBuildOnceChild(file, options, onSpawn) {
   const cliBin = resolveCliBin();
   // A detail level the user chose applies to every rebuild.
   const args = options.detail
@@ -128,6 +131,7 @@ function runThemeBuildOnceChild(file, options) {
       stdio: 'inherit',
       env: process.env,
     });
+    onSpawn?.(child);
     child.on('close', code => resolve(code ?? 0));
     child.on('error', () => resolve(1));
   });
@@ -139,7 +143,9 @@ function runThemeBuildOnceChild(file, options) {
  * Rebuilds are serialized: one at a time, in the order the changes arrived, so
  * the log stays readable. Each rebuild runs in a child process so a build error
  * (which the single-build path reports via a hard exit) is contained and the
- * watcher keeps running.
+ * watcher keeps running. Stopping ends the watch at once: queued changes are
+ * dropped, the signal reaches a rebuild in progress, as Ctrl-C in a terminal
+ * reaches the whole process group, and "Stopped watching." is the last line.
  *
  * @param {Array<{file: string, filePath: string}>} entries - The theme file
  *   arguments as the user passed them, with their resolved absolute paths.
@@ -159,6 +165,11 @@ async function runThemeBuildWatch(entries, options) {
   }
 
   let building = false;
+  let stopped = false;
+  /** @type {import('node:child_process').ChildProcess | null} */
+  let rebuildChild = null;
+  /** @type {Promise<void> | null} */
+  let rebuildDone = null;
   /** @type {Set<{file: string, filePath: string}>} */
   const queued = new Set();
   /** @type {Map<string, ReturnType<typeof setTimeout>>} */
@@ -166,6 +177,7 @@ async function runThemeBuildWatch(entries, options) {
 
   /** @param {{file: string, filePath: string}} entry */
   const rebuild = async entry => {
+    if (stopped) return;
     if (building) {
       // Coalesce changes that land mid-build into a single follow-up run.
       queued.add(entry);
@@ -173,8 +185,16 @@ async function runThemeBuildWatch(entries, options) {
     }
     building = true;
     emit(text(`\nChange detected — rebuilding ${rel(entry.filePath)}...`));
-    await runThemeBuildOnceChild(entry.file, options);
+    const done = runThemeBuildOnceChild(entry.file, options, child => {
+      rebuildChild = child;
+    });
+    rebuildDone = done.then(() => {});
+    await done;
+    rebuildChild = null;
+    rebuildDone = null;
     building = false;
+    // A stop during this build has already ended the watch.
+    if (stopped) return;
     emit(text(watchingLine));
     const next = queued.values().next();
     if (!next.done) {
@@ -205,14 +225,28 @@ async function runThemeBuildWatch(entries, options) {
   emit(text(watchingLine));
 
   await new Promise((/** @type {(value?: void) => void} */ resolve) => {
-    const stop = () => {
+    let stopping = false;
+    /** @param {NodeJS.Signals} signal */
+    const stop = async signal => {
+      // A second interrupt while stopping (a terminal's Ctrl-C and the same
+      // signal passed on by the copy that started the run) changes nothing.
+      if (stopping) return;
+      stopping = true;
+      stopped = true;
+      queued.clear();
       for (const d of debounces.values()) clearTimeout(d);
       for (const w of watchers) w.close();
+      // A rebuild in progress would otherwise keep the process alive after
+      // "Stopped watching.". In a terminal, Ctrl-C already reached it.
+      rebuildChild?.kill(signal);
+      await rebuildDone;
       emit(text('\nStopped watching.'));
+      process.removeListener('SIGINT', stop);
+      process.removeListener('SIGTERM', stop);
       resolve();
     };
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
   });
 }
 
@@ -255,12 +289,22 @@ function printThemeAddList(themes) {
         return theme.description ? [head, theme.description] : head;
       }),
     ),
-    text(
-      `Import one: ${run} theme add <slug> [--package <package>]\n` +
-        `Fork source: ${run} theme eject <slug> [target-path]`,
-    ),
+    text(themeNextSteps(run)),
     more,
   );
+}
+
+/**
+ * What to do with a listed theme. Outside a project there is no app to add one
+ * to, so only the fork step is named (spec AST-081 FR3).
+ * @param {string} run the CLI invocation
+ * @returns {string}
+ */
+function themeNextSteps(run) {
+  const fork = `Fork source: ${run} theme eject <slug> [target-path]`;
+  return isOutsideProject()
+    ? fork
+    : `Import one: ${run} theme add <slug> [--package <package>]\n${fork}`;
 }
 
 /**
@@ -297,10 +341,7 @@ function printThemeList(themes, unmigratedCopies = []) {
           default: (/** @type {boolean} */ value) => (value ? 'yes' : 'no'),
         },
       }),
-      text(
-        `Import one: ${run} theme add <slug> [--package <package>]\n` +
-          `Fork source: ${run} theme eject <slug> [target-path]`,
-      ),
+      text(themeNextSteps(run)),
       more,
     );
   }
@@ -369,7 +410,7 @@ function printThemeApp(result) {
   emit(
     text('Wire the generated module once in the app root:'),
     code(
-      "import {Theme} from '@astryxdesign/core';\n" +
+      "import {Theme} from '@astryxdesign/core/theme';\n" +
         `import {themes, defaultThemeSlug} from './${stem}';\n\n` +
         '<Theme theme={themes[defaultThemeSlug]}>\n  <App />\n</Theme>',
     ),

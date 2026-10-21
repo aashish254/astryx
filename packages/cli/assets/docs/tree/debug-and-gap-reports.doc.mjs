@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file `astryx docs cli/integrations/debug-and-gap-reports`: receive a record
+ * @file `astryx docs cli/integrations/building-blocks/configuration/debug-and-gap-reports`: receive a record
  * of each CLI run with `debug`, and handle `astryx gap-report` with
  * `gapReport`, both named exports of the integration manifest.
  */
@@ -44,7 +44,7 @@ export default {
         },
         {
           type: 'prose',
-          text: 'The event is a `DebugEvent` with `command`, `outcome`, `exitCode`, `durationMs`, `error`, and more, its values scrubbed (`redacted: true`). Every field is in {@link generic:authoring}.',
+          text: 'The event is a `DebugEvent` with `command`, `outcome`, `exitCode`, `durationMs`, `error`, and more, its values scrubbed (`redacted: true`). Every field is in {@link schema:debug-event}.',
         },
         {
           type: 'prose',
@@ -104,22 +104,11 @@ export const gapReport = {
         },
         {
           type: 'prose',
-          text: 'Every handler in the app gets every report, so check `report.target.package` and skip reports about other packages. The receipt `status` is one of:',
+          text: 'Every handler in the app gets every report, so check `report.target.package` and skip reports about other packages.',
         },
         {
-          type: 'table',
-          headers: ['`status`', 'Meaning'],
-          rows: [
-            [
-              '`filed`',
-              'You created or queued the report. Return `url` or `message`.',
-            ],
-            [
-              '`routed_only`',
-              'You point the caller to where to file it. `url` is required.',
-            ],
-            ['`skipped`', 'You chose not to act, for example on a duplicate.'],
-          ],
+          type: 'prose',
+          text: 'Every field is in {@link schema:gap-report-handler}.',
         },
         {
           type: 'prose',
@@ -138,7 +127,7 @@ export const gapReport = {
         {
           type: 'code',
           lang: 'bash',
-          code: "npx astryx gap-report AcmeCarousel --category missing_variant --reason 'Need a vertical layout'",
+          code: "astryx gap-report AcmeCarousel --category missing_variant --reason 'Need a vertical layout'",
         },
         {
           type: 'code',
@@ -175,6 +164,16 @@ message:     Rerun with --confirm-public to file this report.`,
         {
           type: 'prose',
           text: 'One handler anywhere in the app, from the app or from any package, turns the fallback off for every report. So does a listed package that fails to load: the CLI cannot tell whether it has a handler, so the report fails for that package instead of going to another tracker. See {@link command:gap-report}.',
+        },
+      ],
+    },
+    {
+      id: 'global-mode',
+      title: 'In global mode',
+      content: [
+        {
+          type: 'prose',
+          text: 'In global mode: when users install your package for their computer, beside the global CLI, its `debug` function receives runs in folders outside any project too; inside a project, only if the project installs it. See {@link namespace:global} and {@link generic:global-integrations}.',
         },
       ],
     },

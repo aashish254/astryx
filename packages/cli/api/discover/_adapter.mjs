@@ -18,9 +18,12 @@
 
 import {createHash} from 'node:crypto';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
-import {Project} from '../../foundation/config/project.mjs';
+import {
+  Project,
+  availableComputerIntegrations,
+} from '../../foundation/config/project.mjs';
+import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
 import {
   scanAllPackages,
   findComponentInPackages,
@@ -29,6 +32,7 @@ import {loadDocs} from '../../foundation/discovery/component-loader.mjs';
 import {collectIdentities} from '../../foundation/integrations/contribution-inventory.mjs';
 import {detectPackageManager} from '../../foundation/env/package-manager.mjs';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
+import {userCacheDir} from '../../foundation/env/user-dirs.mjs';
 import {parseDiscoverCatalog} from '../../authoring/discover/parse.mjs';
 import {AstryxError} from '../error.mjs';
 import {ERROR_CODES} from '../../foundation/response/error-codes.mjs';
@@ -203,6 +207,38 @@ export function hasSources(project) {
   );
 }
 
+/** The source name of a package installed for the computer. */
+const COMPUTER_SOURCE = 'installed for this computer';
+
+/**
+ * The integrations installed for the computer that a project could add, as
+ * available entries with the project's install command (spec AST-081 FR12).
+ * Empty outside a project, where they load instead.
+ * @param {Project | undefined} project
+ * @param {Array<{name: string}>} installed
+ * @param {Set<string>} declared
+ * @param {(name: string, version?: string) => string} add
+ * @returns {Promise<import('./discover.type.mjs').DiscoverAvailableEntry[]>}
+ */
+export async function computerAvailableEntries(
+  project,
+  installed,
+  declared,
+  add,
+) {
+  const cwd = project?.cwd ?? process.cwd();
+  if (isOutsideProject(cwd)) return [];
+  const have = new Set([...installed.map(pkg => pkg.name), ...declared]);
+  return (await availableComputerIntegrations(cwd, have)).map(c => ({
+    name: c.name,
+    components: [],
+    ...(c.version ? {version: c.version} : {}),
+    ...(c.description ? {description: c.description} : {}),
+    source: COMPUTER_SOURCE,
+    install: add(c.name),
+  }));
+}
+
 /**
  * Package names the project's package.json declares in any dependency field.
  * @param {Project | undefined} project
@@ -250,21 +286,7 @@ export function addCommand(project) {
  * @returns {string}
  */
 export function defaultCacheDir() {
-  const home = os.homedir();
-  if (process.platform === 'win32') {
-    return path.join(
-      process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'),
-      'astryx',
-      'Cache',
-    );
-  }
-  if (process.platform === 'darwin') {
-    return path.join(home, 'Library', 'Caches', 'astryx');
-  }
-  return path.join(
-    process.env.XDG_CACHE_HOME || path.join(home, '.cache'),
-    'astryx',
-  );
+  return userCacheDir();
 }
 
 /**

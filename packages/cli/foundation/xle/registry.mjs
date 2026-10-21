@@ -6,9 +6,7 @@
  * Everything the layout language knows about components (valid names,
  * aliases, props, enums, slots) is derived from the same .doc.mjs files
  * that power `xds component`, so the notation can never drift from the
- * branch's actual API. Registries are cached by resolved Core directory so
- * successive hosted invocations cannot reuse another package set's catalog.
- * The pure pieces (alias table, enum parsing,
+ * branch's actual API. The pure pieces (alias table, enum parsing,
  * resolution, serialize/hydrate) live in registry-core.mjs so they can
  * run in the browser; this module adds the fs-bound builder.
  *
@@ -22,6 +20,7 @@ import path from 'node:path';
 import {findCoreDir} from '../fs/paths.mjs';
 import {
   discoverComponents,
+  familyMember,
   findComponentReadme,
   resolveImportPath,
 } from '../discovery/component-discovery.mjs';
@@ -85,10 +84,7 @@ function readDirExportedComponents(coreDir, dirName) {
       // drop `type` and aliases.
       const token = raw.trim();
       if (!token || token.startsWith('type ')) continue;
-      const name = token
-        .split(/\s+as\s+/)[0]
-        .trim()
-        .replace(/^XDS/, '');
+      const name = token.split(/\s+as\s+/)[0].trim().replace(/^XDS/, '');
       // PascalCase components only — skip hooks (useX), lowercase utils, and
       // non-rendering exports (Context/Provider) that discoverComponents()
       // also excludes.
@@ -100,8 +96,7 @@ function readDirExportedComponents(coreDir, dirName) {
   return [...names];
 }
 
-/** @type {Map<string, import('./xle-ast').Registry>} */
-const cachedRegistries = new Map();
+let cachedRegistry = /** @type {import('./xle-ast').Registry | null} */ (null);
 
 /**
  * Build (and cache) the registry: every documented component keyed by its
@@ -112,15 +107,12 @@ const cachedRegistries = new Map();
  * @returns {Promise<{components: Map<string, object>, aliases: Map<string, string>, componentNames: string[]}>}
  */
 export async function buildRegistry({cwd = process.cwd()} = {}) {
+  if (cachedRegistry) return cachedRegistry;
+
   const coreDir = findCoreDir(cwd);
   if (!coreDir) {
-    throw new Error(
-      'Could not find @astryxdesign/core package — run from an XDS workspace',
-    );
+    throw new Error('Could not find @astryxdesign/core package — run from an XDS workspace');
   }
-  const cacheKey = fs.realpathSync(coreDir);
-  const cached = cachedRegistries.get(cacheKey);
-  if (cached) return cached;
 
   const components = new Map();
   const grouped = discoverComponents(coreDir);
@@ -135,12 +127,12 @@ export async function buildRegistry({cwd = process.cwd()} = {}) {
     } catch {
       continue; // a malformed doc must not take down the whole language
     }
+    // A member documented in its family's doc (VStack in Stack's doc) is
+    // registered by the family's own folder, with every other member.
+    if (familyMember(docs, dirName)) continue;
     const importPath = resolveImportPath(coreDir, dirName);
 
-    const register = (
-      /** @type {string} */ rawName,
-      /** @type {import('./xle-ast').DocProp[]} */ props,
-    ) => {
+    const register = (/** @type {string} */ rawName, /** @type {import('./xle-ast').DocProp[]} */ props) => {
       const name = normalizeName(rawName);
       const entry = toComponentEntry(name, props, dirName, importPath);
       const existing = components.get(name);
@@ -164,11 +156,7 @@ export async function buildRegistry({cwd = process.cwd()} = {}) {
   // props go missing and valid attrs (e.g. Heading[level=2]) get rejected.
   // Read every .doc.mjs in each contributing dir and upgrade props, keyed to
   // each component's own export subpath. Props-only: never adds empty entries.
-  const upgradeFromDoc = (
-    /** @type {string} */ rawName,
-    /** @type {import('./xle-ast').DocProp[]} */ props,
-    /** @type {string} */ fallbackDir,
-  ) => {
+  const upgradeFromDoc = (/** @type {string} */ rawName, /** @type {import('./xle-ast').DocProp[]} */ props, /** @type {string} */ fallbackDir) => {
     if (!props || props.length === 0) return;
     const name = normalizeName(rawName);
     // Prefer the component's own export subpath (Heading → @astryxdesign/core/Heading);
@@ -179,8 +167,7 @@ export async function buildRegistry({cwd = process.cwd()} = {}) {
       components.get(name)?.importPath;
     const entry = toComponentEntry(name, props, name, ip);
     const existing = components.get(name);
-    if (!existing || entry.props.size > existing.props.size)
-      components.set(name, entry);
+    if (!existing || entry.props.size > existing.props.size) components.set(name, entry);
   };
   for (const dirName of dirNames) {
     const dirPath = path.join(coreDir, 'src', dirName);
@@ -197,15 +184,9 @@ export async function buildRegistry({cwd = process.cwd()} = {}) {
       } catch {
         continue;
       }
-      if (docs.props)
-        upgradeFromDoc(
-          docs.name || file.replace(/\.doc\.mjs$/, ''),
-          docs.props,
-          dirName,
-        );
+      if (docs.props) upgradeFromDoc(docs.name || file.replace(/\.doc\.mjs$/, ''), docs.props, dirName);
       for (const sub of docs.components || []) {
-        if (sub?.name && sub.props?.length)
-          upgradeFromDoc(sub.name, sub.props, dirName);
+        if (sub?.name && sub.props?.length) upgradeFromDoc(sub.name, sub.props, dirName);
       }
     }
   }
@@ -221,27 +202,16 @@ export async function buildRegistry({cwd = process.cwd()} = {}) {
   //     (TableHeader/Body/Footer became bare files with no own .doc.mjs after
   //     the un-prefix migration), so we recover them from the real export
   //     surface here.
-  const registerUndocumented = (
-    /** @type {string} */ name,
-    /** @type {string} */ dirName,
-  ) => {
+  const registerUndocumented = (/** @type {string} */ name, /** @type {string} */ dirName) => {
     if (components.has(name)) return;
-    const entry = toComponentEntry(
-      name,
-      [],
-      dirName,
-      resolveImportPath(coreDir, name),
-    );
+    const entry = toComponentEntry(name, [], dirName, resolveImportPath(coreDir, name));
     entry.undocumented = true;
     components.set(name, entry);
   };
 
   for (const [, members] of Object.entries(grouped)) {
     for (const member of members) {
-      registerUndocumented(
-        normalizeName(member),
-        findDirFor(grouped, member) || member,
-      );
+      registerUndocumented(normalizeName(member), findDirFor(grouped, member) || member);
     }
   }
 
@@ -262,11 +232,10 @@ export async function buildRegistry({cwd = process.cwd()} = {}) {
     if (components.has(target)) aliases.set(alias, target);
   }
 
-  const registry = {
+  cachedRegistry = {
     components,
     aliases,
     componentNames: [...components.keys()].sort(),
   };
-  cachedRegistries.set(cacheKey, registry);
-  return registry;
+  return cachedRegistry;
 }

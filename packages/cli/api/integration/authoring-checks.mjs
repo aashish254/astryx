@@ -3,11 +3,13 @@
 /**
  * @file Integration authoring diagnostics against the built-in Core catalog.
  *
+ * The components check also compares each component doc's props with the
+ * component's TypeScript props (foundation/discovery/prop-drift.mjs); those
+ * findings are warnings under `propDrift`.
+ *
  * Templates may intentionally replace Core identities; undeclared same-id
  * overlaps stay fail-closed and require package selection. The CLI package
  * version gates replacement-specific fields so 0.6.x keeps its released shape.
- * Public authoring diagnostics always inspect the project's own install; an
- * active hosted package set is suspended for the whole check.
  * Docs have explicit `replaces` / `extends` relationships with parallel
  * validation semantics.
  *
@@ -21,13 +23,13 @@ import {
   packageDocsProblems,
   packageReferenceProblems,
 } from '../docs/_adapter.mjs';
-import {findCoreDir} from '../../foundation/fs/paths.mjs';
-import {withoutPackageSet} from '../../foundation/runtime/package-root.mjs';
+import {findProjectCoreDir} from '../../foundation/fs/paths.mjs';
 import {
   discoverIntegrationComponents,
   discoverOwnedComponents,
 } from '../../foundation/discovery/component-discovery.mjs';
 import {loadComponentReplacements} from '../component/_adapter.mjs';
+import {integrationPropDrift} from './_adapter.mjs';
 import {
   discoverBuiltinTopics,
   discoverIntegrationDocs,
@@ -93,18 +95,7 @@ function addErrors(issues, errors, code) {
  * @param {import('./authoring-checks.type.mjs').IntegrationAuthoringOptions} [options]
  * @returns {Promise<import('./authoring-checks.type.mjs').IntegrationTemplateConflictResponse>}
  */
-export function integrationTemplateConflicts(pkg, options = {}) {
-  return withoutPackageSet(() =>
-    integrationTemplateConflictsFromProject(pkg, options),
-  );
-}
-
-/**
- * @param {string | undefined} pkg
- * @param {import('./authoring-checks.type.mjs').IntegrationAuthoringOptions} options
- * @returns {Promise<import('./authoring-checks.type.mjs').IntegrationTemplateConflictResponse>}
- */
-async function integrationTemplateConflictsFromProject(pkg, options) {
+export async function integrationTemplateConflicts(pkg, options = {}) {
   const {cwd = process.cwd()} = options;
   const resolved = await resolveIntegration(pkg, cwd);
   const validated = resolved.found;
@@ -241,18 +232,7 @@ async function integrationTemplateConflictsFromProject(pkg, options) {
  * @param {import('./authoring-checks.type.mjs').IntegrationAuthoringOptions} [options]
  * @returns {Promise<import('./authoring-checks.type.mjs').IntegrationComponentConflictResponse>}
  */
-export function integrationComponentConflicts(pkg, options = {}) {
-  return withoutPackageSet(() =>
-    integrationComponentConflictsFromProject(pkg, options),
-  );
-}
-
-/**
- * @param {string | undefined} pkg
- * @param {import('./authoring-checks.type.mjs').IntegrationAuthoringOptions} options
- * @returns {Promise<import('./authoring-checks.type.mjs').IntegrationComponentConflictResponse>}
- */
-async function integrationComponentConflictsFromProject(pkg, options) {
+export async function integrationComponentConflicts(pkg, options = {}) {
   const {cwd = process.cwd()} = options;
   const resolved = await resolveIntegration(pkg, cwd);
   const validated = resolved.found;
@@ -267,7 +247,11 @@ async function integrationComponentConflictsFromProject(pkg, options) {
     };
   }
 
-  const coreDir = findCoreDir(cwd);
+  // Each documented prop against the component's TypeScript props, read with
+  // the project's own compiler; without one the report says it was skipped.
+  const propDrift = await integrationPropDrift(resolved.integration, cwd);
+
+  const coreDir = findProjectCoreDir(cwd);
   if (!coreDir) {
     issues.push({
       code: 'core_not_found',
@@ -277,7 +261,7 @@ async function integrationComponentConflictsFromProject(pkg, options) {
     });
     return {
       type: 'integration.component-conflicts',
-      data: {validated, name, version, conflicts: [], issues},
+      data: {validated, name, version, conflicts: [], issues, propDrift},
     };
   }
 
@@ -321,7 +305,7 @@ async function integrationComponentConflictsFromProject(pkg, options) {
 
   return {
     type: 'integration.component-conflicts',
-    data: {validated, name, version, conflicts, issues},
+    data: {validated, name, version, conflicts, issues, propDrift},
   };
 }
 
@@ -331,18 +315,7 @@ async function integrationComponentConflictsFromProject(pkg, options) {
  * @param {import('./authoring-checks.type.mjs').IntegrationAuthoringOptions} [options]
  * @returns {Promise<import('./authoring-checks.type.mjs').IntegrationDocConflictResponse>}
  */
-export function integrationDocConflicts(pkg, options = {}) {
-  return withoutPackageSet(() =>
-    integrationDocConflictsFromProject(pkg, options),
-  );
-}
-
-/**
- * @param {string | undefined} pkg
- * @param {import('./authoring-checks.type.mjs').IntegrationAuthoringOptions} options
- * @returns {Promise<import('./authoring-checks.type.mjs').IntegrationDocConflictResponse>}
- */
-async function integrationDocConflictsFromProject(pkg, options) {
+export async function integrationDocConflicts(pkg, options = {}) {
   const {cwd = process.cwd()} = options;
   const resolved = await resolveIntegration(pkg, cwd);
   const validated = resolved.found;
