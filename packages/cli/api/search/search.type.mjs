@@ -18,8 +18,10 @@
  * @property {SearchDomain} domain - Which content domain this result came from.
  * @property {string} name - Primary identifier (component/hook name, doc topic or docs-tree route, template dir, theme slug).
  * @property {number} score - How strongly the query matched this entry (higher is
- *   stronger). Results are ordered by score band; within a band, by search's
- *   static ordering weights, so a lower score never sorts above a higher band.
+ *   stronger). Search keeps the lexical ranker's order between score bands,
+ *   including its domain priority, which can place a weaker non-doc match above
+ *   a stronger doc; within a run of one band and kind it orders matches by its
+ *   static ordering weights. Build's `blocks` use their own order.
  * @property {string} reason - Human-readable reason the candidate matched (e.g. `keyword "button"`).
  * @property {string} description - One-line description, when available.
  * @property {string} command - Follow-up command to act on this result (e.g. `astryx component Button`, or `astryx theme add neutral` for a theme).

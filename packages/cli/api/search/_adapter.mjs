@@ -81,14 +81,9 @@ let searchData = null;
  * The search tree's static data, read once: the entry cards and each node's
  * weights file.
  *
- * These files are reviewed data, not computed at run time. `_cards.json` holds
- * one card per Core component and hook (what it is, the words people type for
- * it, its main props), written from that item's source. Each `*.weights.json`
- * holds one number per signal the code computes. They only order matches inside
- * a band of equal match strength: whether an entry matches, and its score,
- * never depend on them. An entry without a card is ordered by its other
- * signals; cards for new Core items and refreshed weights land as their own
- * reviewed change.
+ * These files are static, reviewed data that only order matches inside a band
+ * of equal match strength; ORDERING.md beside them says what each holds and how
+ * they are refreshed.
  * @returns {SearchData}
  */
 export function loadSearchData() {

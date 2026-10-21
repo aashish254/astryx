@@ -31,7 +31,7 @@ const BANDS = [195, 188, 170, 160, 151, 100, 55];
 const FULL_COVERAGE = 151;
 
 /** @param {number} score */
-const bandOf = score => {
+export const bandOf = score => {
   const i = BANDS.findIndex(floor => score >= floor);
   return i === -1 ? BANDS.length : i;
 };
@@ -55,13 +55,13 @@ export function orderMatches(table, order, lexical, query, limit) {
   // Runs of consecutive lexical matches in one band and of one kind (doc or
   // not) are the only places the learned order acts: a match never crosses
   // into another band, or past a doc or a non-doc the lexical ranker placed.
-  let band = 0;
   let run = -1;
   /** @type {string} */
   let last = '';
   const items = all.map((res, i) => {
-    band = Math.max(band, bandOf(res.score ?? 0));
-    const key = `${band}:${res.domain === 'doc'}`;
+    // Each match's own band: the lexical merge can place a weaker match
+    // ahead of a stronger doc, and the two must never share a run.
+    const key = `${bandOf(res.score ?? 0)}:${res.domain === 'doc'}`;
     if (key !== last) {
       run++;
       last = key;
