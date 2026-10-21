@@ -1,7 +1,7 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file Source-level public-import and peer-range checks run by
+ * @file Source-level public-import checks run by
  * `astryx doctor integration validate` (and so `integration check --strict`).
  *
  * Each test stands up a small integration package under the repo root (so the
@@ -15,6 +15,7 @@ import {spawnSync} from 'node:child_process';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {validateLocalIntegration} from '../../api/integration/validate-integration.mjs';
 import {readImports} from './public-imports.mjs';
+import {validateIntegration} from '../../api/integration/validate-integration.mjs';
 import {subpathDeclaration} from './exports-subpaths.mjs';
 import {
   integrationAddComponent,
@@ -27,6 +28,7 @@ import {runCli} from '../../test-utils/run-cli.mjs';
 const CODES = new Set([
   'component_import_not_exported',
   'component_import_other_package',
+  'component_import_missing_name',
   'example_import_not_exported',
   'example_import_missing_name',
   'template_import_not_exported',
@@ -729,7 +731,13 @@ describe('block component names without Core installed', () => {
         ],
         {cwd: out, encoding: 'utf-8', timeout: 60_000},
       );
-      const issues = JSON.parse(run.stdout).data.issues;
+      const {data} = JSON.parse(run.stdout);
+      const issues = data.issues;
+      expect(
+        data.publicImports.unchecked.map(
+          (/** @type {{specifier: string}} */ u) => u.specifier,
+        ),
+      ).toEqual(['Button', 'AcmeGizmo']);
       expect(
         issues.filter(
           (/** @type {{code: string}} */ i) =>
@@ -740,4 +748,132 @@ describe('block component names without Core installed', () => {
       fs.rmSync(out, {recursive: true, force: true});
     }
   }, 60_000);
+});
+
+describe('derived component imports', () => {
+  const NO_IMPORT = `export default {
+  type: 'component',
+  name: 'AcmeWidget',
+  displayName: 'Acme Widget',
+  usage: {description: 'A pressable widget.'},
+  props: [{name: 'label', type: 'string', description: 'Text.', required: true}],
+};
+`;
+
+  it('warns when the derived root import does not export the component, naming the subpath that does', async () => {
+    write('components/AcmeWidget.doc.mjs', NO_IMPORT);
+    write('index.js', 'export const Other = 1;\n');
+    pkg(p => {
+      p.exports['.'] = './index.js';
+    });
+    const issues = (await found()).filter(
+      i => i.code === 'component_import_missing_name',
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain(
+      'has no import, so apps are told to import from "@acme/widgets"',
+    );
+    expect(issues[0].message).toContain(
+      "set import: '@acme/widgets/components/AcmeWidget' in the doc",
+    );
+  });
+
+  it('warns when the derived root import is not declared', async () => {
+    write('components/AcmeWidget.doc.mjs', NO_IMPORT);
+    const issue = (await found()).find(
+      i => i.code === 'component_import_not_exported',
+    );
+    expect(issue?.message).toContain(
+      'has no import, so apps are told to import from "@acme/widgets"',
+    );
+  });
+
+  it('warns when a written import does not export the component', async () => {
+    write('index.js', 'export const Other = 1;\n');
+    pkg(p => {
+      p.exports['.'] = './index.js';
+    });
+    write('components/AcmeWidget.doc.mjs', DOC('@acme/widgets'));
+    expect(await codes()).toContain('component_import_missing_name');
+  });
+
+  it('lists a derived import whose target is not built as not checked', async () => {
+    write('components/AcmeWidget.doc.mjs', NO_IMPORT);
+    pkg(p => {
+      p.exports['.'] = {types: './dist/index.d.ts', import: './dist/index.js'};
+    });
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(
+      result.data.issues.filter(i => i.code.startsWith('component_import')),
+    ).toEqual([]);
+    expect(result.data.publicImports?.unchecked).toEqual([
+      expect.objectContaining({
+        file: 'components/AcmeWidget.doc.mjs',
+        specifier: '@acme/widgets',
+        reason: expect.stringContaining('build output'),
+      }),
+    ]);
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.unchecked).toBe(1);
+    expect(check.data.failed).toBe(false);
+  });
+});
+
+describe('type-only imports', () => {
+  it('accepts a statement-level import type from a types-only subpath', async () => {
+    pkg(p => {
+      p.exports['./types'] = {types: './types.d.ts'};
+    });
+    write('types.d.ts', 'export type AcmeWidgetSize = "sm" | "md";\n');
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import type {AcmeWidgetSize} from '@acme/widgets/types';\\nimport {AcmeWidget} from '@acme/widgets/components/AcmeWidget';\\n<AcmeWidget />",
+      ),
+    );
+    expect(await codes()).toEqual([]);
+  });
+
+  it('still warns on a value import from a types-only subpath, and on an undeclared one', async () => {
+    pkg(p => {
+      p.exports['./types'] = {types: './types.d.ts'};
+    });
+    write(
+      'components/AcmeWidget.doc.mjs',
+      DOC(
+        undefined,
+        "import {AcmeWidgetSize} from '@acme/widgets/types';\\nimport type {X} from '@acme/widgets/nope';\\n<AcmeWidget />",
+      ),
+    );
+    expect(await codes()).toEqual([
+      'example_import_not_exported',
+      'example_import_not_exported',
+    ]);
+  });
+});
+
+describe('imports listed as not checked', () => {
+  it('lists template and example imports whose names cannot be judged', async () => {
+    pkg(p => {
+      p.exports['./built'] = './dist/built.js';
+      p.exports['./cjs'] = './cjs.cjs';
+    });
+    write('cjs.cjs', 'module.exports = {A: 1};\n');
+    write(
+      'templates/account-card.tsx',
+      "import {Built} from '@acme/widgets/built';\nimport {A} from '@acme/widgets/cjs';\nimport {AcmeWidget} from '@acme/widgets/components/AcmeWidget';\nexport default function C() {\n  return <AcmeWidget label=\"x\" />;\n}\n",
+    );
+    const result = await validateIntegration(undefined, {cwd: dir});
+    expect(result.data.issues).toEqual([]);
+    expect(
+      result.data.publicImports?.unchecked.map(u => [u.file, u.specifier]),
+    ).toEqual([
+      ['templates/account-card.tsx', '@acme/widgets/built'],
+      ['templates/account-card.tsx', '@acme/widgets/cjs'],
+    ]);
+    const check = await integrationCheck({cwd: dir, strict: true});
+    expect(check.data.unchecked).toBe(2);
+    expect(check.data.failed).toBe(false);
+  });
 });

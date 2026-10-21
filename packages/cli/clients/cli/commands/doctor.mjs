@@ -199,6 +199,16 @@ function printIntegrationValidation(data) {
         `${warnings} warning${warnings === 1 ? '' : 's'}`,
     ),
     ...docTypesBlocks(data.docTypes, errors > 0),
+    ...(data.publicImports && data.publicImports.unchecked.length > 0
+      ? [
+          text(
+            `[info] Imports not checked: ${data.publicImports.unchecked.length}:`,
+          ),
+          records(data.publicImports.unchecked, {
+            fields: ['file', 'specifier', 'reason'],
+          }),
+        ]
+      : []),
   );
 }
 

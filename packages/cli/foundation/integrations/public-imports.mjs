@@ -30,6 +30,7 @@ import {findCoreDir} from '../fs/paths.mjs';
 import {
   discoverIntegrationComponents,
   discoverOwnedComponents,
+  resolveIntegrationImportPath,
 } from '../discovery/component-discovery.mjs';
 import {loadComponentDoc} from '../discovery/component-loader.mjs';
 import {discoverIntegrationTemplatesForOne} from '../discovery/template-adapter.mjs';
@@ -104,6 +105,7 @@ export function splitSpecifier(specifier) {
  * @property {string} source
  * @property {ImportBinding[]} names
  * @property {boolean} namespace
+ * @property {boolean} [typeOnly] the whole statement is `import type`
  */
 
 const PARSE_PLUGINS = /** @type {any} */ ([
@@ -154,6 +156,7 @@ export function readImports(text) {
         source: String(node.source.value),
         names: [],
         namespace: false,
+        typeOnly,
       };
       for (const s of node.specifiers ?? []) {
         if (s.type === 'ImportDefaultSpecifier') {
@@ -183,6 +186,7 @@ export function readImports(text) {
       source: m[3],
       names: [],
       namespace: /\*\s*as\s/.test(clause),
+      typeOnly,
     };
     const braces = /\{([^}]*)\}/.exec(clause);
     const head = clause
@@ -482,18 +486,35 @@ export function moduleExportNames(file, seen = new Set()) {
  * @returns {string[] | null} null when it cannot be judged
  */
 function missingNames(statement, files) {
-  if (files.length === 0 || statement.names.length === 0) return null;
+  // A type-only name may live only in a declaration file: not judged.
+  const wanted = statement.names
+    .filter(binding => !binding.typeOnly)
+    .map(binding => binding.imported);
+  if (wanted.length === 0) return [];
+  if (files.length === 0) return null;
+  // Any condition's file (source or built) that has every name settles it;
+  // a name is missing only when every file is read in full and lacks it.
+  let incomplete = false;
+  /** @type {Set<string>} */
+  const seen = new Set();
   for (const file of files) {
     const {names, complete} = moduleExportNames(file);
-    if (!complete) return null;
-    const missing = statement.names
-      .map(binding => binding.imported)
-      .filter(name => !names.has(name));
-    if (missing.length === 0) return [];
-    // Another condition's file may be the one that has it (source vs built).
-    if (file === files[files.length - 1]) return missing;
+    if (wanted.every(name => names.has(name))) return [];
+    if (!complete) incomplete = true;
+    for (const name of names) seen.add(name);
   }
-  return null;
+  if (incomplete) return null;
+  return wanted.filter(name => !seen.has(name));
+}
+
+/**
+ * Why an import's names could not be judged.
+ * @param {string[]} files
+ */
+function uncheckedReason(files) {
+  return files.length === 0
+    ? 'no file its package.json "exports" entry names exists yet (build output), so the names it imports were not checked'
+    : "its module's export list cannot be read in full (CommonJS, an `export *` from another package, or a parse error), so the names it imports were not checked";
 }
 
 // ── Checks ──────────────────────────────────────────────────────────
@@ -505,6 +526,25 @@ function missingNames(statement, files) {
  * @property {unknown} exportsField
  * @property {string | null} coreDir
  * @property {any} corePkg
+ * @property {PublicImportUnchecked[]} unchecked what could not be judged
+ */
+
+/**
+ * An import, or a name a block gives, the check could not judge.
+ * @typedef {object} PublicImportUnchecked
+ * @property {string} file package-relative file that names it
+ * @property {string} specifier the import specifier, or the component name
+ * @property {string} reason why it was not checked
+ */
+
+/**
+ * The public-import check's report on validate's result: its warnings are
+ * issues, so `findings` stays empty; `unchecked` lists what it could not
+ * judge.
+ * @typedef {object} PublicImportsReport
+ * @property {'checked'} status
+ * @property {never[]} findings
+ * @property {PublicImportUnchecked[]} unchecked
  */
 
 /**
@@ -512,19 +552,51 @@ function missingNames(statement, files) {
  * @param {Context} ctx
  * @param {ImportStatement} statement
  * @param {string} subpath
- * @returns {{undeclared: SubpathDeclaration | null, missing: string[] | null}}
+ * @returns {{undeclared: SubpathDeclaration | null, missing: string[] | null, reason: string | null}}
  */
 function judgeOwnImport(ctx, statement, subpath) {
   const declaration = declarationIn(ctx.exportsField, ctx.packageDir, subpath);
+  // `import type` needs only a `types` target: TypeScript reads it, nothing
+  // loads it at run time.
+  if (
+    statement.typeOnly &&
+    declaration.state === 'not_importable' &&
+    conditionNames(declaration.value).includes('types')
+  ) {
+    return {undeclared: null, missing: [], reason: null};
+  }
   if (declaration.state !== 'declared')
-    return {undeclared: declaration, missing: null};
+    return {undeclared: declaration, missing: null, reason: null};
+  const files = existingTargets(ctx.packageDir, declaration);
+  const missing = missingNames(statement, files);
   return {
     undeclared: null,
-    missing: missingNames(
-      statement,
-      existingTargets(ctx.packageDir, declaration),
-    ),
+    missing,
+    reason: missing == null ? uncheckedReason(files) : null,
   };
+}
+
+/**
+ * A declared subpath of the package whose module, read in full, exports
+ * `name`: the one the component's source is exported under first.
+ * @param {Context} ctx
+ * @param {string} name
+ * @param {string | null} preferred
+ * @returns {string | null}
+ */
+function subpathExporting(ctx, name, preferred) {
+  if (!isRecord(ctx.exportsField)) return null;
+  const keys = Object.keys(ctx.exportsField).filter(
+    key => key.startsWith('.') && !key.includes('*'),
+  );
+  if (preferred)
+    keys.sort((a, b) => (b === preferred ? 1 : 0) - (a === preferred ? 1 : 0));
+  for (const key of keys) {
+    const declaration = declarationIn(ctx.exportsField, ctx.packageDir, key);
+    const files = existingTargets(ctx.packageDir, declaration);
+    if (files.some(file => moduleExportNames(file).names.has(name))) return key;
+  }
+  return null;
 }
 
 /**
@@ -561,11 +633,25 @@ async function componentIssues(ctx, integration) {
     const record = list[0];
     const source = record.sourcePath;
     const sourceTarget = source ? `./${rel(ctx.packageDir, source)}` : null;
-    // Only an import the doc writes is judged; one the CLI derives is left to
-    // `integration verify`, which resolves it from the packed package.
+    // The import the doc writes, or the one the CLI derives for it (its
+    // folder's subpath when exported, else the package root).
     const authored = typeof doc.import === 'string' ? doc.import : null;
-    const specifier = authored ?? '';
-    const split = authored ? splitSpecifier(specifier) : null;
+    const specifier =
+      authored ??
+      resolveIntegrationImportPath(
+        {
+          exportsMap: /** @type {any} */ (ctx.exportsField) ?? null,
+          packageDir: ctx.packageDir,
+          docPath,
+          packageName: ctx.name,
+        },
+        record.name,
+      );
+    const split = splitSpecifier(specifier);
+    const folder = path.basename(path.dirname(docPath));
+    const gives = authored
+      ? `gives import "${specifier}"`
+      : `has no import, so apps are told to import from "${specifier}"`;
     const declared = source
       ? subpathFor(ctx.exportsField, ctx.packageDir, source)
       : null;
@@ -576,7 +662,7 @@ async function componentIssues(ctx, integration) {
       issues.push(
         issueWarning(
           'component_import_other_package',
-          `Component doc "${shownDoc}" gives import "${specifier}", which names package "${split.pkg}", not this package "${ctx.name}", so apps are told to import the component from somewhere it is not. Fix: set import: '${ctx.name}${suggested ? suggested.slice(1) : ''}' in the doc.`,
+          `Component doc "${shownDoc}" ${gives}, which names package "${split.pkg}", not this package "${ctx.name}", so apps are told to import the component from somewhere it is not. Fix: set import: '${ctx.name}${suggested ? suggested.slice(1) : ''}' in the doc.`,
         ),
       );
     } else if (split) {
@@ -585,7 +671,46 @@ async function componentIssues(ctx, integration) {
         ctx.packageDir,
         split.subpath,
       );
-      if (declaration.state !== 'declared') {
+      if (
+        declaration.state === 'declared' &&
+        split.subpath === '.' &&
+        declaration.value == null
+      ) {
+        // A package with no exports resolves its root through main: not read.
+        ctx.unchecked.push({
+          file: shownDoc,
+          specifier,
+          reason:
+            'package.json has no "exports", and the root module "main" names is not read, so the component names were not checked',
+        });
+      } else if (declaration.state === 'declared') {
+        const files = existingTargets(ctx.packageDir, declaration);
+        const statement = {
+          source: specifier,
+          names: list.map(r => ({imported: r.name, typeOnly: false})),
+          namespace: false,
+        };
+        const missing = missingNames(statement, files);
+        if (missing == null) {
+          ctx.unchecked.push({
+            file: shownDoc,
+            specifier,
+            reason: uncheckedReason(files),
+          });
+        }
+        for (const name of missing ?? []) {
+          const there = subpathExporting(ctx, name, declared);
+          const fix = there
+            ? `set import: '${ctx.name}${there === '.' ? '' : there.slice(1)}' in the doc (that subpath exports it), or export "${name}" from the module "${specifier}" loads.`
+            : `export "${name}" from the module "${specifier}" loads, or export a subpath for it${sourceTarget ? `: add "./${folder}": "${sourceTarget}" to package.json "exports" (the CLI then derives import '${ctx.name}/${folder}'), or set import to the subpath you export` : ''}.`;
+          issues.push(
+            issueWarning(
+              'component_import_missing_name',
+              `Component doc "${shownDoc}" ${gives}, but that module does not export "${name}", so apps that follow the doc get nothing. Fix: ${fix}`,
+            ),
+          );
+        }
+      } else {
         const already =
           declared && declared !== split.subpath
             ? `set import: '${ctx.name}${declared.slice(1)}' (already exported), or `
@@ -593,7 +718,7 @@ async function componentIssues(ctx, integration) {
         issues.push(
           issueWarning(
             'component_import_not_exported',
-            `Component doc "${shownDoc}" gives import "${specifier}", but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
+            `Component doc "${shownDoc}" ${gives}, but ${whyUndeclared(declaration, split.subpath)}, so apps cannot import the component from it. Fix: ${already}${exportsFix(ctx.exportsField, declaration.state, split.subpath, sourceTarget ?? `./${split.subpath.slice(2)}.tsx`)}`,
           ),
         );
       }
@@ -640,11 +765,18 @@ async function componentIssues(ctx, integration) {
       for (const statement of readImports(example.code)) {
         const parts = splitSpecifier(statement.source);
         if (!parts || parts.pkg !== ctx.name) continue;
-        const {undeclared, missing} = judgeOwnImport(
+        const {undeclared, missing, reason} = judgeOwnImport(
           ctx,
           statement,
           parts.subpath,
         );
+        if (reason) {
+          ctx.unchecked.push({
+            file: shownDoc,
+            specifier: statement.source,
+            reason: `example ${label}: ${reason}`,
+          });
+        }
         if (undeclared) {
           issues.push(
             issueWarning(
@@ -684,6 +816,20 @@ async function templateIssues(ctx, integration) {
   } catch {
     return issues;
   }
+  /** @type {Set<string> | null} */
+  let ownComponents = null;
+  /** The package's own component names (empty when its root is unreadable). */
+  const ownNames = () => {
+    if (ownComponents) return ownComponents;
+    try {
+      ownComponents = new Set(
+        discoverIntegrationComponents(integration).map(r => r.name),
+      );
+    } catch {
+      ownComponents = new Set();
+    }
+    return ownComponents;
+  };
   /** @type {Set<string> | null} */
   let knownComponents = null;
   const known = () => {
@@ -770,11 +916,14 @@ async function templateIssues(ctx, integration) {
       const parts = splitSpecifier(spec);
       if (!parts) continue;
       if (parts.pkg === ctx.name) {
-        const {undeclared, missing} = judgeOwnImport(
+        const {undeclared, missing, reason} = judgeOwnImport(
           ctx,
           statement,
           parts.subpath,
         );
+        if (reason) {
+          ctx.unchecked.push({file: shown, specifier: spec, reason});
+        }
         if (undeclared) {
           issues.push(
             issueWarning(
@@ -790,6 +939,13 @@ async function templateIssues(ctx, integration) {
             ),
           );
         }
+      } else if (parts.pkg === CORE && !ctx.corePkg) {
+        ctx.unchecked.push({
+          file: shown,
+          specifier: spec,
+          reason:
+            '@astryxdesign/core is not installed, so Core\'s package.json "exports" could not be read',
+        });
       } else if (parts.pkg === CORE && ctx.corePkg && parts.subpath !== '.') {
         const core = declarationIn(
           ctx.corePkg.exports,
@@ -822,7 +978,6 @@ async function templateIssues(ctx, integration) {
       template.componentsUsed?.length
     ) {
       const names = known();
-      if (!names) continue;
       const fields = [
         ...(typeof template.exampleFor === 'string'
           ? [{field: 'exampleFor', name: template.exampleFor}]
@@ -836,7 +991,17 @@ async function templateIssues(ctx, integration) {
         statements.flatMap(statement => statement.names.map(n => n.imported)),
       );
       for (const {field, name} of fields) {
-        if (names.has(name) || imported.has(name)) continue;
+        if (imported.has(name)) continue;
+        if (!names) {
+          if (ownNames().has(name)) continue;
+          ctx.unchecked.push({
+            file: rel(ctx.packageDir, template.docPath),
+            specifier: name,
+            reason: `${field} names a component, and @astryxdesign/core is not installed (or a components root could not be read), so the name was not checked`,
+          });
+          continue;
+        }
+        if (names.has(name)) continue;
         issues.push(
           issueWarning(
             'unknown_block_component',
@@ -850,14 +1015,18 @@ async function templateIssues(ctx, integration) {
 }
 
 /**
- * Every public-import and peer issue for one package.
+ * Every public-import warning for one package, and the report of what could
+ * not be judged.
  * @param {string} packageDir
  * @param {any} integration the loaded integration record
- * @returns {Promise<Issue[]>}
+ * @returns {Promise<{issues: Issue[], report: PublicImportsReport}>}
  */
 export async function publicImportIssues(packageDir, integration) {
+  /** @type {PublicImportsReport} */
+  const report = {status: 'checked', findings: [], unchecked: []};
   const pkg = readJson(path.join(packageDir, 'package.json'));
-  if (!isRecord(pkg) || typeof pkg.name !== 'string') return [];
+  if (!isRecord(pkg) || typeof pkg.name !== 'string')
+    return {issues: [], report};
   const coreDir = pkg.name === CORE ? packageDir : findCoreDir(packageDir);
   /** @type {Context} */
   const ctx = {
@@ -866,9 +1035,11 @@ export async function publicImportIssues(packageDir, integration) {
     exportsField: pkg.exports,
     coreDir,
     corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
+    unchecked: report.unchecked,
   };
-  return [
+  const issues = [
     ...(await componentIssues(ctx, integration)),
     ...(await templateIssues(ctx, integration)),
   ];
+  return {issues, report};
 }

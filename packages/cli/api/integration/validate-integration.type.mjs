@@ -38,7 +38,7 @@
  * "healthy" — the two are otherwise byte-identical.
  * @typedef {object} ValidateIntegrationResponse
  * @property {'integration.validate'} type
- * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport}} data
+ * @property {{validated: boolean, name: string | null, version: string | null, issues: import('../../foundation/integrations/issue').AstryxIntegrationIssue[], docTypes?: DocTypesReport, publicImports?: import('../../foundation/integrations/public-imports.mjs').PublicImportsReport}} data
  */
 
 /**

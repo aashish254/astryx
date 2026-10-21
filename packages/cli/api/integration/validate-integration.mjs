@@ -79,6 +79,8 @@ export {validateLoadedIntegration};
  * @property {'no_package_json'} [reason] Why nothing was validated (internal).
  * @property {Issue[]} issues
  * @property {import('../../foundation/integrations/integrations.mjs').LoadedIntegration} [integration]
+ * @property {import('../../foundation/integrations/public-imports.mjs').PublicImportsReport} [publicImports]
+ *   what the public-import check could not judge
  */
 
 /**
@@ -353,7 +355,9 @@ async function validateAtPackageDir(
   );
   // What the package tells apps to import, read from source: package.json
   // `exports`, docs, examples and template imports.
-  issues.push(...(await publicImportIssues(packageDir, loaded)));
+  const publicImports = await publicImportIssues(packageDir, loaded);
+  issues.push(...publicImports.issues);
+  result.publicImports = publicImports.report;
   if (scanUnreachable) {
     issues.push(
       ...(await findUnreachableContributionIssues(packageDir, loaded)),
@@ -510,6 +514,10 @@ export async function validateIntegration(pkg, options = {}) {
             ]
           : result.issues,
       ...(docTypes ? {docTypes} : {}),
+      // What the public-import check could not judge: listed, never failed on.
+      ...(result.found && result.publicImports
+        ? {publicImports: result.publicImports}
+        : {}),
     },
   };
 }
