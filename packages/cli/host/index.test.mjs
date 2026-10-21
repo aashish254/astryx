@@ -113,7 +113,33 @@ describe('inputs', () => {
     const cases = [
       [null, /options must be an object/u],
       [['--version'], /options must be an object/u],
-      [{roots: ['/tmp']}, /unknown option "roots"/u],
+      [{handlers: {}}, /unknown option "handlers"/u],
+      [
+        {projectCliAlreadyHandled: true},
+        /unknown option "projectCliAlreadyHandled"/u,
+      ],
+      [{roots: '/tmp'}, /roots must be an array of folder paths/u],
+      [{roots: ['']}, /roots must be an array of folder paths/u],
+      [
+        {roots: [path.join(tempDir(), 'missing')]},
+        /roots names a path that is not a folder/u,
+      ],
+      [
+        {integrations: 'acme'},
+        /integrations must be an array of package names/u,
+      ],
+      [
+        {integrations: ['Acme Widgets']},
+        /integrations must be an array of package names/u,
+      ],
+      [
+        {integrations: ['../acme']},
+        /integrations must be an array of package names/u,
+      ],
+      [
+        {discoverSources: [{}]},
+        /discoverSources must be an array of functions/u,
+      ],
       [{argv: '--version'}, /argv must be an array of strings/u],
       [{argv: [1]}, /argv must be an array of strings/u],
       [{cwd: 7}, /cwd must be a folder path/u],

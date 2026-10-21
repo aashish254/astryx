@@ -6,8 +6,13 @@
  * inputs: the arguments, the working folder, the command name its users type,
  * and, when it found the project's own CLI and did not run it, the reason.
  *
+ * Its package sets, the integrations it approves, and its own discover sources
+ * are matched, loaded, and recorded as architecture:cli-surface INV30 says; a
+ * hosted run installs nothing.
+ *
  * @input `runHostedCli` options (see host/index.d.ts for the contract).
- * @output The run's exit status. The run owns the process's working folder,
+ * @output The run's exit status and the packages it resolved, each with its
+ *   source. The run owns the process's working folder,
  *   arguments, standard streams, and exit, exactly as a run of the `astryx`
  *   bin does.
  * @position host — the package's `./host` export; calls clients/cli/run.mjs.
@@ -39,7 +44,13 @@ const OPTION_NAMES = new Set([
   'cwd',
   'cliCommand',
   'declinedProjectCli',
+  'roots',
+  'integrations',
+  'discoverSources',
 ]);
+
+/** A bare npm package name, scoped or not. */
+const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u;
 
 /**
  * @param {string} message
@@ -52,7 +63,7 @@ function invalid(message) {
 /**
  * Check every input before anything runs.
  * @param {unknown} options
- * @returns {Promise<{argv: string[], cwd: string, cliCommand: string | undefined, declinedProjectCli: string | undefined}>}
+ * @returns {Promise<{argv: string[], cwd: string, cliCommand: string | undefined, declinedProjectCli: string | undefined, roots: string[], integrations: string[], discoverSources: Function[]}>}
  */
 async function readOptions(options) {
   if (options === undefined) options = {};
@@ -115,14 +126,55 @@ async function readOptions(options) {
     );
   }
 
+  const rootsInput = record.roots ?? [];
+  if (
+    !Array.isArray(rootsInput) ||
+    !rootsInput.every(root => typeof root === 'string' && root !== '')
+  ) {
+    throw invalid('roots must be an array of folder paths');
+  }
+  /** @type {string[]} */
+  const roots = [];
+  for (const root of rootsInput) {
+    const folder = path.resolve(root);
+    let isRoot = false;
+    try {
+      isRoot = fs.statSync(folder).isDirectory();
+    } catch {
+      isRoot = false;
+    }
+    if (!isRoot) {
+      throw invalid(`roots names a path that is not a folder: ${folder}`);
+    }
+    if (!roots.includes(folder)) roots.push(folder);
+  }
+
+  const integrations = record.integrations ?? [];
+  if (
+    !Array.isArray(integrations) ||
+    !integrations.every(
+      name => typeof name === 'string' && PACKAGE_NAME.test(name),
+    )
+  ) {
+    throw invalid('integrations must be an array of package names');
+  }
+
+  const discoverSources = record.discoverSources ?? [];
+  if (
+    !Array.isArray(discoverSources) ||
+    !discoverSources.every(source => typeof source === 'function')
+  ) {
+    throw invalid('discoverSources must be an array of functions');
+  }
+
   return {
     argv: [...argv],
     cwd,
     cliCommand,
-    declinedProjectCli:
-      /** @type {'cannot-start' | 'untrusted' | undefined} */ (
-        declinedProjectCli
-      ),
+    declinedProjectCli: /** @type {string | undefined} */ (declinedProjectCli),
+    roots,
+    integrations: [...new Set(/** @type {string[]} */ (integrations))],
+    discoverSources: [...discoverSources],
   };
 }
 
@@ -166,7 +218,26 @@ export async function runHostedCli(options) {
 
   process.chdir(input.cwd);
   process.argv = [process.argv[0] ?? process.execPath, BIN, ...input.argv];
-  if (!(await nodeVersionGate(input.argv))) return {status: 1};
+  if (!(await nodeVersionGate(input.argv))) return {status: 1, packages: []};
+
+  const {installPlaceOf} = await import('../foundation/release/choose.mjs');
+  const {activateHostedRun, recordResolved, resolvedPackages} =
+    await import('../foundation/runtime/package-root.mjs');
+  const real = fs.realpathSync(CLI_ROOT);
+  activateHostedRun({
+    roots: input.roots,
+    integrations: input.integrations,
+    discoverSources: input.discoverSources,
+    // The root that holds this CLI, or, for a CLI that is not installed in a
+    // node_modules folder, the folder beside it that holds its Core.
+    startingRoot: installPlaceOf(real).owner ?? path.dirname(real),
+  });
+  recordResolved(
+    '@astryxdesign/cli',
+    JSON.parse(fs.readFileSync(path.join(CLI_ROOT, 'package.json'), 'utf8'))
+      .version,
+    CLI_ROOT,
+  );
 
   const {runCli} = await import('../clients/cli/run.mjs');
   const run = () =>
@@ -182,5 +253,8 @@ export async function runHostedCli(options) {
     await runWithCliDoor(input.cliCommand, run);
   }
   const code = process.exitCode;
-  return {status: typeof code === 'number' ? code : Number(code ?? 0) || 0};
+  return {
+    status: typeof code === 'number' ? code : Number(code ?? 0) || 0,
+    packages: resolvedPackages(),
+  };
 }

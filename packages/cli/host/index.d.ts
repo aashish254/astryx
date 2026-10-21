@@ -6,6 +6,8 @@
  * (`spec:AST-081` FR1).
  */
 
+import type {DiscoverSource} from '../authoring/discover/type.js';
+
 /** The inputs of one hosted run. Every option is optional. */
 export interface HostedCliOptions {
   /** The arguments after `astryx`. Default: none. */
@@ -34,12 +36,50 @@ export interface HostedCliOptions {
    * project's own CLI answers its project.
    */
   declinedProjectCli?: string;
+  /**
+   * The tool's package sets, in its order of preference: folders whose
+   * `node_modules` each hold a CLI, the Core equal to it, and the
+   * integrations installed with them. Inside a project, a set fills only the
+   * `@astryxdesign/*` packages the project leaves uninstalled that are not
+   * integrations. When a release other than this copy answers the folder,
+   * the first set whose CLI and Core are that release and that holds what the
+   * project would install for those packages serves the run. A run never
+   * installs a release: with no such set, this copy answers with one warning
+   * line. Default: none.
+   */
+  roots?: readonly string[];
+  /**
+   * Integrations the tool approves for use outside a project, by package
+   * name. Each loads from the package set that serves the run, as an
+   * integration installed for the computer does, and a name that set does not
+   * hold is left out. Default: none.
+   */
+  integrations?: readonly string[];
+  /**
+   * The tool's own discover sources. `astryx discover` calls them after every
+   * integration's source and before the official list, and reports each as
+   * the host's. A run handed to another release's CLI does not get them.
+   * Default: none.
+   */
+  discoverSources?: readonly DiscoverSource[];
+}
+
+/** One package a hosted run resolved. */
+export interface HostedPackage {
+  /** The package name. */
+  name: string;
+  /** Its version, or null when its package.json gives none. */
+  version: string | null;
+  /** Whether it came from the project or from a package set. */
+  source: 'project' | 'package-set';
 }
 
 /** The outcome of a hosted run that returned. */
 export interface HostedCliResult {
   /** The run's exit status, as the `astryx` bin would exit. */
   status: number;
+  /** Each package the run resolved: the CLI, its Core, and its integrations. */
+  packages: HostedPackage[];
 }
 
 /**

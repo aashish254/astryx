@@ -24,10 +24,8 @@ import {
   availableComputerIntegrations,
 } from '../../foundation/config/project.mjs';
 import {isOutsideProject} from '../../foundation/env/project-scope.mjs';
-import {
-  scanAllPackages,
-  findComponentInPackages,
-} from './_package-scanner.mjs';
+import {hostedRun} from '../../foundation/runtime/package-root.mjs';
+import {scanAllPackages, findComponentInPackages} from './_package-scanner.mjs';
 import {loadDocs} from '../../foundation/discovery/component-loader.mjs';
 import {collectIdentities} from '../../foundation/integrations/contribution-inventory.mjs';
 import {detectPackageManager} from '../../foundation/env/package-manager.mjs';
@@ -102,8 +100,7 @@ function validateDocs(docs) {
     return 'docs.name is missing or not a string';
   if (!d.usage || typeof d.usage.description !== 'string')
     return 'docs.usage.description is missing or not a string';
-  if (d.props && !Array.isArray(d.props))
-    return 'docs.props must be an array';
+  if (d.props && !Array.isArray(d.props)) return 'docs.props must be an array';
   if (d.components && !Array.isArray(d.components))
     return 'docs.components must be an array';
   if (d.usage?.bestPractices && !Array.isArray(d.usage.bestPractices))
@@ -200,10 +197,24 @@ export async function describeInstalled(project, scanned) {
  * @returns {boolean}
  */
 export function hasSources(project) {
+  if (doorSources().length > 0) return true;
   if (project == null) return false;
   if (typeof project.config?.discover === 'function') return true;
   return project.loadedIntegrations.some(
     i => i.__discover != null || i.__discoverError != null,
+  );
+}
+
+/** Where a discover source a host passed comes from (spec AST-081 FR1). */
+const DOOR_SOURCE = 'the host';
+
+/**
+ * The discover sources the host that started this run passed, if any.
+ * @returns {readonly DiscoverSource[]}
+ */
+function doorSources() {
+  return /** @type {readonly DiscoverSource[]} */ (
+    hostedRun()?.discoverSources ?? []
   );
 }
 
@@ -370,7 +381,8 @@ async function callSource(source, request, label, timeoutMs) {
 
 /**
  * Call every discover source — the project's `discover` first, then each
- * integration's in load order — once per distinct function. A source that
+ * integration's in load order, then each a host passed, named as the host's
+ * (spec AST-081 FR1, AST-051 FR6) — once per distinct function. A source that
  * throws, times out, or returns an invalid catalog falls back to its saved copy;
  * with none, it is reported and adds nothing. The others always count.
  *
@@ -384,27 +396,41 @@ export async function callSources(project, request = {}, options = {}) {
   const {cacheDir = defaultCacheDir(), timeoutMs = SOURCE_TIMEOUT_MS} = options;
   /** @type {CatalogResult} */
   const result = {sources: [], packages: []};
-  if (project == null) return result;
+  const fromDoor = doorSources();
+  if (project == null && fromDoor.length === 0) return result;
 
   /** @type {Array<{from: string, source?: DiscoverSource, error?: string}>} */
   const origins = [];
-  if (typeof project.config?.discover === 'function') {
+  if (typeof project?.config?.discover === 'function') {
     origins.push({from: 'astryx.config', source: project.config.discover});
   }
-  for (const integration of project.loadedIntegrations) {
+  for (const integration of project?.loadedIntegrations ?? []) {
     if (integration.__discoverError) {
-      origins.push({from: integration.name, error: integration.__discoverError});
+      origins.push({
+        from: integration.name,
+        error: integration.__discoverError,
+      });
     } else if (integration.__discover) {
       origins.push({from: integration.name, source: integration.__discover});
     }
   }
+  fromDoor.forEach((source, index) => {
+    origins.push({
+      from:
+        fromDoor.length === 1 ? DOOR_SOURCE : `${DOOR_SOURCE} (${index + 1})`,
+      source,
+    });
+  });
 
   /** @type {Set<unknown>} */
   const called = new Set();
   /** @type {Set<string>} */
   const seen = new Set();
   const ask = request.package
-    ? {package: request.package, ...(request.version ? {version: request.version} : {})}
+    ? {
+        package: request.package,
+        ...(request.version ? {version: request.version} : {}),
+      }
     : {};
   for (const {from, source, error} of origins) {
     if (source == null) {
@@ -432,7 +458,12 @@ export async function callSources(project, request = {}, options = {}) {
       const message = err instanceof Error ? err.message : String(err);
       const saved = readSavedCopy(file, label);
       if (saved == null) {
-        result.sources.push({name: from, from, status: 'failed', error: message});
+        result.sources.push({
+          name: from,
+          from,
+          status: 'failed',
+          error: message,
+        });
         continue;
       }
       catalog = saved.catalog;
@@ -515,7 +546,10 @@ export async function loadValidatedDoc(result, {lang, zh}) {
   try {
     docs = await loadDocs(
       result.docPath,
-      /** @type {{zh?: boolean, dense?: boolean, lang?: string}} */ ({zh, lang}),
+      /** @type {{zh?: boolean, dense?: boolean, lang?: string}} */ ({
+        zh,
+        lang,
+      }),
     );
   } catch (e) {
     throw new AstryxError(

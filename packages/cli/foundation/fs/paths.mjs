@@ -14,6 +14,7 @@ import {listDir, pathExists} from './listing-cache.mjs';
 import {ERROR_CODES} from '../response/error-codes.mjs';
 import {carriedCore, runChoice} from '../release/run-context.mjs';
 import {findDeclaringPackage} from '../release/project.mjs';
+import {hostedRun, recordResolved} from '../runtime/package-root.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -35,7 +36,29 @@ export const CLI_ROOT = path.resolve(__dirname, '..', '..');
  * @returns {string | null}
  */
 export function findCoreDir(startDir = process.cwd()) {
-  return findProjectCoreDir(startDir) ?? carriedCoreFor(startDir).dir;
+  return noteCore(findProjectCoreDir(startDir) ?? carriedCoreFor(startDir).dir);
+}
+
+/**
+ * Note the Core a hosted run reads, for the record its host entry returns
+ * (architecture:cli-surface INV30). Does nothing outside a hosted run.
+ * @template {string | null} T
+ * @param {T} dir
+ * @returns {T}
+ */
+function noteCore(dir) {
+  if (dir && hostedRun()) {
+    let version;
+    try {
+      version = JSON.parse(
+        fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
+      ).version;
+    } catch {
+      version = null;
+    }
+    recordResolved('@astryxdesign/core', version, dir);
+  }
+  return dir;
 }
 
 /**
@@ -67,14 +90,14 @@ export function unavailableCoreMessage(found, inProject) {
  */
 export function requireCoreDir(startDir = process.cwd()) {
   const found = findProjectCoreDir(startDir) ?? carriedCoreFor(startDir, true);
-  if (typeof found === 'string') return found;
+  if (typeof found === 'string') return noteCore(found);
   if (found.unavailable) {
     throw codedError(
       unavailableCoreMessage(found, runChoice(startDir).inProject),
       ERROR_CODES.ERR_VERSIONS_UNAVAILABLE,
     );
   }
-  if (found.dir) return found.dir;
+  if (found.dir) return noteCore(found.dir);
   throw codedError(
     'Could not find @astryxdesign/core package',
     ERROR_CODES.ERR_CORE_NOT_FOUND,

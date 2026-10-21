@@ -225,18 +225,37 @@ export function peerProblem(pkg, release) {
 
 /**
  * The computer-level integrations installed beside the CLI at `cliRoot`, in
- * name order (declaration order when the root declares them). Reads
+ * name order (declaration order when the root declares them), then each
+ * integration a host approves (`approved`, architecture:cli-surface INV30),
+ * resolved by name from the package set that holds that CLI alone. Reads
  * package.json files only.
- * @param {{cliRoot: string, release: string, cacheDir?: string}} options
+ * @param {{cliRoot: string, release: string, cacheDir?: string, approved?: readonly string[]}} options
  * @returns {ComputerIntegrationCandidate[]}
  */
-export function scanComputerIntegrations({cliRoot, release, cacheDir}) {
+export function scanComputerIntegrations({
+  cliRoot,
+  release,
+  cacheDir,
+  approved = [],
+}) {
   const self = real(cliRoot);
   /** @type {ComputerIntegrationCandidate[]} */
   const found = [];
   const seen = new Set();
   for (const root of computerInstallRoots(cliRoot, {cacheDir})) {
     scanRoot(root, {self, release, found, seen});
+  }
+  const root = approved.length > 0 ? installPlaceOf(self).owner : null;
+  if (root) {
+    for (const name of approved) {
+      const packageDir = path.join(root, 'node_modules', ...name.split('/'));
+      if (!fs.existsSync(path.join(packageDir, 'package.json'))) continue;
+      addCandidate(
+        name,
+        {packageDir, hostDir: root},
+        {self, release, found, seen},
+      );
+    }
   }
   return found;
 }
@@ -246,31 +265,40 @@ export function scanComputerIntegrations({cliRoot, release, cacheDir}) {
  * @param {string} root
  * @param {{self: string, release: string, found: ComputerIntegrationCandidate[], seen: Set<string>}} into
  */
-function scanRoot(root, {self, release, found, seen}) {
+function scanRoot(root, into) {
   const declared = readPackage(root)
     ? readDeclaredDependencies(root).map(d => d.name)
     : installedNames(root);
   for (const name of declared) {
-    if (NOT_INTEGRATIONS.has(name)) continue;
     const resolved = resolveInstalledPackageDir(name, root);
-    if (!resolved) continue;
-    const identity = real(resolved.packageDir);
-    if (identity === self || seen.has(identity)) continue;
-    if (findManifestPaths(resolved.packageDir).length !== 1) continue;
-    const pkg = readPackage(resolved.packageDir);
-    if (!pkg || typeof pkg.name !== 'string') continue;
-    if (NOT_INTEGRATIONS.has(pkg.name)) continue;
-    seen.add(identity);
-    found.push({
-      name: pkg.name,
-      version: typeof pkg.version === 'string' ? pkg.version : undefined,
-      description:
-        typeof pkg.description === 'string' ? pkg.description : undefined,
-      packageDir: resolved.packageDir,
-      hostDir: resolved.hostDir,
-      incompatible: peerProblem(pkg, release),
-    });
+    if (resolved) addCandidate(name, resolved, into);
   }
+}
+
+/**
+ * Add one installed package when it is an integration not yet found.
+ * @param {string} name
+ * @param {{packageDir: string, hostDir: string}} resolved
+ * @param {{self: string, release: string, found: ComputerIntegrationCandidate[], seen: Set<string>}} into
+ */
+function addCandidate(name, resolved, {self, release, found, seen}) {
+  if (NOT_INTEGRATIONS.has(name)) return;
+  const identity = real(resolved.packageDir);
+  if (identity === self || seen.has(identity)) return;
+  if (findManifestPaths(resolved.packageDir).length !== 1) return;
+  const pkg = readPackage(resolved.packageDir);
+  if (!pkg || typeof pkg.name !== 'string') return;
+  if (NOT_INTEGRATIONS.has(pkg.name)) return;
+  seen.add(identity);
+  found.push({
+    name: pkg.name,
+    version: typeof pkg.version === 'string' ? pkg.version : undefined,
+    description:
+      typeof pkg.description === 'string' ? pkg.description : undefined,
+    packageDir: resolved.packageDir,
+    hostDir: resolved.hostDir,
+    incompatible: peerProblem(pkg, release),
+  });
 }
 
 /**

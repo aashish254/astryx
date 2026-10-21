@@ -21,9 +21,15 @@
  *
  * A programmatic host that found the project's own CLI and did not run it
  * passes the reason (spec AST-081 FR1, FR2). That run is never handed to the
- * project's CLI: this copy answers when it is that CLI's release, and
- * otherwise answers as for a release that cannot be obtained, with the
- * warning naming the reason.
+ * project's CLI: this copy answers when it is that CLI's release, a package
+ * set of the host's whose CLI is that release answers through its own host
+ * entry, and otherwise this copy answers as for a release that cannot be
+ * obtained, with the warning naming the reason.
+ *
+ * A hosted run installs nothing (architecture:cli-surface INV30): a release
+ * other than this copy comes only from the first of the host's package sets
+ * that qualifies, run through its host entry with the same inputs when its
+ * CLI ships one, else through its bin; with none, this copy answers, announced.
  *
  * @input  the running copy, argv, the working folder, and a host's
  *   declined-project-CLI reason
@@ -33,14 +39,17 @@
 
 import {spawn} from 'node:child_process';
 import {writeSync} from 'node:fs';
+import {pathToFileURL} from 'node:url';
 import {
   chooseRelease,
   isComputerLevel,
   isGlobalCopy,
   namesWhoAnswered,
   packageRootOf,
+  projectRootOf,
   runningCopy,
 } from './choose.mjs';
+import {readReleaseFacts} from './project.mjs';
 import {ensureRelease, userCacheDir} from './cache.mjs';
 import {
   maybeFetchCore,
@@ -50,6 +59,8 @@ import {
 import {recordRunChoice} from './run-context.mjs';
 import {noticeLines} from './notices.mjs';
 import {cliDoor, runWithCliDoor} from '../env/cli-command.mjs';
+import {hostedRun} from '../runtime/package-root.mjs';
+import {qualifyingRoot} from '../runtime/package-set.mjs';
 
 /** Where each release's notes are published. */
 
@@ -158,7 +169,10 @@ export async function startRun({cliRoot, argv, declinedProjectCli}) {
   const json = argv.includes('--json');
   const self = runningCopy(cliRoot);
   const cacheDir = userCacheDir();
-  const global = isGlobalCopy(cliRoot, cacheDir);
+  // A host carries its own CLI and keeps it current itself: a hosted copy
+  // runs none of the global copy's background work, and installs nothing.
+  const hosted = hostedRun();
+  const global = !hosted && isGlobalCopy(cliRoot, cacheDir);
   if (global) {
     try {
       maybeStartCheck();
@@ -226,6 +240,23 @@ export async function startRun({cliRoot, argv, declinedProjectCli}) {
         unavailable: null,
       };
     } else {
+      const served = hosted
+        ? qualifyingRoot({
+            release: choice.version,
+            projectDir: projectDirOf(process.cwd()),
+            roots: hosted.roots,
+            needsHostEntry: true,
+          })
+        : null;
+      if (served && 'root' in served && served.hostEntry) {
+        await runInPackageSet(served.hostEntry, served.root, {
+          argv,
+          choice: {...choice, copy: 'matched', bin: null},
+          json,
+          declinedProjectCli,
+        });
+        return;
+      }
       declined = declinedReasonText(declinedProjectCli);
     }
   }
@@ -306,6 +337,26 @@ export async function startRun({cliRoot, argv, declinedProjectCli}) {
   }
 
   let bin = choice.bin;
+  if (!bin && hosted) {
+    const served = qualifyingRoot({
+      release: choice.version,
+      projectDir: projectDirOf(process.cwd()),
+      roots: hosted.roots,
+    });
+    if (!('root' in served)) {
+      await fallBack(served.reason);
+      return;
+    }
+    if (served.hostEntry) {
+      await runInPackageSet(served.hostEntry, served.root, {
+        argv,
+        choice,
+        json,
+      });
+      return;
+    }
+    bin = served.bin;
+  }
   if (!bin) {
     const release = ensureRelease(choice.version, {
       cacheDir,
@@ -339,17 +390,77 @@ export async function startRun({cliRoot, argv, declinedProjectCli}) {
 export const INTERRUPT_GRACE_MS = 5000;
 
 /**
+ * The project folder a run in `cwd` belongs to, or null outside a project.
+ * @param {string} cwd
+ * @returns {string | null}
+ */
+function projectDirOf(cwd) {
+  try {
+    return projectRootOf(readReleaseFacts(cwd));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hand a hosted run to the CLI of one of the host's package sets, through that
+ * CLI's own host entry, with the inputs this run got: the arguments, the
+ * folder, the command name, the approved integrations, and the reason the host
+ * declined the project's CLI. Its roots are that package set alone. Discover
+ * sources are functions and stay in this process. That CLI prints its own
+ * who-answered line and notices.
+ * @param {string} hostEntry the package set's `host/index.mjs`
+ * @param {string} root the package set
+ * @param {{argv: string[], choice: import('./choose.mjs').ReleaseChoice, json: boolean, declinedProjectCli?: string}} run
+ * @returns {Promise<never>}
+ */
+function runInPackageSet(
+  hostEntry,
+  root,
+  {argv, choice, json, declinedProjectCli},
+) {
+  const hosted = hostedRun();
+  const door = cliDoor();
+  const options = {
+    argv,
+    cwd: process.cwd(),
+    roots: [root],
+    integrations: [...(hosted?.integrations ?? [])],
+    ...(door ? {cliCommand: door} : {}),
+    ...(declinedProjectCli ? {declinedProjectCli} : {}),
+  };
+  const script = [
+    `const {runHostedCli} = await import(${JSON.stringify(pathToFileURL(hostEntry).href)});`,
+    `const {status} = await runHostedCli(${JSON.stringify(options)});`,
+    'process.exitCode = status;',
+  ].join('\n');
+  return handOff(null, argv, choice, json, () => {}, [
+    '--input-type=module',
+    '-e',
+    script,
+  ]);
+}
+
+/**
  * Run `bin` as this run and end with its exit status.
- * @param {string} bin
+ * @param {string | null} bin
  * @param {string[]} argv
  * @param {import('./choose.mjs').ReleaseChoice} choice
  * @param {boolean} json
  * @param {() => void} [notify] prints update notices after a successful run
+ * @param {string[]} [nodeArgs] what Node runs, when it is not `bin` itself
  * @returns {Promise<never>}
  */
-function handOff(bin, argv, choice, json, notify = () => {}) {
+function handOff(
+  bin,
+  argv,
+  choice,
+  json,
+  notify = () => {},
+  nodeArgs = [/** @type {string} */ (bin), ...argv],
+) {
   return new Promise(() => {
-    const child = spawn(process.execPath, [bin, ...argv], {
+    const child = spawn(process.execPath, nodeArgs, {
       stdio: 'inherit',
       windowsHide: false,
     });
