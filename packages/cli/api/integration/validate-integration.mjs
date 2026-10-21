@@ -477,11 +477,13 @@ export async function validateLocalIntegration(cwd = process.cwd()) {
   );
   result.issues.unshift(
     ...fields,
-    ...(result.manifestFile
+    // Only a manifest that loaded says whether it declares a providerId; one
+    // that did not is reported as invalid_manifest.
+    ...(result.integration
       ? providerIdIssues(
           pkg.name,
-          result.integration?.__declaredProviderId,
-          result.manifestFile,
+          result.integration.__declaredProviderId,
+          result.integration.__manifestFile,
         )
       : []),
   );
