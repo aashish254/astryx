@@ -1653,7 +1653,8 @@ function stripManagedBlock(filePath, compressedIndex) {
  * @throws {import('../fs/path-safety.mjs').PathSafetyError} when a file it would
  *   write resolves outside `targetDir`; nothing is written.
  * @throws {AgentDocsHomeError} when `targetDir` is the home folder, or a settings
- *   folder in it outside a project; nothing is written.
+ *   folder in it outside a project, or, with `paths`, when a file's own folder
+ *   is; nothing is written.
  */
 export function installAgentDocs(
   targetDir,
@@ -1669,7 +1670,10 @@ export function installAgentDocs(
     refuseEscapes = true,
   } = {},
 ) {
-  assertAgentDocsTarget(targetDir);
+  const explicit = paths != null && paths.length > 0;
+  // Explicit paths are checked file by file below: each file's own folder
+  // is what agents would read in every project.
+  if (!explicit) assertAgentDocsTarget(targetDir);
   const coreDir = findCoreDir(targetDir);
   const version = getXdsVersion(coreDir);
   const invocation = getCliInvocation(targetDir);
@@ -1688,12 +1692,19 @@ export function installAgentDocs(
   const written = [];
 
   // Explicit paths override everything
-  if (paths && paths.length > 0) {
+  if (explicit) {
     // Path-safety: each --agent-docs-path entry must resolve inside the
     // target directory. Reject absolute paths (silent re-rooting via
     // path.join hides intent) and `..` traversal.
     for (const p of paths) {
       assertWithin(p, targetDir, {label: 'agent docs path'});
+    }
+    // A file directly in the home folder, or at the top of a settings folder
+    // in it, is refused, as 0.7.x never wrote there unasked; a file in a
+    // plain folder of the home folder, such as ~/notes/AI.md, is written.
+    // Every path is checked before anything is written.
+    for (const p of paths) {
+      assertAgentDocsTarget(path.dirname(path.join(targetDir, p)));
     }
     for (const p of paths) {
       const filePath = path.join(targetDir, p);

@@ -77,6 +77,7 @@ export const doc = {
       description:
         'Explicit file path(s) for agent docs, inside the project; takes precedence over --agent. ' +
         'If any path is outside the project, no agent docs are written and the command exits 1. ' +
+        'A path directly in the home folder, or at the top of a settings folder in it such as ~/.claude, is refused with a note (exit 0), and nothing is written. ' +
         'Used only when agent docs are installed',
     },
   ],

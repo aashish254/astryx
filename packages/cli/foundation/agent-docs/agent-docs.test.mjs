@@ -1612,6 +1612,41 @@ describe('agent docs never go into the home folder', () => {
     expect(fs.readdirSync(tmpDir).sort()).toEqual(['.claude']);
   });
 
+  it('writes an explicit path into a plain folder of the home folder, as 0.7.x did', () => {
+    expect(installAgentDocs(tmpDir, {paths: ['notes/AI.md']})).toEqual(['notes/AI.md']);
+    expect(fs.readFileSync(path.join(tmpDir, 'notes', 'AI.md'), 'utf-8')).toContain(
+      '<!-- ASTRYX:START -->',
+    );
+  });
+
+  it.each([
+    ['a file in the home folder', ['AI.md']],
+    ['a file at the top of a settings folder', ['.claude/CLAUDE.md']],
+    ['one of several paths', ['notes/AI.md', 'AI.md']],
+  ])('refuses an explicit path to %s, and writes nothing', (_label, paths) => {
+    expect(() => installAgentDocs(tmpDir, {paths})).toThrow(AgentDocsHomeError);
+    expect(fs.readFileSync(path.join(tmpDir, '.claude', 'CLAUDE.md'), 'utf-8')).toBe(
+      personal,
+    );
+    expect(fs.readdirSync(tmpDir).sort()).toEqual(['.claude']);
+  });
+
+  it('init with an explicit path from the home folder writes it, and refuses one in the home folder', async () => {
+    const {init} = await import('../../api/init/init.mjs');
+    const written = await init(
+      {features: ['agents'], agentDocsPath: 'notes/AI.md'},
+      {cwd: tmpDir},
+    );
+    expect(written.data.docsWritten).toEqual(['notes/AI.md']);
+    expect(written.data.docsError ?? null).toBeNull();
+    const refused = await init(
+      {features: ['agents'], agentDocsPath: 'AI.md'},
+      {cwd: tmpDir},
+    );
+    expect(refused.data.docsError).toMatchObject({kind: 'install-failed'});
+    expect(fs.existsSync(path.join(tmpDir, 'AI.md'))).toBe(false);
+  });
+
   it('refuses through a symlink to the home folder', () => {
     const link = `${tmpDir}-link`;
     fs.symlinkSync(tmpDir, link);

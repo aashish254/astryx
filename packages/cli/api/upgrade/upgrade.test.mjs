@@ -287,6 +287,45 @@ describe('upgrade() — receipts', () => {
     }
   });
 
+  it('a dry run in a project at the top of a home settings folder reports the refusal, not a refresh to apply', async () => {
+    const saved = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+    };
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+    const warned = [];
+    const warn = vi
+      .spyOn(console, 'error')
+      .mockImplementation((...a) => warned.push(a.join(' ')));
+    logger.setSilent(false);
+    try {
+      const project = path.join(tmpDir, '.dotfiles');
+      fs.mkdirSync(project, {recursive: true});
+      writePkg(project, {'@astryxdesign/core': '0.0.15'});
+      writeInstalledCore(project, '0.0.15');
+      writeAgentBlock(project, 'AGENTS.md', '0.0.1');
+
+      const res = await upgrade({from: '0.0.15'}, {cwd: project});
+
+      expect(res.data.agentDocs.action).toBe('error');
+      expect(res.data.agentDocs.refreshed).toBe(false);
+      const text = warned.join('\n');
+      expect(text).toContain(
+        `Agent docs not refreshed: ${fs.realpathSync(project)} is the home folder or a settings folder in it`,
+      );
+      expect(text).not.toContain('--apply to refresh');
+      expect(text).not.toContain('init --features agents');
+    } finally {
+      logger.setSilent(true);
+      warn.mockRestore();
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it('refreshes the agent docs of a project in an agent worktree inside a home settings folder', async () => {
     const saved = {
       HOME: process.env.HOME,

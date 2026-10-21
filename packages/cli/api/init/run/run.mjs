@@ -119,7 +119,8 @@ async function applyAgents(cwd, options, invocation, data) {
     // --agent-docs-path entries stay relative to where init ran.
     const root = agentDocsTargetDir(cwd);
     const targetDir = paths ? cwd : root;
-    assertAgentDocsTarget(targetDir);
+    // With explicit paths, installAgentDocs checks each file's own folder.
+    if (!paths) assertAgentDocsTarget(targetDir);
     const renderedBlock = await renderAgentDocsBlock(root);
     /** @type {string[]} */
     const skipped = [];

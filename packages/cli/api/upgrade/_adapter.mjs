@@ -31,6 +31,7 @@ import {
 import {runIntegrationCodemods} from '../../assets/codemods/integration-runner.mjs';
 import {
   AgentDocsHomeError,
+  assertAgentDocsTarget,
   installAgentDocs,
   inspectAgentDocs,
   renderAgentDocsBlock,
@@ -288,6 +289,20 @@ export async function runPostCodemodHooks(hooks, context) {
  */
 
 /**
+ * Why upgrade leaves the agent docs of a project at the home folder or the
+ * top of a settings folder, and what to do instead. init refuses the same
+ * folder, so the line never points at it.
+ * @param {AgentDocsHomeError} err
+ * @returns {string}
+ */
+function homeRefusalLine(err) {
+  return (
+    `Agent docs not refreshed: ${err.dir} is the home folder or a settings folder in it, which every project's agents read. ` +
+    'To keep agent docs, move the project into a folder of its own; otherwise update or remove the Astryx block there by hand.'
+  );
+}
+
+/**
  * Compute the expected managed block and report staleness without writing.
  * Apply-mode callers commit the prepared bytes only after codemods and hooks
  * succeed.
@@ -341,6 +356,18 @@ export async function prepareAgentDocsRefresh({
   summary.files = inspection.staleFiles;
   if (inspection.status === 'current') return {cwd, renderedBlock, summary};
 
+  // A project at the home folder or the top of a settings folder is never
+  // refreshed (INV31): the dry run says so, as --apply does, rather than
+  // offering a refresh that would be refused.
+  try {
+    assertAgentDocsTarget(cwd);
+  } catch (err) {
+    if (!(err instanceof AgentDocsHomeError)) throw err;
+    summary.action = 'error';
+    logger.warn(homeRefusalLine(err));
+    return {cwd, renderedBlock: null, summary};
+  }
+
   summary.action = 'would-refresh';
   if (!apply) {
     logger.warn(
@@ -384,10 +411,7 @@ export function applyAgentDocsRefresh(plan) {
     if (err instanceof AgentDocsHomeError) {
       // init refuses this folder too, so pointing at it would loop: say why,
       // and what to do instead.
-      logger.warn(
-        `Agent docs not refreshed: ${err.dir} is the home folder or a settings folder in it, which every project's agents read. ` +
-          'To keep agent docs, move the project into a folder of its own; otherwise update or remove the Astryx block there by hand.',
-      );
+      logger.warn(homeRefusalLine(err));
     } else {
       logger.warn(
         `Could not refresh agent docs. Run \`${formatCliCommand('astryx init --features agents')}\` to update them manually.`,
