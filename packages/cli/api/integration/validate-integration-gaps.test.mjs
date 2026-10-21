@@ -185,7 +185,7 @@ describe('component doc files', () => {
       code: 'invalid_component',
       severity: 'error',
       message:
-        'Component doc "Acmewidget.doc.mjs" and its source "AcmeWidget.tsx" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run, so there the component is missing. Fix: rename Acmewidget.doc.mjs to AcmeWidget.doc.mjs.',
+        'Component doc "Acmewidget.doc.mjs" and its source "AcmeWidget.tsx" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run, so here the component is missing. Fix: rename Acmewidget.doc.mjs to AcmeWidget.doc.mjs.',
     });
 
     // Through a temporary name, so a case-insensitive disk renames it too.
@@ -373,7 +373,7 @@ describe('a hidden doc beside a source whose name differs only in case', () => {
     const issues = await issuesOf(dir);
     expect(issues).toEqual([
       {
-        code: 'invalid_component',
+        code: 'source_without_component_doc',
         severity: 'warning',
         message:
           'Hidden component doc "Acmewidget.doc.mjs" and its source "AcmeWidget.tsx" differ only in letter case. They pair on a case-insensitive disk (macOS, Windows) but not on Linux, where CI and most installs run. Fix: rename Acmewidget.doc.mjs to AcmeWidget.doc.mjs.',
