@@ -172,6 +172,11 @@ async function runThrough(door, argv, setUp) {
     XDG_CACHE_HOME: path.join(base, 'cache'),
     XDG_CONFIG_HOME: path.join(home, '.config'),
     XDG_DATA_HOME: path.join(home, '.local', 'share'),
+    // Other tools' own state, such as the device id the gh tool writes when
+    // swizzle asks it whether it is signed in, and npm's cache and logs,
+    // stays outside the folders the runs compare.
+    XDG_STATE_HOME: path.join(base, 'state'),
+    npm_config_cache: path.join(base, 'npm-cache'),
     CI: '1',
     NO_UPDATE_NOTIFIER: '1',
     NO_COLOR: '1',
