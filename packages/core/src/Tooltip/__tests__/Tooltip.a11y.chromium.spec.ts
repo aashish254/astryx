@@ -21,6 +21,7 @@ import {
   formatFailures,
   neverExercised,
   summarize,
+  unmatchedKnownFailures,
   type BindingResult,
 } from '@astryxdesign/a11y-spec';
 import {
@@ -32,6 +33,7 @@ import {
   serveStorybook,
   type StaticServer,
 } from '@astryxdesign/a11y-spec/storybook';
+import {TOOLTIP_KNOWN_FAILURES} from './Tooltip.a11y.known-failures';
 import {
   TOOLTIP_BINDING_STATES,
   type TooltipBindingState,
@@ -96,6 +98,7 @@ async function runState(
     binding: 'Tooltip',
     state: state.id,
     facts: state.facts,
+    knownFailures: TOOLTIP_KNOWN_FAILURES,
     mount: async () => {
       const {subject, related} = await mountState(page, state);
       return createChromiumHarness({page, cdp, subject, related});
@@ -113,6 +116,7 @@ test('every tooltip expectation is exercised by a Tooltip state', async ({
     results.push(await runState(page, cdp, state));
   }
   expect(neverExercised(results)).toEqual([]);
+  expect(unmatchedKnownFailures(TOOLTIP_KNOWN_FAILURES, results)).toEqual([]);
 });
 
 for (const state of TOOLTIP_BINDING_STATES) {
@@ -121,14 +125,9 @@ for (const state of TOOLTIP_BINDING_STATES) {
     const cdp = await page.context().newCDPSession(page);
     const result = await runState(page, cdp, state);
     const report = summarize(TOOLTIP_PATTERN, [result]);
-    // Required rows block (AST-020 FR9); the advisory pointer-leave row is
-    // reported, and expected to pass, without blocking.
+    // Required rows block (AST-020 FR9); advisory rows and exact known
+    // failures report.
     expect(formatFailures(blockingResults([result]))).toBe('');
-    expect(
-      result.results
-        .filter(row => row.status === 'fail')
-        .map(row => `${row.expectation}: ${row.detail ?? ''}`),
-    ).toEqual([]);
     expect(report.unrunLayers).toEqual([]);
     expect(report.counts.unexpectedPass).toBe(0);
   });

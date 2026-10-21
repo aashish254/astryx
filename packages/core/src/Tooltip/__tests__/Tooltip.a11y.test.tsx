@@ -18,6 +18,7 @@ import {
   summarize,
   type BindingResult,
 } from '@astryxdesign/a11y-spec';
+import {TOOLTIP_KNOWN_FAILURES} from './Tooltip.a11y.known-failures';
 import {renderTooltipState} from './Tooltip.a11y.renders';
 import {
   TOOLTIP_BINDING_STATES,
@@ -47,6 +48,7 @@ async function checkState(state: TooltipBindingState): Promise<BindingResult> {
     binding: 'Tooltip',
     state: state.id,
     facts: state.facts,
+    knownFailures: TOOLTIP_KNOWN_FAILURES,
     mount: async () => {
       render(renderTooltipState(state));
       return createJsdomHarness({
@@ -69,6 +71,7 @@ describe('Tooltip — tooltip pattern, jsdom lane', () => {
       binding: 'Tooltip',
       state: state.id,
       facts: state.facts,
+      knownFailures: TOOLTIP_KNOWN_FAILURES,
       render: () => {
         render(renderTooltipState(state));
       },
