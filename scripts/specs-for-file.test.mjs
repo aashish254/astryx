@@ -76,7 +76,7 @@ function popoverFixture() {
   write(
     root,
     'packages/core/src/Popover/Popover.doc.mjs',
-    "export const docs = {name: 'Popover', components: [{name: 'PopoverTrigger'}]};\n",
+    "export const docs = {name: 'Popover', usage: {anatomy: [{name: 'Table'}]}, components: [{name: 'PopoverTrigger', description: 'Opens it.'}, {name: 'Item'}]};\n",
   );
   writeRecord(root, 'packages/core/src/Popover/Popover.spec.md', {
     kind: 'component',
@@ -171,10 +171,59 @@ function popoverFixture() {
   write(root, 'packages/cli/assets/docs/browser-support.doc.mjs');
   write(root, 'packages/cli/assets/docs/tree/browser-support.doc.mjs');
   write(root, 'apps/docsite/src/content/blog/posts/release.md');
+  writeRecord(root, 'docs/families/data-display.md', {
+    kind: 'family',
+    id: 'family:data-display',
+    members: ['component:Table', 'component:Item'],
+    architecture: [],
+    deciding_specs: [],
+  });
+  write(root, 'packages/core/src/Drawer/Drawer.tsx');
+  writeRecord(root, 'packages/core/src/Drawer/Drawer.spec.md', {
+    kind: 'component',
+    id: 'component:Drawer',
+    authority: 'draft',
+    review_triggers: ['motion'],
+    verified_by: [],
+    families: [],
+    architecture: ['architecture:container-padding'],
+    system_specs: ['spec:AST-017/DEC-1'],
+    modules: [],
+  });
+  writeRecord(root, 'docs/architecture/container-padding.md', {
+    kind: 'architecture',
+    id: 'architecture:container-padding',
+    applies_to: ['packages/core/src/Layout/'],
+    verified_by: [],
+    deciding_specs: [],
+  });
+  write(root, 'packages/core/src/TabList/TabList.tsx');
+  writeRecord(root, 'packages/core/src/TabList/TabList.spec.md', {
+    kind: 'component',
+    id: 'component:TabList',
+    review_triggers: ['behavior'],
+    verified_by: [],
+    families: [],
+    architecture: [],
+    system_specs: ['spec:AST-017/DEC-1'],
+    modules: [],
+  });
+  writeRecord(root, 'docs/specs/AST-017/spec.md', {
+    kind: 'system-spec',
+    id: 'spec:AST-017',
+    affects_architecture: [],
+    affects_families: [],
+    affects_consumer_docs: [],
+  });
+  write(
+    root,
+    'scripts/fixture-heavy.test.mjs',
+    "const record = 'docs/specs/AST-013/spec.md';\nconst link = '../AST-013/spec.md';\n",
+  );
   write(
     root,
     'packages/core/src/utils/plainDate.ts',
-    '// Resolves wall time per AST-013 and docs/architecture/layer-runtime.md.\n// Not AST-0130 or XAST-020.\n',
+    '// Resolves wall time per AST-013 and docs/architecture/layer-runtime.md.\n// Day boundaries follow AST-017/DEC-1. Not AST-0130 or XAST-020.\n',
   );
   return root;
 }
@@ -208,6 +257,7 @@ describe('resolveSpecsForFile', () => {
       root: 'Popover',
       names: ['Popover', 'PopoverTrigger'],
     });
+    expect(result.source).toBe('working-tree');
   });
 
   it('keeps draft records out unless asked', () => {
@@ -237,7 +287,10 @@ describe('resolveSpecsForFile', () => {
       index,
       'packages/core/src/Table/plugins/activation/helpers/key.ts',
     );
-    expect(ids(plugin.records)).toEqual(['module:Table/useTableActivation']);
+    expect(ids(plugin.records)).toEqual([
+      'family:data-display',
+      'module:Table/useTableActivation',
+    ]);
   });
 
   it('matches applies_to by path segment, never by string prefix', () => {
@@ -276,6 +329,54 @@ describe('resolveSpecsForFile', () => {
     }
   });
 
+  it('takes component names from docs and full component entries, never anatomy parts or partial entries', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const result = resolveSpecsForFile(
+      index,
+      'packages/core/src/Popover/Popover.tsx',
+    );
+    expect(ids(result.records)).not.toContain('family:data-display');
+  });
+
+  it('never lets a draft record steer the result unless drafts are asked for', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const file = 'packages/core/src/Drawer/Drawer.tsx';
+    const current = resolveSpecsForFile(index, file);
+    expect(current.records).toEqual([]);
+    expect(current.decisions).toEqual([]);
+    expect(current.triggers).not.toEqual(['motion']);
+    const withDrafts = resolveSpecsForFile(index, file, {includeDraft: true});
+    expect(ids(withDrafts.records)).toEqual([
+      'architecture:container-padding',
+      'component:Drawer',
+    ]);
+    expect(withDrafts.triggers).toEqual(['motion']);
+  });
+
+  it('lists a decision-scoped citation as that decision, not the whole record', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const result = resolveSpecsForFile(
+      index,
+      'packages/core/src/TabList/TabList.tsx',
+    );
+    expect(ids(result.records)).toEqual(['component:TabList']);
+    expect(result.decisions).toEqual([
+      expect.objectContaining({
+        id: 'spec:AST-017/DEC-1',
+        recordId: 'spec:AST-017',
+        decision: 'DEC-1',
+        routes: [{via: 'inherited:system_specs', detail: 'component:TabList'}],
+      }),
+    ]);
+  });
+
+  it('ignores spec numbers inside record paths', () => {
+    const index = loadKnowledgeIndex(popoverFixture());
+    const result = resolveSpecsForFile(index, 'scripts/fixture-heavy.test.mjs');
+    expect(result.records).toEqual([]);
+    expect(result.decisions).toEqual([]);
+  });
+
   it('routes a file to the system specs it cites by number', () => {
     const index = loadKnowledgeIndex(popoverFixture());
     const result = resolveSpecsForFile(
@@ -289,6 +390,9 @@ describe('resolveSpecsForFile', () => {
         record.routes[0].detail,
       ]),
     ).toEqual([['spec:AST-013', 'mentioned', 'AST-013']]);
+    expect(result.decisions.map(decision => decision.id)).toEqual([
+      'spec:AST-017/DEC-1',
+    ]);
   });
 
   it('reports a path no record reaches instead of guessing', () => {
@@ -350,12 +454,24 @@ describe('coverage audits', () => {
       'docs/specs/AST-013/spec.md',
     ];
     expect(ids(findUnreachedRecords(index, files))).toEqual([
+      'architecture:container-padding',
+      'component:TabList',
+      'family:data-display',
       'module:Dialog/DialogBody',
       'module:Dialog/DialogHeader',
       'module:Table/useTableActivation',
       'spec:AST-013',
+      'spec:AST-017',
       'spec:AST-020',
     ]);
+    expect(
+      ids(
+        findUnreachedRecords(index, [
+          ...files,
+          'packages/core/src/TabList/TabList.tsx',
+        ]),
+      ),
+    ).not.toContain('spec:AST-017');
   });
 
   it('lists tracked files without a governing record', () => {

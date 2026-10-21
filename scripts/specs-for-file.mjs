@@ -20,14 +20,12 @@ import {
   GLOBAL_REVIEW_TRIGGERS,
   collectGlobalReviewMatches,
   discoverKnowledgeRecords,
+  documentedPublicNames,
   parseKnowledgeDocument,
 } from './check-knowledge.mjs';
 
 const require = createRequire(import.meta.url);
-const {
-  componentPackage,
-  documentedComponentNames,
-} = require('./component-packages.cjs');
+const {componentPackage} = require('./component-packages.cjs');
 const {
   classifyComponentKnowledgePath,
   isIgnoredComponentKnowledgeSegment,
@@ -75,6 +73,10 @@ function referenceTarget(reference) {
   return reference.replace(/\/DEC-[0-9]+$/, '');
 }
 
+function referenceDecision(reference) {
+  return /\/(DEC-[0-9]+)$/.exec(reference)?.[1] ?? null;
+}
+
 function looksLikePath(entry) {
   return (
     /^[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@*-]*)*$/.test(entry) &&
@@ -86,14 +88,33 @@ function looksLikePath(entry) {
  * True when a declared path entry covers `filePath`. A trailing slash or a
  * directory entry covers its subtree; any other entry is exact.
  */
+const pathEntryCache = new Map();
+const directoryCache = new Map();
+
 function pathEntryCovers(root, entry, filePath) {
-  const normalized = toPosix(entry).replace(/\/+$/, '');
-  if (normalized === '' || !looksLikePath(entry)) return false;
-  if (filePath === normalized) return true;
-  if (!filePath.startsWith(`${normalized}/`)) return false;
-  if (entry.endsWith('/')) return true;
-  const absolute = path.join(root, normalized);
-  return fs.existsSync(absolute) && fs.statSync(absolute).isDirectory();
+  let parsed = pathEntryCache.get(entry);
+  if (!parsed) {
+    const normalized = toPosix(entry).replace(/\/+$/, '');
+    parsed = {
+      normalized,
+      prefix: `${normalized}/`,
+      valid: normalized !== '' && looksLikePath(entry),
+      subtree: entry.endsWith('/'),
+    };
+    pathEntryCache.set(entry, parsed);
+  }
+  if (!parsed.valid) return false;
+  if (filePath === parsed.normalized) return true;
+  if (!filePath.startsWith(parsed.prefix)) return false;
+  if (parsed.subtree) return true;
+  const absolute = path.join(root, parsed.normalized);
+  let isDirectory = directoryCache.get(absolute);
+  if (isDirectory === undefined) {
+    isDirectory =
+      fs.existsSync(absolute) && fs.statSync(absolute).isDirectory();
+    directoryCache.set(absolute, isDirectory);
+  }
+  return isDirectory;
 }
 
 /** Load every knowledge record in the working tree once. */
@@ -119,6 +140,8 @@ export function loadKnowledgeIndex(root = DEFAULT_ROOT) {
   return {root, records, byId};
 }
 
+const componentNameCache = new Map();
+
 /**
  * The component a path belongs to under the shared component-package path
  * contract, with the names its consumer docs declare.
@@ -141,12 +164,17 @@ function componentLocation(root, filePath) {
     componentRoot = segments[0];
   }
   const rootDirectory = path.join(root, packageConfig.src, componentRoot);
-  const names = new Set([componentRoot]);
-  if (
-    fs.existsSync(rootDirectory) &&
-    fs.statSync(rootDirectory).isDirectory()
-  ) {
-    for (const name of documentedComponentNames(rootDirectory)) names.add(name);
+  let names = componentNameCache.get(rootDirectory);
+  if (!names) {
+    // A flat package's top-level module is named by its stem. A component
+    // root is named by its consumer docs; a root without docs (a shared hook
+    // directory, say) by the directory itself.
+    const documented =
+      fs.existsSync(rootDirectory) && fs.statSync(rootDirectory).isDirectory()
+        ? documentedPublicNames(rootDirectory)
+        : [];
+    names = new Set(documented.length > 0 ? documented : [componentRoot]);
+    componentNameCache.set(rootDirectory, names);
   }
   return {
     packageName: match[1],
@@ -240,34 +268,42 @@ function declaredPathMatches(index, filePath) {
 const MENTION_SIZE_LIMIT = 1024 * 1024;
 
 /**
- * System specs the file itself cites by number. Source that names the spec it
- * implements declares that link itself. Record paths are not matched: they
- * appear in fixtures and examples far more often than as citations.
+ * System specs the file itself cites by number, as prose or code-comment text
+ * (`per AST-067`, `spec:AST-017/DEC-1`). A number inside a path such as
+ * `docs/specs/AST-017/spec.md` is not a citation: record paths appear in
+ * fixtures and examples far more often than as links.
  */
 function mentionedMatches(index, filePath) {
   const absolute = path.join(index.root, filePath);
-  let content;
+  let bytes;
   try {
     const stat = fs.statSync(absolute);
     if (!stat.isFile() || stat.size > MENTION_SIZE_LIMIT) return [];
-    content = fs.readFileSync(absolute, 'utf8');
+    bytes = fs.readFileSync(absolute);
   } catch {
     return [];
   }
-  if (content.includes('\0')) return [];
+  if (bytes.indexOf('AST-') === -1 || bytes.indexOf(0) !== -1) return [];
+  const content = bytes.toString('utf8');
+  const cited = new Map();
+  for (const match of content.matchAll(
+    /(?<![/\\\w-])AST-([0-9]{3})(?:\/(DEC-[0-9]+))?\b/g,
+  )) {
+    const id = `spec:AST-${match[1]}`;
+    const decisions = cited.get(id) ?? new Set();
+    decisions.add(match[2] ?? null);
+    cited.set(id, decisions);
+  }
   const matches = [];
-  const cited = new Set(
-    [...content.matchAll(/\bAST-([0-9]{3})\b/g)].map(
-      match => `spec:AST-${match[1]}`,
-    ),
-  );
   for (const record of index.records) {
-    if (record.path === filePath) continue;
-    if (cited.has(record.id)) {
+    if (record.path === filePath || !cited.has(record.id)) continue;
+    for (const decision of cited.get(record.id)) {
       matches.push({
         record,
         via: 'mentioned',
-        detail: record.id.replace(/^spec:/, ''),
+        detail:
+          record.id.replace(/^spec:/, '') + (decision ? `/${decision}` : ''),
+        decision,
       });
     }
   }
@@ -330,17 +366,38 @@ function addRoute(reached, record, route) {
   return true;
 }
 
+function addDecision(decisions, record, decision, route) {
+  const key = `${record.id}/${decision}`;
+  const existing = decisions.get(key);
+  if (existing) {
+    if (
+      !existing.routes.some(
+        known => known.via === route.via && known.detail === route.detail,
+      )
+    ) {
+      existing.routes.push(route);
+    }
+    return;
+  }
+  decisions.set(key, {record, decision, routes: [route]});
+}
+
 /**
- * Close the directly matched set over inherited references, then collect the
- * system specs that decided any governing record.
+ * Close the visible directly matched set over inherited references, then
+ * collect the system specs that decided a governing record. A reference scoped
+ * to one decision (`spec:AST-017/DEC-1`) lists that decision, never the whole
+ * record. Only visible records are followed, so a draft never steers the
+ * result unless drafts were asked for.
  */
-function closeOverReferences(index, direct) {
+function closeOverReferences(index, direct, visible) {
   const governing = new Map();
+  const decisions = new Map();
   const queue = [];
   for (const match of direct) {
-    if (
-      addRoute(governing, match.record, {via: match.via, detail: match.detail})
-    ) {
+    const route = {via: match.via, detail: match.detail};
+    if (match.decision) {
+      addDecision(decisions, match.record, match.decision, route);
+    } else if (addRoute(governing, match.record, route)) {
       queue.push(match.record);
     }
   }
@@ -349,13 +406,12 @@ function closeOverReferences(index, direct) {
     for (const field of INHERITED_REFERENCE_FIELDS) {
       for (const reference of asList(record.frontmatter.get(field))) {
         const target = index.byId.get(referenceTarget(reference));
-        if (
-          target &&
-          addRoute(governing, target, {
-            via: `inherited:${field}`,
-            detail: record.id,
-          })
-        ) {
+        if (!target || !visible(target)) continue;
+        const route = {via: `inherited:${field}`, detail: record.id};
+        const decision = referenceDecision(reference);
+        if (decision) {
+          addDecision(decisions, target, decision, route);
+        } else if (addRoute(governing, target, route)) {
           queue.push(target);
         }
       }
@@ -367,14 +423,16 @@ function closeOverReferences(index, direct) {
     for (const field of DECIDING_REFERENCE_FIELDS) {
       for (const reference of asList(record.frontmatter.get(field))) {
         const target = index.byId.get(referenceTarget(reference));
-        if (target && !governing.has(target.id)) {
-          addRoute(deciding, target, {via: field, detail: record.id});
-        }
+        if (!target || !visible(target) || governing.has(target.id)) continue;
+        const route = {via: field, detail: record.id};
+        const decision = referenceDecision(reference);
+        if (decision) addDecision(decisions, target, decision, route);
+        else addRoute(deciding, target, route);
       }
     }
   }
   for (const decider of index.records) {
-    if (governing.has(decider.id)) continue;
+    if (!visible(decider) || governing.has(decider.id)) continue;
     for (const field of DECIDED_REFERENCE_FIELDS) {
       for (const reference of asList(decider.frontmatter.get(field))) {
         const target = referenceTarget(reference);
@@ -384,7 +442,11 @@ function closeOverReferences(index, direct) {
       }
     }
   }
-  return {governing: [...governing.values()], deciding: [...deciding.values()]};
+  return {
+    governing: [...governing.values()],
+    deciding: [...deciding.values()],
+    decisions: [...decisions.values()],
+  };
 }
 
 /**
@@ -392,7 +454,10 @@ function closeOverReferences(index, direct) {
  *
  * `records` lists every record linked to the path, with each route that
  * reached it. `decidingSpecs` lists the system specs that decided one of those
- * records without being linked to the path themselves.
+ * records without being linked to the path themselves. `decisions` lists the
+ * single decisions (`spec:AST-017/DEC-1`) a linked record or the file cites.
+ * Records come from the working tree: on a pull-request branch that includes
+ * the branch's proposed records, so the result is not review authority.
  * `globalClaims` lists the trigger-routed global baseline claims, exactly as
  * `scripts/review-global-baselines.mjs` selects them, for `triggers` (default:
  * the review triggers of the matched component and module records, or every
@@ -407,18 +472,17 @@ export function resolveSpecsForFile(index, file, options = {}) {
     throw new Error(`${file} is outside the repository.`);
   }
   const location = componentLocation(index.root, filePath);
+  const visible = record =>
+    record.authority === 'current' ||
+    (includeDraft && record.authority === 'draft');
   const direct = [
     ...placementMatches(index, filePath, location),
     ...declaredPathMatches(index, filePath),
     ...namedMatches(index, filePath, location),
     ...mentionedMatches(index, filePath),
-  ];
-  const visible = entry =>
-    entry.record.authority === 'current' ||
-    (includeDraft && entry.record.authority === 'draft');
+  ].filter(match => visible(match.record));
   const project = entries =>
     entries
-      .filter(visible)
       .map(({record, routes}) => ({
         id: record.id,
         path: record.path,
@@ -427,9 +491,19 @@ export function resolveSpecsForFile(index, file, options = {}) {
         routes,
       }))
       .sort((left, right) => left.path.localeCompare(right.path));
-  const closed = closeOverReferences(index, direct);
+  const closed = closeOverReferences(index, direct, visible);
   const records = project(closed.governing);
   const decidingSpecs = project(closed.deciding);
+  const decisions = closed.decisions
+    .map(({record, decision, routes}) => ({
+      id: `${record.id}/${decision}`,
+      recordId: record.id,
+      decision,
+      path: record.path,
+      authority: record.authority,
+      routes,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 
   let triggers = options.triggers;
   let triggerSource = 'requested';
@@ -477,8 +551,10 @@ export function resolveSpecsForFile(index, file, options = {}) {
           names: [...location.names].sort(),
         }
       : null,
+    source: 'working-tree',
     records,
     decidingSpecs,
+    decisions,
     triggers: [...new Set(triggers)].sort(),
     triggerSource,
     globalClaims,
@@ -487,8 +563,8 @@ export function resolveSpecsForFile(index, file, options = {}) {
 
 /**
  * Current records that no tracked non-record file reaches
- * through a placement, path, name, inherited, or deciding link. Every such
- * record is invisible to a path-first lookup.
+ * through a placement, path, name, citation, inherited, or deciding link. Every
+ * such record is invisible to a path-first lookup.
  */
 export function findUnreachedRecords(index, files) {
   const reached = new Set();
@@ -501,6 +577,7 @@ export function findUnreachedRecords(index, files) {
         reached.add(record.id);
       }
     }
+    for (const decision of result.decisions) reached.add(decision.recordId);
   }
   return index.records
     .filter(record => record.authority === 'current' && !reached.has(record.id))
@@ -541,6 +618,16 @@ function formatResult(result) {
     lines.push(`  ${record.path}  ${record.id}${status}`);
     lines.push(`      via ${routes}`);
   }
+  if (result.decisions.length > 0) {
+    lines.push('  Single decisions cited by the file or a record above:');
+    for (const decision of result.decisions) {
+      const routes = decision.routes
+        .map(route => `${route.via} ${route.detail}`)
+        .join('; ');
+      lines.push(`    ${decision.path}  ${decision.id}`);
+      lines.push(`        via ${routes}`);
+    }
+  }
   if (result.decidingSpecs.length > 0) {
     lines.push('  Specs that decided a record above:');
     for (const record of result.decidingSpecs) {
@@ -566,6 +653,9 @@ function formatResult(result) {
   }
   return lines.join('\n');
 }
+
+const WORKING_TREE_NOTE =
+  "Records are read from the working tree. On a pull-request branch they include that branch's proposed records, so this is a lookup, not review authority.\n";
 
 const USAGE = `Usage: pnpm specs:for <file...> [--json] [--include-draft] [--triggers a,b]
        pnpm specs:for --unreached [--json]
@@ -652,7 +742,10 @@ function main(argv) {
     }),
   );
   if (json) console.log(JSON.stringify(results, null, 2));
-  else console.log(results.map(formatResult).join('\n\n'));
+  else {
+    console.log(WORKING_TREE_NOTE);
+    console.log(results.map(formatResult).join('\n\n'));
+  }
   return 0;
 }
 

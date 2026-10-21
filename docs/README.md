@@ -119,13 +119,18 @@ change the v1 system-spec shape.
 
 Run `pnpm specs:for <path>` to list the current records linked to any repository
 path: the record's own placement, `applies_to` and `verified_by` entries, family
-and design membership, `affects_consumer_docs` ids, and the references those
-records inherit. It lists the system specs that decided a linked record
-separately, and the global claims the matched component and module triggers route
-(the same selection as `review-global-baselines.mjs`). A path with no linked
-record is reported as such. `pnpm specs:for --unrouted` lists tracked files with
-no governing record; `--unreached` lists current records that no other path
-reaches.
+and design membership, `affects_consumer_docs` ids, system-spec numbers the file
+cites in its text (not inside a record path), and the references those records
+inherit. Only visible records are followed, so a draft never adds a link unless
+`--include-draft` is passed. A reference scoped to one decision
+(`spec:AST-017/DEC-1`) lists that decision, not the whole record. The specs that
+decided a linked record are listed separately, as are the global claims the
+matched component and module triggers route (the same selection as
+`review-global-baselines.mjs`). A path with no linked record is reported as
+such. Records are read from the working tree, so on a pull-request branch the
+result includes that branch's proposed records and is not review authority.
+`pnpm specs:for --unrouted` lists tracked files with no governing record;
+`--unreached` lists current records that no other path reaches.
 
 Run `pnpm check:knowledge` to validate templates and records. Pure spec-record
 pull requests do not add Changesets because they do not publish package changes.
