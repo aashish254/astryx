@@ -1060,6 +1060,109 @@ describe('round 8: refreshing a committed .claude copy that imports AGENTS.md; a
   }, 30_000);
 });
 
+describe('--agent claude beside a committed CLAUDE.md, with .claude linked outside and holding a block', () => {
+  it('writes CLAUDE.md, skips the .claude/CLAUDE.md block removal with a note, and exits 0, as 0.7.1 did', async () => {
+    const {project, outside} = layout();
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"app"}\n');
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+    const body = '# Team\n\n<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->\n';
+    fs.writeFileSync(path.join(outside, 'CLAUDE.md'), body);
+    fs.symlinkSync(outside, path.join(project, '.claude'), 'dir');
+
+    const r = await runCli(
+      ['init', '--features', 'agents', '--agent', 'claude', '--json'],
+      project,
+    );
+    expect(r.status).toBe(0);
+    const {data} = JSON.parse(r.stdout);
+    expect(data.docsWritten).toEqual(['CLAUDE.md']);
+    expect(data.docsError.message).toMatch(
+      /^Left as it is: \.claude\/CLAUDE\.md \(.*outside the project root/u,
+    );
+    expect(fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf-8')).toContain(
+      BLOCK.split('\n')[0],
+    );
+    expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+      body,
+    );
+  }, 30_000);
+});
+
+describe('a .claude folder linked outside the project: exit parity with 0.7.1 at the project root', () => {
+  // Each row: preset, root CLAUDE.md (none, committed, or ignored), what the
+  // linked .claude/CLAUDE.md holds (plain text, a block, or a block-less import
+  // of AGENTS.md), and the exit (1 = the run refused, nothing written). Each
+  // matches 0.7.1, checked across every preset, layout, root state, linked
+  // .claude, AGENTS.md and GEMINI.md combination, except the three rows marked
+  // `0.7.1: 1`: there 0.7.1 wrote the linked .claude/CLAUDE.md and refused,
+  // while root CLAUDE.md now holds the copy and .claude/CLAUDE.md gets none, so
+  // nothing is written outside and nothing is refused.
+  const OLD = '<!-- ASTRYX:START -->\nold\n<!-- ASTRYX:END -->';
+  const BODY = {
+    plain: '# Team\n',
+    block: `# Team\n\n${OLD}\n`,
+    import: '@../AGENTS.md\n',
+  };
+  for (const [preset, root, dir, exit] of /** @type {const} */ ([
+    ['default', 'none', 'plain', 1],
+    ['default', 'none', 'block', 1],
+    ['default', 'none', 'import', 0],
+    ['default', 'committed', 'plain', 0] /* 0.7.1: 1 */,
+    ['default', 'committed', 'block', 1],
+    ['default', 'committed', 'import', 0],
+    ['default', 'ignored', 'plain', 1],
+    ['default', 'ignored', 'block', 1],
+    ['default', 'ignored', 'import', 0],
+    ['claude', 'none', 'plain', 1],
+    ['claude', 'none', 'block', 1],
+    ['claude', 'none', 'import', 1],
+    ['claude', 'committed', 'plain', 0],
+    ['claude', 'committed', 'block', 0],
+    ['claude', 'committed', 'import', 0],
+    ['claude', 'ignored', 'plain', 0],
+    ['claude', 'ignored', 'block', 0],
+    ['claude', 'ignored', 'import', 0],
+    ['all', 'none', 'plain', 1],
+    ['all', 'none', 'block', 1],
+    ['all', 'none', 'import', 1],
+    ['all', 'committed', 'plain', 0] /* 0.7.1: 1 */,
+    ['all', 'committed', 'block', 1],
+    ['all', 'committed', 'import', 0] /* 0.7.1: 1 */,
+    ['all', 'ignored', 'plain', 1],
+    ['all', 'ignored', 'block', 1],
+    ['all', 'ignored', 'import', 1],
+  ])) {
+    it(`${preset}, root ${root}, .claude holds ${dir}: exit ${exit}`, () => {
+      const {project, outside} = layout();
+      fs.writeFileSync(path.join(project, 'AGENTS.md'), '# Agents\n');
+      if (root !== 'none')
+        fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mine\n');
+      if (root === 'ignored')
+        fs.writeFileSync(path.join(project, '.gitignore'), '/CLAUDE.md\n');
+      fs.writeFileSync(path.join(outside, 'CLAUDE.md'), BODY[dir]);
+      fs.symlinkSync(outside, path.join(project, '.claude'), 'dir');
+
+      const run = () =>
+        installAgentDocs(project, {
+          agent: preset === 'default' ? undefined : preset,
+          renderedBlock: BLOCK,
+          onSkipped: () => {},
+        });
+      if (exit === 1) {
+        expect(run).toThrow(PathSafetyError);
+        expect(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf-8')).toBe(
+          '# Agents\n',
+        );
+      } else {
+        expect(run).not.toThrow();
+      }
+      expect(fs.readFileSync(path.join(outside, 'CLAUDE.md'), 'utf-8')).toBe(
+        BODY[dir],
+      );
+    });
+  }
+});
+
 describe('init exit codes and output', () => {
   it('an ignored GEMINI.md with notes: written through, exit 0, nothing on stderr', async () => {
     const {project} = layout();

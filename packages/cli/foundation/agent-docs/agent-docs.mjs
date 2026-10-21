@@ -1456,22 +1456,22 @@ function writeDefaultAgentDocs(targetDir, existing, wrappers, aliases, compresse
   const plan = planDefaultAgentDocs(targetDir, existing, wrappers, aliases);
   // While root CLAUDE.md is one the project ignores, .claude/CLAUDE.md gets
   // the copy too, first run included: a fresh clone has only that file.
-  // The one shape 0.7.x left alone, a block-less import of an existing
-  // AGENTS.md, is skipped and reported when it resolves outside the project;
-  // any other .claude/CLAUDE.md 0.7.x wrote there, so its escape still
-  // refuses the run.
-  let keptCopy = false;
   if (plan.get(CLAUDE_DIR_MD) === 'strip' && claudeDirKeepsCopy(targetDir)) {
     plan.set(CLAUDE_DIR_MD, 'block');
-    keptCopy =
-      existing.includes(AGENTS_MD) &&
-      wrappers.get(CLAUDE_DIR_MD)?.has(AGENTS_MD) === true &&
-      !hasManagedMarker(path.join(targetDir, CLAUDE_DIR_MD));
   }
+  // 0.7.x left a block-less import of an existing AGENTS.md alone, so a Claude
+  // file of that shape that now gets the copy and resolves outside the project
+  // is skipped and reported. Any other agent file 0.7.x wrote, so its escape
+  // still refuses the run.
+  /** @param {string} p */
+  const leftAlone = p =>
+    existing.includes(AGENTS_MD) &&
+    wrappers.get(p)?.has(AGENTS_MD) === true &&
+    !hasManagedMarker(path.join(targetDir, p));
   const foundLegacy = existing.filter(p => LEGACY_DOC_PATHS.includes(p));
   /** @param {string} p */
   const legacy = p =>
-    !(keptCopy && p === CLAUDE_DIR_MD) &&
+    !leftAlone(p) &&
     (foundLegacy.includes(p) || (p === AGENTS_MD && foundLegacy.length === 0));
 
   /** @type {Set<string>} */
@@ -1714,9 +1714,13 @@ export function installAgentDocs(
     // project root, where 0.7.1 wrote nothing, it is skipped and reported. A
     // .claude/CLAUDE.md the preset adds beside an ignored root, which 0.7.1
     // did not write, is skipped and reported wherever init runs.
+    // So is removing a block from .claude/CLAUDE.md with `claude`, whose
+    // 0.7.1 preset wrote only root CLAUDE.md there; `all` wrote both, so its
+    // escape still refuses.
     const added = injectAll.filter(p => !inject.includes(p));
+    const unrefused = agent === 'claude' ? [...added, ...strip] : added;
     const escaping = refuseEscapes
-      ? skipEscaping(targetDir, added, onSkipped)
+      ? skipEscaping(targetDir, unrefused, onSkipped)
       : skipEscaping(targetDir, [...injectAll, ...create, ...strip], onSkipped);
     const injectHere = injectAll.filter(p => !escaping.has(p));
     const createHere = create.filter(p => !escaping.has(p));

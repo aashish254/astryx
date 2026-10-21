@@ -87,7 +87,7 @@ export const doc = {
   exitCodes: [
     {
       code: 0,
-      when: 'success, including agent docs left unwritten in four soft cases, each reported as docsError with one note: running in the home folder, or in a settings folder in it outside a project; a GEMINI.md that resolves outside the project; when init runs below the project root, a project-root agent file that resolves outside the project; and, beside a CLAUDE.md the project ignores, a .claude/CLAUDE.md that resolves outside the project and that 0.7.1 did not write (the one --agent claude adds, or a block-less import of an existing AGENTS.md)',
+      when: 'success, including agent docs left unwritten in four soft cases, each reported as docsError with one note: running in the home folder, or in a settings folder in it outside a project; a GEMINI.md that resolves outside the project; when init runs below the project root, a project-root agent file that resolves outside the project; and a .claude/CLAUDE.md that resolves outside the project and that 0.7.1 did not write: beside a CLAUDE.md the project ignores, the one --agent claude adds or a block-less import of an existing AGENTS.md; with --agent claude beside a CLAUDE.md, one whose block it would remove',
     },
     {
       code: 1,
