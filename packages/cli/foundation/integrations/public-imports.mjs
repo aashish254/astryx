@@ -5,21 +5,21 @@
  * import is importable, read without a build.
  *
  * @input A package directory and its loaded integration record.
- * @output Warnings for: a template source with no default export; a
- *   component doc's `import` or a template's public import whose subpath
+ * @output Warnings for: a component's import (the doc's `import`, or the one
+ *   the CLI derives) or a template's public import whose subpath
  *   package.json `exports` does not declare (or that names another package);
- *   a component example that imports an undeclared subpath or a name the
- *   package does not export; a template source that imports a relative path
- *   outside the templates root, an undeclared subpath of its own package or
- *   of Core, or a name its package does not export.
+ *   a component example that imports an undeclared subpath; a template
+ *   source that imports a relative path outside the templates root, or an
+ *   undeclared subpath of its own package or of Core. Imports it cannot
+ *   judge (Core not installed) are listed in a report.
  * @position foundation/integrations, beside the other on-disk contribution
  *   validators; run by `astryx doctor integration validate` (and so by
  *   `integration check`) through api/integration/validate-integration.mjs.
  *
  * An `exports` target may point at build output that does not exist yet, so
- * only the declared subpath is judged here, never the target file. A name is
- * judged only when a declared target exists on disk and its export list can be
- * read completely; anything less is left to `integration verify`.
+ * only the declared subpath is judged here, never the target file or the
+ * names it exports; `integration verify` resolves those from the packed
+ * package.
  */
 
 import * as fs from 'node:fs';
@@ -215,27 +215,6 @@ export function readImports(text) {
 /** @typedef {import('./exports-subpaths.mjs').SubpathDeclaration} SubpathDeclaration */
 
 /**
- * The files on disk a declared subpath can load, in condition order of the
- * package.json (any condition); empty when none exists yet (build output).
- * @param {string} packageDir
- * @param {SubpathDeclaration} declaration
- * @returns {string[]}
- */
-function existingTargets(packageDir, declaration) {
-  if (declaration.state !== 'declared') return [];
-  const root = path.resolve(packageDir);
-  return allTargets(declaration.value)
-    .filter(target => target.startsWith('./'))
-    .map(target =>
-      path.resolve(root, target.replaceAll('*', declaration.wildcard ?? '')),
-    )
-    .filter(
-      file =>
-        (file === root || file.startsWith(root + path.sep)) && isFile(file),
-    );
-}
-
-/**
  * How a package declares one subpath. A package with no `exports` keeps its
  * legacy deep paths: a subpath that names a file on disk (with or without a
  * module extension, or a folder index) counts as declared.
@@ -365,173 +344,6 @@ function exportsFix(exportsField, state, subpath, target) {
   return `add ${entry} to package.json "exports" (or the built file it compiles to).`;
 }
 
-// ── Module export names ─────────────────────────────────────────────
-
-/**
- * Export lists read during one public-import check, by file. Scoped to that
- * check, so a later check in the same process rereads every module.
- * @typedef {Map<string, {names: Set<string>, complete: boolean}>} ExportNameCache
- */
-
-/** @param {string} specifier @param {string} fromFile */
-function resolveRelative(specifier, fromFile) {
-  const base = path.resolve(path.dirname(fromFile), specifier);
-  const stripped = base.replace(/\.(?:m?js|jsx|cjs)$/u, '');
-  const candidates = [
-    base,
-    ...MODULE_EXTENSIONS.map(ext => `${base}${ext}`),
-    ...MODULE_EXTENSIONS.map(ext => `${stripped}${ext}`),
-    ...MODULE_EXTENSIONS.map(ext => path.join(base, `index${ext}`)),
-  ];
-  return candidates.find(isFile) ?? null;
-}
-
-/**
- * Every name (runtime or type) a module exports, and whether the list is
- * complete: an `export *` from another package, `export =`, or a module that
- * does not parse leaves it incomplete, and then no name is judged missing.
- * @param {string} file
- * @param {ExportNameCache} [cache] export lists already read in this check
- * @returns {{names: Set<string>, complete: boolean}}
- */
-export function moduleExportNames(file, cache = new Map()) {
-  const {names, complete} = readExportNames(file, cache, []);
-  return {names, complete};
-}
-
-/**
- * One module's export list, following local `export *` declarations. `stack`
- * holds the modules whose lists are being read: an `export *` that reaches one
- * of them closes a cycle, and a list read through a cycle the module does not
- * close is not cached, since it lacks what the module on the stack exports.
- * @param {string} file
- * @param {ExportNameCache} cache
- * @param {string[]} stack
- * @returns {{names: Set<string>, complete: boolean, cycleTo: Set<string>}}
- */
-function readExportNames(file, cache, stack) {
-  /** @type {Set<string>} */
-  const names = new Set();
-  /** @type {Set<string>} */
-  const cycleTo = new Set();
-  if (stack.includes(file)) {
-    cycleTo.add(file);
-    return {names, complete: true, cycleTo};
-  }
-  const cached = cache.get(file);
-  if (cached) return {...cached, cycleTo};
-  /** @param {boolean} complete */
-  const done = complete => {
-    cycleTo.delete(file);
-    const value = {names, complete};
-    if (cycleTo.size === 0) cache.set(file, value);
-    return {...value, cycleTo};
-  };
-  // A CommonJS module's exports cannot be read from declarations: leave it
-  // unjudged rather than read it as exporting nothing. That is any .cjs/.cts
-  // file, any file (built `dist/*.js` included) with no ES module import or
-  // export, and any file that also assigns `module.exports` or `exports.*`.
-  if (/\.c[jt]s$/u.test(file)) return done(false);
-  let complete = true;
-  let ast;
-  let text;
-  try {
-    text = fs.readFileSync(file, 'utf-8');
-    ast = parseModuleText(text);
-    if (ast.errors?.length) complete = false;
-  } catch {
-    return done(false);
-  }
-  const esm = ast.program.body.some(
-    (/** @type {any} */ node) =>
-      node.type === 'ImportDeclaration' ||
-      node.type === 'ExportNamedDeclaration' ||
-      node.type === 'ExportDefaultDeclaration' ||
-      node.type === 'ExportAllDeclaration' ||
-      node.type === 'TSExportAssignment',
-  );
-  if (!esm) return done(false);
-  if (/\b(?:module\.exports|exports\.[\w$]+)\s*=/u.test(text)) {
-    return done(false);
-  }
-  for (const node of ast.program.body) {
-    if (node.type === 'ExportDefaultDeclaration') names.add('default');
-    else if (node.type === 'TSExportAssignment') complete = false;
-    else if (node.type === 'ExportNamedDeclaration') {
-      const d = /** @type {any} */ (node.declaration);
-      if (d) {
-        if (d.id?.name) names.add(d.id.name);
-        for (const v of d.declarations ?? []) {
-          if (v.id?.type === 'Identifier') names.add(v.id.name);
-          else complete = false;
-        }
-      }
-      for (const sp of /** @type {any[]} */ (node.specifiers ?? [])) {
-        const exported = sp.exported?.name ?? sp.exported?.value;
-        if (exported) names.add(exported);
-      }
-    } else if (node.type === 'ExportAllDeclaration') {
-      const n = /** @type {any} */ (node);
-      if (n.exported) {
-        names.add(n.exported.name ?? n.exported.value);
-        continue;
-      }
-      const source = String(n.source.value);
-      const target = source.startsWith('.')
-        ? resolveRelative(source, file)
-        : null;
-      if (!target) {
-        complete = false;
-        continue;
-      }
-      const inner = readExportNames(target, cache, [...stack, file]);
-      for (const name of inner.names) if (name !== 'default') names.add(name);
-      if (!inner.complete) complete = false;
-      for (const each of inner.cycleTo) cycleTo.add(each);
-    }
-  }
-  return done(complete);
-}
-
-/**
- * The names an import statement asks for that the module provably lacks.
- * @param {ImportStatement} statement
- * @param {string[]} files candidate targets on disk
- * @param {ExportNameCache} cache
- * @returns {string[] | null} null when it cannot be judged
- */
-function missingNames(statement, files, cache) {
-  // A type-only name may live only in a declaration file: not judged.
-  const wanted = statement.names
-    .filter(binding => !binding.typeOnly)
-    .map(binding => binding.imported);
-  if (wanted.length === 0) return [];
-  if (files.length === 0) return null;
-  // Any condition's file (source or built) that has every name settles it;
-  // a name is missing only when every file is read in full and lacks it.
-  let incomplete = false;
-  /** @type {Set<string>} */
-  const seen = new Set();
-  for (const file of files) {
-    const {names, complete} = moduleExportNames(file, cache);
-    if (wanted.every(name => names.has(name))) return [];
-    if (!complete) incomplete = true;
-    for (const name of names) seen.add(name);
-  }
-  if (incomplete) return null;
-  return wanted.filter(name => !seen.has(name));
-}
-
-/**
- * Why an import's names could not be judged.
- * @param {string[]} files
- */
-function uncheckedReason(files) {
-  return files.length === 0
-    ? 'no file its package.json "exports" entry names exists yet (build output), so the names it imports were not checked'
-    : "its module's export list cannot be read in full (CommonJS, an `export *` from another package, or a parse error), so the names it imports were not checked";
-}
-
 // ── Checks ──────────────────────────────────────────────────────────
 
 /**
@@ -542,20 +354,20 @@ function uncheckedReason(files) {
  * @property {string | null} coreDir
  * @property {any} corePkg
  * @property {PublicImportUnchecked[]} unchecked what could not be judged
- * @property {ExportNameCache} exportNames export lists read in this check
  */
 
 /** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportUnchecked} PublicImportUnchecked */
 /** @typedef {import('../../api/integration/validate-integration.type.mjs').PublicImportsReport} PublicImportsReport */
 
 /**
- * Judge an import of the package's own name.
+ * Whether an import of the package's own name names a subpath `exports`
+ * declares; the declaration when it does not.
  * @param {Context} ctx
  * @param {ImportStatement} statement
  * @param {string} subpath
- * @returns {{undeclared: SubpathDeclaration | null, missing: string[] | null, reason: string | null}}
+ * @returns {SubpathDeclaration | null}
  */
-function judgeOwnImport(ctx, statement, subpath) {
+function undeclaredOwnImport(ctx, statement, subpath) {
   const declaration = declarationIn(ctx.exportsField, ctx.packageDir, subpath);
   // `import type` needs only a `types` target: TypeScript reads it, nothing
   // loads it at run time.
@@ -564,53 +376,9 @@ function judgeOwnImport(ctx, statement, subpath) {
     declaration.state === 'not_importable' &&
     conditionNames(declaration.value).includes('types')
   ) {
-    return {undeclared: null, missing: [], reason: null};
+    return null;
   }
-  if (declaration.state !== 'declared')
-    return {undeclared: declaration, missing: null, reason: null};
-  if (subpath === '.' && declaration.value == null) {
-    return {
-      undeclared: null,
-      missing: null,
-      reason:
-        'package.json has no "exports", and the root module "main" names is not read, so the names it imports were not checked',
-    };
-  }
-  const files = existingTargets(ctx.packageDir, declaration);
-  const missing = missingNames(statement, files, ctx.exportNames);
-  return {
-    undeclared: null,
-    missing,
-    reason: missing == null ? uncheckedReason(files) : null,
-  };
-}
-
-/**
- * A declared subpath of the package whose module, read in full, exports
- * `name`: the one the component's source is exported under first.
- * @param {Context} ctx
- * @param {string} name
- * @param {string | null} preferred
- * @returns {string | null}
- */
-function subpathExporting(ctx, name, preferred) {
-  if (!isRecord(ctx.exportsField)) return null;
-  const keys = Object.keys(ctx.exportsField).filter(
-    key => key.startsWith('.') && !key.includes('*'),
-  );
-  if (preferred)
-    keys.sort((a, b) => (b === preferred ? 1 : 0) - (a === preferred ? 1 : 0));
-  for (const key of keys) {
-    const declaration = declarationIn(ctx.exportsField, ctx.packageDir, key);
-    const files = existingTargets(ctx.packageDir, declaration);
-    if (
-      files.some(file =>
-        moduleExportNames(file, ctx.exportNames).names.has(name),
-      )
-    )
-      return key;
-  }
-  return null;
+  return declaration.state === 'declared' ? null : declaration;
 }
 
 /**
@@ -692,46 +460,7 @@ async function componentIssues(ctx, integration) {
         ctx.packageDir,
         split.subpath,
       );
-      if (
-        declaration.state === 'declared' &&
-        split.subpath === '.' &&
-        declaration.value == null
-      ) {
-        // A package with no exports resolves its root through main: not read.
-        ctx.unchecked.push({
-          file: shownDoc,
-          specifier,
-          reason:
-            'package.json has no "exports", and the root module "main" names is not read, so the component names were not checked',
-        });
-      } else if (declaration.state === 'declared') {
-        const files = existingTargets(ctx.packageDir, declaration);
-        const statement = {
-          source: specifier,
-          names: list.map(r => ({imported: r.name, typeOnly: false})),
-          namespace: false,
-        };
-        const missing = missingNames(statement, files, ctx.exportNames);
-        if (missing == null) {
-          ctx.unchecked.push({
-            file: shownDoc,
-            specifier,
-            reason: uncheckedReason(files),
-          });
-        }
-        for (const name of missing ?? []) {
-          const there = subpathExporting(ctx, name, declared);
-          const fix = there
-            ? `set import: '${ctx.name}${there === '.' ? '' : there.slice(1)}' in the doc (that subpath exports it), or export "${name}" from the module "${specifier}" loads.`
-            : `export "${name}" from the module "${specifier}" loads${perComponent ? `, or ${perComponent}` : ''}.`;
-          issues.push(
-            issueWarning(
-              'component_import_missing_name',
-              `Component doc "${shownDoc}" ${gives}, but that module does not export "${name}", so apps that follow the doc get nothing. Fix: ${fix}`,
-            ),
-          );
-        }
-      } else {
+      if (declaration.state !== 'declared') {
         const already =
           declared && declared !== split.subpath
             ? `set import: '${ctx.name}${declared.slice(1)}' (already exported), or `
@@ -746,47 +475,15 @@ async function componentIssues(ctx, integration) {
     }
 
     /**
-     * Where an example with an undeclared import should import from: the
-     * doc's own import, when it differs from the example's and is declared;
-     * else the subpath the component's source is already exported under;
-     * else the exact `exports` entry to add for the example's subpath.
-     * Another subpath is offered only when its module provably exports every
-     * value name the statement imports.
+     * The `exports` entry an example with an undeclared import needs: its
+     * subpath mapped to the file there, or to the component's source when
+     * the example imports only components this doc documents, else to the
+     * file that exports what it imports.
      * @param {ImportStatement} statement
      * @param {string} subpath
      * @param {SubpathDeclaration} undeclared
      */
     const exampleFix = (statement, subpath, undeclared) => {
-      /** @param {string} candidate */
-      const provides = candidate => {
-        const declaration = declarationIn(
-          ctx.exportsField,
-          ctx.packageDir,
-          candidate,
-        );
-        if (declaration.state !== 'declared' || declaration.value == null)
-          return false;
-        const missing = missingNames(
-          statement,
-          existingTargets(ctx.packageDir, declaration),
-          ctx.exportNames,
-        );
-        return Array.isArray(missing) && missing.length === 0;
-      };
-      const own = authored ? splitSpecifier(authored) : null;
-      if (
-        authored &&
-        authored !== statement.source &&
-        own?.pkg === ctx.name &&
-        provides(own.subpath)
-      ) {
-        return `import from '${authored}' in the example, as the doc's import does.`;
-      }
-      if (declared && declared !== subpath && provides(declared)) {
-        return `import from '${ctx.name}${declared.slice(1)}' in the example (already exported).`;
-      }
-      // The entry for the example's own subpath: the file there, or the
-      // component's source when it exports every name, else a placeholder.
       const values = statement.names
         .filter(binding => !binding.typeOnly)
         .map(binding => binding.imported);
@@ -801,14 +498,12 @@ async function componentIssues(ctx, integration) {
             file.startsWith(path.resolve(ctx.packageDir) + path.sep) &&
             isFile(file),
         );
-      const sourceHasAll =
-        source != null &&
-        values.every(name =>
-          moduleExportNames(source, ctx.exportNames).names.has(name),
-        );
+      const documented = new Set(list.map(r => r.name));
+      const onlyDocumented =
+        values.length > 0 && values.every(name => documented.has(name));
       const target = atSubpath
         ? `./${rel(ctx.packageDir, atSubpath)}`
-        : sourceHasAll && sourceTarget
+        : onlyDocumented && sourceTarget
           ? sourceTarget
           : `<the file that exports ${values.join(', ') || 'them'}>`;
       return exportsFix(ctx.exportsField, undeclared.state, subpath, target);
@@ -824,30 +519,12 @@ async function componentIssues(ctx, integration) {
       for (const statement of readImports(example.code)) {
         const parts = splitSpecifier(statement.source);
         if (!parts || parts.pkg !== ctx.name) continue;
-        const {undeclared, missing, reason} = judgeOwnImport(
-          ctx,
-          statement,
-          parts.subpath,
-        );
-        if (reason) {
-          ctx.unchecked.push({
-            file: shownDoc,
-            specifier: statement.source,
-            reason: `example ${label}: ${reason}`,
-          });
-        }
+        const undeclared = undeclaredOwnImport(ctx, statement, parts.subpath);
         if (undeclared) {
           issues.push(
             issueWarning(
               'example_import_not_exported',
               `Component doc "${shownDoc}" example ${label} imports "${statement.source}", but ${whyUndeclared(undeclared, parts.subpath)}, so the example fails when an app copies it. Fix: ${exampleFix(statement, parts.subpath, undeclared)}`,
-            ),
-          );
-        } else if (missing && missing.length > 0) {
-          issues.push(
-            issueWarning(
-              'example_import_missing_name',
-              `Component doc "${shownDoc}" example ${label} imports ${missing.map(n => `"${n}"`).join(', ')} from "${statement.source}", which does not export ${missing.length === 1 ? 'it' : 'them'}, so the example fails when an app copies it. Fix: import a name that module exports (${[...list.map(r => r.name)].map(n => `"${n}"`).join(', ')} for this doc), or export the name from it.`,
             ),
           );
         }
@@ -900,22 +577,6 @@ async function templateIssues(ctx, integration) {
     } catch {
       text = '';
     }
-    // `astryx template` copies the source as written, but the package's
-    // public import, the gallery preview and a page that renders the
-    // template import its default export.
-    const exported = text ? moduleExportNames(file, ctx.exportNames) : null;
-    if (exported?.complete && !exported.names.has('default')) {
-      const named = [...exported.names].find(name => /^[A-Z]/.test(name));
-      const fix = named
-        ? `add \`export default ${named};\` to ${shown}, or make ${named} the default export`
-        : `export the template's component as the default export of ${shown} (\`export default function …\`)`;
-      issues.push(
-        issueWarning(
-          'template_no_default_export',
-          `Template "${id}" (${shown}) has no default export, so its public import "${ctx.name}${subpath.slice(1)}" and anything that renders the template get nothing. Fix: ${fix}.`,
-        ),
-      );
-    }
     for (const statement of readImports(text)) {
       const spec = statement.source;
       if (spec.startsWith('.')) {
@@ -933,26 +594,12 @@ async function templateIssues(ctx, integration) {
       const parts = splitSpecifier(spec);
       if (!parts) continue;
       if (parts.pkg === ctx.name) {
-        const {undeclared, missing, reason} = judgeOwnImport(
-          ctx,
-          statement,
-          parts.subpath,
-        );
-        if (reason) {
-          ctx.unchecked.push({file: shown, specifier: spec, reason});
-        }
+        const undeclared = undeclaredOwnImport(ctx, statement, parts.subpath);
         if (undeclared) {
           issues.push(
             issueWarning(
               'template_private_import',
               `Template "${id}" (${shown}) imports "${spec}", but ${whyUndeclared(undeclared, parts.subpath)}, so the template breaks in an app. Fix: import from a subpath package.json "exports" declares, or add one for it.`,
-            ),
-          );
-        } else if (missing && missing.length > 0) {
-          issues.push(
-            issueWarning(
-              'template_import_missing_name',
-              `Template "${id}" (${shown}) imports ${missing.map(n => `"${n}"`).join(', ')} from "${spec}", which does not export ${missing.length === 1 ? 'it' : 'them'}, so the template breaks in an app. Fix: import a name that module exports, or export the name from it.`,
             ),
           );
         }
@@ -1014,7 +661,6 @@ export async function publicImportIssues(packageDir, integration) {
     coreDir,
     corePkg: coreDir ? readJson(path.join(coreDir, 'package.json')) : null,
     unchecked: report.unchecked,
-    exportNames: new Map(),
   };
   const issues = [
     ...(await componentIssues(ctx, integration)),
