@@ -31,8 +31,6 @@ export interface LayoutInput {
   data: Record<string, unknown>[];
   xKey: string;
   series: SeriesDef[];
-  /** Theme-resolved data-visualization colors passed to every mark. */
-  colors: SeriesContext['colors'];
   width: number;
   height: number;
   /** How the y-domain is derived when `yDomain` is not provided. Default 'auto'. */
@@ -97,7 +95,6 @@ export function computeLayout({
   data,
   xKey,
   series,
-  colors,
   width,
   height,
   yBaseline,
@@ -324,7 +321,6 @@ export function computeLayout({
     xKey,
     xScale,
     yScale,
-    colors,
     yBandScale,
     width,
     height,

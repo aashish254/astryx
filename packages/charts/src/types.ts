@@ -8,7 +8,6 @@
 
 import type {ReactNode} from 'react';
 import type {ScaleLinear, ScaleBand} from 'd3-scale';
-import type {ChartColorsAPI} from './getChartColors';
 
 export type ChartScale = ScaleLinear<number, number> | ScaleBand<string>;
 
@@ -21,11 +20,9 @@ export type ColorAccessor =
 
 /**
  * Fallback series color used when a mark has neither an explicit color nor a
- * palette color assigned by the chart root. Uses an EMITTED core token
- * (`--color-accent`) — the data-viz `--color-data-*` tokens are JS-only values
- * (resolved via useChartColors), not CSS custom properties, so `var(--color-data-*)`
- * would render nothing. The chart root normally assigns a resolved palette color,
- * so this is only a last-resort fallback.
+ * palette color assigned by the chart root. The chart root normally assigns a
+ * resolved categorical color; this uses Core's emitted accent token only as a
+ * last-resort fallback when a mark renders outside that path.
  */
 export const DEFAULT_SERIES_COLOR = 'var(--color-accent)';
 
@@ -63,8 +60,6 @@ export interface SeriesContext {
   xKey: string;
   xScale: ChartScale;
   yScale: ScaleLinear<number, number>;
-  /** Theme-resolved data-visualization colors for mark semantics. */
-  colors: ChartColorsAPI;
   /**
    * Categorical y band scale for row-based marks (e.g. heatmap). Present only
    * when a series declares `layout.yBandKey`; in that case the y-axis is

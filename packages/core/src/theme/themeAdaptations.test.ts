@@ -261,6 +261,42 @@ describe('rule order and writes', () => {
     expect(count(generateAdaptationCSS(theme).component, '@media')).toBe(1);
   });
 
+  it('keeps concrete root status roles while rebinding canonical aliases in adaptations', () => {
+    const concrete = defineTheme({
+      name: 'concrete-adaptation-role',
+      tokens: {'--color-info': '#123456'},
+      adaptations: {
+        rules: [
+          {
+            when: {contrast: 'more'},
+            value: {tokens: {'--color-accent': '#abcdef'}},
+          },
+        ],
+      },
+    });
+    const concreteCss = generateAdaptationCSS(concrete).component;
+
+    expect(concreteCss).toContain('--color-accent: #abcdef;');
+    expect(concreteCss).not.toContain('--color-info: var(--color-accent);');
+
+    const canonical = defineTheme({
+      name: 'canonical-adaptation-role',
+      tokens: {'--color-info': 'var(--color-accent)'},
+      adaptations: {
+        rules: [
+          {
+            when: {contrast: 'more'},
+            value: {tokens: {'--color-accent': '#abcdef'}},
+          },
+        ],
+      },
+    });
+    const canonicalCss = generateAdaptationCSS(canonical).component;
+
+    expect(canonicalCss).toContain('--color-accent: #abcdef;');
+    expect(canonicalCss).toContain('--color-info: var(--color-accent);');
+  });
+
   it('lets explicit values beat generated values within one rule', () => {
     const theme = defineTheme({
       name: 'rule-precedence',

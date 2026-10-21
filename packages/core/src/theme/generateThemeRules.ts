@@ -509,10 +509,11 @@ function tokenBlock(
   source: ThemeRuleSource,
   location: string,
   sink: DiagnosticSink,
+  inheritedTokens: Record<string, string> = {},
 ): string | null {
   const declarations = [
     joinDeclarations(
-      tokenEntriesWithScopedStatusRoleDefaults(source.tokens),
+      tokenEntriesWithScopedStatusRoleDefaults(source.tokens, inheritedTokens),
       `${location}tokens`,
       sink,
     ),
@@ -1122,11 +1123,12 @@ export function generateOnMediaCSS(
 /** Generate only the declarations one adaptation rule writes. */
 function generateAdaptationRuleRules(
   rule: ThemeRuleSource,
+  rootTokens: Record<string, string>,
   location: string,
   sink: DiagnosticSink,
 ): string[] {
   const parts: string[] = [];
-  const tokens = tokenBlock(rule, location, sink);
+  const tokens = tokenBlock(rule, location, sink, rootTokens);
   if (tokens !== null) {
     parts.push(tokens);
   }
@@ -1215,6 +1217,7 @@ export function generateAdaptationCSS(
   for (const [index, rule] of rules.entries()) {
     const parts = generateAdaptationRuleRules(
       rule,
+      theme.tokens,
       `adaptations[${index}].`,
       sink,
     );
