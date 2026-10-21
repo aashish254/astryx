@@ -17,11 +17,8 @@ export const doc = {
     'Unified ranked search across components, hooks, docs, templates, and themes.',
   description:
     'The single "I\'m looking for X" entry point across every content domain. ' +
-    'Matching is keyword + fuzzy (not embeddings); name and keyword signals outrank ' +
-    'incidental prose mentions, so an exact match always sorts first. Inside one ' +
-    'strength of match (the same score band), results are ordered by static, ' +
-    'reviewed weights over plain word signals; equal scores keep their order. ' +
-    'A component\'s ' +
+    'Ranking is keyword + fuzzy (not embeddings); name and keyword signals outrank ' +
+    'incidental prose mentions, so an exact match always sorts first. A component\'s ' +
     'usage guidance (its best practices) is indexed one tier below its description, ' +
     'so the words a reader types still find it — but a component that IS the answer ' +
     'always outranks one whose advice merely mentions the term.',
