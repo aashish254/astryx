@@ -82,6 +82,10 @@ export function orderMatches(table, order, lexical, query, limit) {
   // order; the learned position of the block's first match places the block
   // in its run (not its best member's, which would let one strong member lift
   // a whole block of weak ones), and an entry the query names leads its run.
+  // Moving each match on its own breaks search's existing rules for tied
+  // matches (`file required` leads with Field, `ci` with the integration
+  // check) and grows answers, so ties move together; where the block lands is
+  // measured as spec:AST-083 FR6 requires.
   /** @type {Map<string, number>} */
   const block = new Map();
   const blockOf = (/** @type {Item} */ it) => `${it.band}:${it.res.score}`;
