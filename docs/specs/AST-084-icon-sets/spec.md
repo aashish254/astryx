@@ -27,10 +27,8 @@ file that says what every icon means. Astryx owns a list of icon definitions,
 one file per thing an icon can stand for (`close`, `delete`, `rocket`); a set's
 data file maps each definition it supports to one of its icons. With an icon set installed:
 
-- an agent or engineer finds an icon by meaning (`astryx experimental icon trash`,
-  or `astryx search delete` in a project with an icon set) and gets the exact
-  import line;
-- a template or block copied into the project uses the installed set's icons
+- an agent or engineer finds an icon by meaning (`astryx experimental icon trash`) and gets the exact import line;
+- a template or block copied into a project that opts in uses the set's icons
   instead of the icons the template was written with; and
 - a theme points the shared semantic icon names (`close`, `search`,
   `chevronDown`, …) at the set's artwork.
@@ -87,13 +85,15 @@ set is installed.
   - API functions and authoring types carry `@experimental`; and
   - every change to them ships as an `[experimental]` patch Changeset.
 
-  With no icon set installed and no `experimental.iconSet` configured, help
-  (apart from the `experimental` group line), the manifest (apart from that
-  group), search, `astryx template` printed and copied (text and JSON),
-  Doctor's checks, and `integration check` and `verify` output MUST equal what
-  they are without this feature: the `icon` search domain and `--type icon`,
-  the template `icons` report, the `icon-sets` Doctor check, and experimental
-  docs in search results appear only when a set is installed or configured.
+  `experimental.iconSet` is the project's opt-in. Without it, help (apart
+  from the `experimental` group line), the manifest (apart from that group),
+  the `astryx docs cli` listing (apart from the `experimental` namespace),
+  `astryx template` printed and copied (text and JSON), `astryx discover`,
+  Doctor's checks and doc counts, and `integration check` and `verify` output
+  MUST equal what they are without this feature, whatever icon sets are
+  installed. `astryx search` MUST answer as it does without this feature in
+  every project, with or without the opt-in (FR8): no icon domain, no
+  `--type icon`, and no experimental doc in its results.
 
 ### What an icon set declares
 
@@ -212,8 +212,7 @@ set is installed.
   set. When a set's definition has the name of an Astryx one, Astryx's wins.
   The `icon-definitions` docs namespace, under `cli/experimental`, adopts
   every definition, Astryx's and each installed set's, so
-  `astryx docs cli/experimental/icon-definitions` lists them, and search finds
-  each one in a project with an icon set.
+  `astryx docs cli/experimental/icon-definitions` lists them.
 
 - **FR4 — The data comes from the source, written once.** When the upstream
   library publishes per-icon names or tags, the set's data file is generated from
@@ -268,7 +267,7 @@ set is installed.
   | 60    | starts one of its `words`                                                                                                                  | `word "<word>" starts with "<query>"` |
   | 40    | is inside its `id` or one of its `words`, or, for a query of several words, every query word starts a part of its `id` or one of its words | `partial "<text>"`                    |
 
-  An icon's words, for matching here and in search (FR8), are its own
+  An icon's words, for matching here, are its own
   `words` followed by the name (read as words) and the words of every
   definition its set's `map` names it for; the data file does not repeat a
   definition's words, and a match reports the icon's own `words`.
@@ -302,14 +301,12 @@ set is installed.
   of all, and the set's own definitions; the project's icon-set state; and
   each withdrawn set with its reason. Every response names its `package` (`architecture:cli-surface`
   INV28).
-- **FR8 — `astryx search` finds icons too.** In a project with an icon set
-  installed, `astryx search <words>` MUST include icon matches under the domain `icon`, with `name` as `<set>/<id>`,
-  `import`, `package`, and `command` set to `astryx experimental icon <set>/<id>`. An icon
-  match ranks below a component or doc match of equal score, so a word such as
-  `table` still finds the Table component first. `--type icon` keeps only icons;
-  without an installed set, `--type icon` is an unknown type and search answers
-  exactly as it does without this feature (FR0).
-- **FR9 — Only installed sets answer.** A set answers searches and lookups only
+- **FR8 — Icon search is only `astryx experimental icon`.** `astryx search`
+  MUST NOT read icon sets or return icons or experimental docs, with or
+  without `experimental.iconSet`: it has no `icon` domain, and `--type icon`
+  is an unknown type. Icons join `astryx search` only when icon sets are
+  promoted (`spec:AST-017/FR23`).
+- **FR9 — Only installed sets answer.** A set answers lookups only
   when its integration loads in the project and its `module` resolves from the
   project. A set whose data file is invalid is withdrawn from every surface, and
   Doctor reports it (FR15).
@@ -317,18 +314,19 @@ set is installed.
 ### Templates and blocks use the installed set
 
 - **FR10 — One set is the project's icon set.** The project's icon set is the
-  set named by the `experimental.iconSet` field of `astryx.config` (`"<set>"` or
-  `"<package>/<set>"`); otherwise the only installed set; otherwise none. With
-  two or more installed sets and no `experimental.iconSet`, the project has no
-  icon set, and Doctor warns (FR15). An `experimental.iconSet` written as `"<set>"` that two installed
-  packages both ship names no set: the project has no icon set and Doctor
-  warns, naming the qualified form. The set order for search ties is the project's icon set
-  first, then the integration load order.
+  set named by the `experimental.iconSet` field of `astryx.config` (`"<set>"`
+  or `"<package>/<set>"`). Templates, discover, and Doctor read icon sets only
+  when the field is set (FR0). Within `astryx experimental icon`, a project
+  without the field treats the only installed set as its set, and two or more
+  installed sets as none. An `experimental.iconSet` written as `"<set>"` that
+  two installed packages both ship names no set: the project has no icon set
+  and Doctor warns, naming the qualified form. The set order for lookup ties
+  is the project's icon set first, then the integration load order.
 - **FR11 — A template maps icons by icon definition.** A template or block
   declares, in its descriptor's `icons`, the icon definition each icon it
   imports draws, by imported name (`icons: {TrashIcon: 'delete'}`); an
   integration template MAY declare the same field. When the project has an
-  icon set, `astryx template <name>` (printed or copied to a path) and
+  icon set (FR10, which needs `experimental.iconSet`), `astryx template <name>` (printed or copied to a path) and
   `astryx build` rewrite each declared icon import, and each import of an
   icon another installed set ships (which draws the Astryx definitions that
   set's `map` names it for). Each icon maps to the project set's icon that:
@@ -459,12 +457,13 @@ set is installed.
 
 - **FR15 — `astryx doctor` checks the project's icon sets.** Doctor's
   `icon-sets` check MUST fail when `experimental.iconSet` names a set that is
-  not installed, MUST warn when two or more sets are installed and
-  `experimental.iconSet` is not set, and MUST warn for each installed set
-  withdrawn by FR9 with the reason. A project with no icon set installed,
-  withdrawn, or configured has no `icon-sets` check (FR0).
-- **FR16 — Discover lists icon sets as their own kind.** `astryx discover`
-  treats `icon-set` as a contribution kind (`spec:AST-051/FR5`): a package's
+  not installed, MUST warn when two installed packages ship a set by its
+  name, and MUST warn for each installed set withdrawn by FR9 with the
+  reason. A project without `experimental.iconSet` has no `icon-sets` check
+  (FR0).
+- **FR16 — Discover lists icon sets as their own kind.** In a project with
+  `experimental.iconSet`, `astryx discover` treats `icon-set` as a
+  contribution kind (`spec:AST-051/FR5`): a package's
   page lists its sets, `--type icon-set` keeps them, and a catalog entry MAY
   carry `iconCount` and `definitions`. `discover <package>/<set>` shows the
   set's description, license, icon count, default variant, and the
@@ -561,7 +560,7 @@ set is installed.
   `experimental.iconSets` manifest root and the `icon-set` and
   `icon-definition` descriptor kinds to INV24's discovered kinds, the
   `experimental icon` command group (`new-set`, `new-definition`, `add`,
-  `map`, `use`) and its response types, the `icon` search domain, the
+  `map`, `use`) and its response types, the
   `cli/experimental` docs namespace with the `icon-definitions` namespace, the
   `icon-sets` Doctor check, and the icon-set checks of `integration check`
   (INV35).
@@ -590,7 +589,7 @@ integration validate` type-checks `IconSetDoc` descriptors
 | FR4        | wrapper generator test                                                                                                                                              | regenerate from the same upstream version; upstream adds an icon                                                                                                                                                                     | regenerating changes the file, or a new upstream icon is missing                                                                 |
 | FR5        | pack and discovery tests                                                                                                                                            | module path escaping the package; nested notice file                                                                                                                                                                                 | an escaped path is accepted, or discovery imports the icon module                                                                |
 | FR6–FR7    | `experimental icon` command text and JSON tests                                                                                                                     | exact definition; exact id; exact word; an id one icon is named and another is tagged; a word many icons are named for; prefix; no match; `--set`; `--limit`; unknown set or id; `--list` coverage                                   | ranking order changes, a tie is order-dependent, or a missing icon is not `ERR_NOT_FOUND`                                        |
-| FR8        | search tests                                                                                                                                                        | icon-only word; word matching a component and an icon; `--type icon`                                                                                                                                                                 | an icon outranks an equal component, or `--type icon` returns another domain                                                     |
+| FR8        | experimental-isolation tests                                                                                                                                        | search with no set; search with a set installed and `experimental.iconSet` set, on icon words, text and JSON; `--type icon`                                                                                                          | search output differs from the output without icon sets, or `--type icon` is accepted                                            |
 | FR9–FR10   | discovery and config tests                                                                                                                                          | set installed but module missing; invalid data file; one set; two sets with and without `experimental.iconSet`                                                                                                                       | a withdrawn set answers, or two sets pick one silently                                                                           |
 | FR3a       | definition parser and folder tests; docs tree tests                                                                                                                 | valid definition; unknown field; built-in set equals `IconName`; unique names; a set's own definition; one that shadows Astryx's; `docs icon-definitions`                                                                            | a definition outside a folder is read, or a built-in is missing                                                                  |
 | FR11–FR12  | template print and copy tests; a test over every bundled template descriptor                                                                                        | reviewed exact or strong match; likely match suggested; declared definition the set maps; one it does not map; an undeclared import; installed-set icon; solid variant; name collision; no set; every bundled template icon declared | an unmapped icon is dropped, a name is guessed, a reference keeps the old name, or the receipt omits a kept icon                 |
@@ -613,21 +612,22 @@ integration validate` type-checks `IconSetDoc` descriptors
 One set is one discoverable item with one typed descriptor, like a theme. The
 data file is generated payload inside the set's own directory, the way a theme's
 token files are, so adding a set touches no shared file and the no-catalog rule
-(`spec:AST-039/FR11`) holds. Every surface reads that one file, so search,
+(`spec:AST-039/FR11`) holds. Every surface reads that one file, so icon lookup,
 templates, and themes cannot disagree about what an icon means.
 
 Rejected: one `.doc.mjs` per icon, because thousands of hand-kept files cannot
 stay in step with an upstream library that adds icons every release.
 
-### DEC-2 — Find icons with a dedicated command and in search
+### DEC-2 — Find icons with a dedicated command; search joins at promotion
 
 **Reference:** `spec:AST-084/DEC-2`
 **Decider:** `josephfarina`, `2026-10-20`
 
-`astryx search` is where an agent looks first, so icons appear there. An icon
-answer needs the import line, the variants, and the definitions it draws, which
-a mixed search list cannot carry for every domain, so `astryx experimental icon` answers with
-the full record.
+An icon answer needs the import line, the variants, and the definitions it
+draws, which a mixed search list cannot carry for every domain, so
+`astryx experimental icon` answers with the full record. While icon sets are
+experimental, `astryx search` is a stable surface they never feed; icons join
+it when icon sets are promoted.
 
 ### DEC-3 — Templates keep their icon when the set has no match
 

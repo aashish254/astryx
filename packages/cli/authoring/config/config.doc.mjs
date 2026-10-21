@@ -80,7 +80,7 @@ export const doc = {
           type: 'string',
           stability: 'experimental',
           description:
-            "Experimental: may change or be removed in a patch release. The project's icon set, by set name or as `<package>/<set>`. Copied templates use its icons, and its icons win ties in `astryx experimental icon`. Without it, the only installed set is the project's set; with two or more installed and none named, the project has no icon set and `astryx doctor` warns.",
+            "Experimental: may change or be removed in a patch release. The project's icon set, by set name or as `<package>/<set>`. It is the opt-in: copied templates use its icons, and `astryx discover` and `astryx doctor` report icon sets, only when it is set. `astryx experimental icon` ranks its icons first; without it, the only installed set is the project's there. `astryx search` never returns icons.",
           example: "'@acme/outline-icons/outline'",
         },
         {

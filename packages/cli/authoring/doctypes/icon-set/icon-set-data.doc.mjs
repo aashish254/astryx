@@ -14,7 +14,7 @@ export const doc = {
   namespace: 'authoring',
   stability: 'experimental',
   description:
-    "Experimental: may change or be removed in a patch release. An icon set's data file: which icons exist, the export that draws each one, the words a person might search for, and which icon draws each icon definition (`map`). `astryx experimental icon`, `astryx search`, template icon mapping, and the checks read this file and nothing else.",
+    "Experimental: may change or be removed in a patch release. An icon set's data file: which icons exist, the export that draws each one, the words a person might search for, and which icon draws each icon definition (`map`). `astryx experimental icon`, template icon mapping, and the checks read this file and nothing else.",
   appliesTo: '<iconSetsRoot>/<name>/<name>.icons.json',
   fields: [
     {

@@ -93,11 +93,7 @@ export function registerSearch(program) {
         empty: result.data.matchCount === 0,
         // Nothing matched, so the results cannot say what was searched for —
         // the `--type` filter can, and an open search really did span them all.
-        // Icons have no result kind of their own; they count as mixed.
-        fallbackKind:
-          options.type == null || options.type === 'icon'
-            ? 'mixed'
-            : options.type,
+        fallbackKind: options.type ?? 'mixed',
       });
 
       if (json) {
@@ -110,15 +106,11 @@ export function registerSearch(program) {
       const {query: q, matchCount, results} = result.data;
       // Outside an app an open search covers the docs and themes alone. Say
       // so, so that list does not read as "Astryx has no such component".
-      // Icons are searched only where an experimental icon set is loaded.
-      const searched = results.some(each => each.domain === 'icon')
-        ? 'the docs, themes, and icons'
-        : 'the docs and themes';
       const note =
         !options.type && !findCoreDir(process.cwd())
           ? [
               text(
-                `@astryxdesign/core is not installed here, so only ${searched} were searched.`,
+                '@astryxdesign/core is not installed here, so only the docs and themes were searched.',
               ),
             ]
           : [];
@@ -209,9 +201,7 @@ function discoverHint(run, query, type) {
  * @param {string} value
  */
 function shellWord(value) {
-  return /^[\w@./:-]+$/.test(value)
-    ? value
-    : `'${value.replace(/'/g, `'\\''`)}'`;
+  return /^[\w@./:-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 // Re-export the API for external consumers.

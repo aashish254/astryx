@@ -1,11 +1,9 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
 /**
- * @file The icon-set guide is findable and readable where icon sets are in
- * use: in a project with an icon set, a search for the words an author types
- * opens it first, and each section reads on its own. It lives on the
- * experimental route, and search leaves it out of a project with no icon set
- * (spec:AST-017 FR27).
+ * @file The icon-set guide reads on its experimental route, each section on
+ * its own, and `astryx search` never returns it or any experimental doc
+ * (spec:AST-017 FR27, spec:AST-084 FR8).
  */
 
 import * as fs from 'node:fs';
@@ -26,7 +24,9 @@ let withoutSet;
 
 beforeAll(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-icon-guide-'));
-  withSet = writeIconSetProject(path.join(tmp, 'with'));
+  withSet = writeIconSetProject(path.join(tmp, 'with'), {
+    config: {experimental: {iconSet: 'glyphs'}},
+  });
   withoutSet = writeIconSetProject(path.join(tmp, 'without'), {packages: []});
 });
 
@@ -45,16 +45,14 @@ async function topDoc(query, cwd) {
 }
 
 describe('icon-set guide', () => {
-  it.each(['icon set', 'add icons', 'ship icons'])(
-    'search "%s" finds the guide first in a project with an icon set',
-    async query => {
-      expect((await topDoc(query, withSet))[0].name).toBe(GUIDE);
-    },
-  );
-
-  it('search leaves every experimental doc out of a project with no icon set', async () => {
+  it('search leaves every experimental doc out, with or without an icon set', async () => {
+    // Icon sets join `astryx search` only at promotion (spec:AST-084 FR8);
+    // the guide is read on its experimental route.
     for (const query of ['icon set', 'add icons', 'close']) {
-      for (const result of await topDoc(query, withoutSet)) {
+      for (const result of [
+        ...(await topDoc(query, withoutSet)),
+        ...(await topDoc(query, withSet)),
+      ]) {
         expect(result.name).not.toMatch(/experimental|icon-definitions/);
         expect(result.command).not.toMatch(/experimental|icon-definitions/);
         expect(result.section ?? '').not.toMatch(/^icon-(set|definition)/);

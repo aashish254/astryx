@@ -32,7 +32,7 @@ export const docs = {
       content: [
         {
           type: 'prose',
-          text: 'Icon sets are experimental: the `astryx experimental icon` commands, the `experimental.iconSet` key in astryx.config, the `experimental.iconSets` key in an integration manifest, the data file, icon definitions, and the output and JSON of all of them can change, or go away, in any patch release without a deprecation period. A project with no icon set installed or configured sees no change anywhere else: search, templates, and doctor answer as they always have.',
+          text: 'Icon sets are experimental: the `astryx experimental icon` commands, the `experimental.iconSet` key in astryx.config, the `experimental.iconSets` key in an integration manifest, the data file, icon definitions, and the output and JSON of all of them can change, or go away, in any patch release without a deprecation period. A project that does not set `experimental.iconSet` sees no change in any other command: templates, discover, and doctor answer as they always have. `astryx search` never returns icons or these docs; to find an icon by meaning, use `astryx experimental icon <words>`.',
         },
       ],
     },
@@ -89,7 +89,7 @@ export const docs = {
         },
         {
           type: 'prose',
-          text: "The CLI reads the library's exports without running them and refuses a name the module does not export, suggesting close names. It adds the icon as `BinIcon` (id `bin`, words from its name), writes `export {Bin as BinIcon} from '@acme/glyph-library';` to the set's generated module, and sets `map.delete = \"bin\"`. Running it again changes nothing. Do not copy the definition's words into the icon: `astryx experimental icon` and `astryx search` match an icon by its own words and by the name and words of every definition it is mapped to.",
+          text: "The CLI reads the library's exports without running them and refuses a name the module does not export, suggesting close names. It adds the icon as `BinIcon` (id `bin`, words from its name), writes `export {Bin as BinIcon} from '@acme/glyph-library';` to the set's generated module, and sets `map.delete = \"bin\"`. Running it again changes nothing. Do not copy the definition's words into the icon: `astryx experimental icon` matches an icon by its own words and by the name and words of every definition it is mapped to.",
         },
         {
           type: 'prose',
@@ -317,12 +317,11 @@ export const brand = defineTheme({name: 'brand', icons: themeIcons});`,
           code: `npx astryx experimental icon delete              # ranked matches with import lines
 npx astryx experimental icon outline/bin         # one icon and every variant
 npx astryx experimental icon --list              # installed sets and their definition coverage
-npx astryx experimental icon use outline         # make it the project's icon set
-npx astryx search delete --type icon`,
+npx astryx experimental icon use outline         # make it the project's icon set`,
         },
         {
           type: 'prose',
-          text: "A template declares, in its descriptor's `icons`, the definition each imported icon draws (`{TrashIcon: 'delete'}`). With a project icon set (`experimental.iconSet` in astryx.config, or the only set installed), each declared icon becomes the set's icon for that definition. An icon the set does not map keeps its original import, and the copy reports every icon as mapped or kept. Nothing is guessed from names.",
+          text: "A template declares, in its descriptor's `icons`, the definition each imported icon draws (`{TrashIcon: 'delete'}`). Once the project sets `experimental.iconSet` in astryx.config (`experimental icon use` writes it), each declared icon becomes the set's icon for that definition. An icon the set does not map keeps its original import, and the copy reports every icon as mapped or kept. Nothing is guessed from names.",
         },
       ],
     },
@@ -332,7 +331,7 @@ npx astryx search delete --type icon`,
       content: [
         {
           type: 'prose',
-          text: 'Every place the CLI reads or reports icon sets, all experimental. None of them appears, and no output changes, in a project with no icon set installed or configured:',
+          text: 'Every place the CLI reads or reports icon sets, all experimental. Outside `astryx experimental icon`, each appears only in a project that sets `experimental.iconSet`; `astryx search` never returns icons:',
         },
         {
           type: 'table',
@@ -340,7 +339,7 @@ npx astryx search delete --type icon`,
           rows: [
             [
               '`experimental.iconSet` in astryx.config',
-              "The project's icon set, by set name or as `<package>/<set>`. Without it, the only installed set is the project's; with two or more and none named, there is none and `astryx doctor` warns. `astryx experimental icon use` writes it.",
+              "The project's icon set, by set name or as `<package>/<set>`, and the opt-in: templates, discover, and doctor read icon sets only when it is set. `astryx experimental icon` ranks its icons first, and without it treats the only installed set as the project's. `astryx experimental icon use` writes it.",
             ],
             [
               '`experimental.iconSets` in the integration manifest',
@@ -351,16 +350,12 @@ npx astryx search delete --type icon`,
               "The icon definition each imported icon draws, by imported name (`{TrashIcon: 'delete'}`). `astryx template` and `astryx build` then report `icons` (status, set, mapped, kept) in the receipt and write the set's icons.",
             ],
             [
-              '`astryx search`',
-              "Also returns icons (`domain: 'icon'`, `name` `<set>/<id>`, its import line as `import`, and the command `astryx experimental icon <set>/<id>`), ranked below a component or doc of equal score; `--type icon` returns icons only.",
-            ],
-            [
               '`astryx discover`',
               "A package's sets (`iconSets`) and, for `@scope/name/<set>`, the set's display name, license, icon count, and definitions; `--kind icon-set` keeps only sets.",
             ],
             [
               '`astryx doctor`',
-              'The `icon-sets` check: fails when `experimental.iconSet` names a set that is not installed, warns when two or more are installed and none is named, or when a set was withdrawn.',
+              'The `icon-sets` check: fails when `experimental.iconSet` names a set that is not installed, and warns when two packages ship a set by that name or a set was withdrawn.',
             ],
             [
               'JSON types',

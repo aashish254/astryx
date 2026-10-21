@@ -9,19 +9,19 @@
 
 /**
  * The domain a search result belongs to.
- * @typedef {'component' | 'hook' | 'doc' | 'template' | 'theme' | 'icon'} SearchDomain
+ * @typedef {'component' | 'hook' | 'doc' | 'template' | 'theme'} SearchDomain
  */
 
 /**
  * A single ranked search result, tagged with its domain.
  * @typedef {object} SearchResultEntry
  * @property {SearchDomain} domain - Which content domain this result came from.
- * @property {string} name - Primary identifier (component/hook name, doc topic or docs-tree route, template dir, theme slug, or `<set>/<id>` for an icon).
+ * @property {string} name - Primary identifier (component/hook name, doc topic or docs-tree route, template dir, theme slug).
  * @property {number} score - Relevance score (higher is better).
  * @property {string} reason - Human-readable reason the candidate matched (e.g. `keyword "button"`).
  * @property {string} description - One-line description, when available.
  * @property {string} command - Follow-up command to act on this result (e.g. `astryx component Button`, or `astryx theme add neutral` for a theme).
- * @property {string} [import] - Import path — present for component and hook results; the import line for an icon result.
+ * @property {string} [import] - Import path — present for component and hook results.
  * @property {string} [title] - Doc title — present for doc results.
  * @property {string} [section] - Section key — present when a doc result is one section of a topic; `command` reads only that section.
  * @property {string} package - The npm package that owns the result: `@astryxdesign/core` for a Core component, hook, or template, `@astryxdesign/cli` for a doc the CLI ships, or the integration package that contributed it. For a doc section, the package whose file the section came from.

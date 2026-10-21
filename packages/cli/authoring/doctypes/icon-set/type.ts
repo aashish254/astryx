@@ -7,7 +7,7 @@
  * manifest's `experimental.iconSets` root holding a strongly typed `<name>.doc.mjs`
  * descriptor and one `<name>.icons.json` data file. The descriptor holds what
  * a person writes about the set; the data file says what every icon means.
- * Every icon surface (search, `astryx experimental icon`, template icon mapping, the theme
+ * Every icon surface (`astryx experimental icon`, template icon mapping, the theme
  * map check, Doctor) reads the data file and nothing else.
  *
  * @input metadata authored beside one icon set

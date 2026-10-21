@@ -829,9 +829,8 @@ export function checkIntegrationIssues(ctx) {
  * The project's icon sets (AST-084 FR15). Fails when `experimental.iconSet` names a set
  * that is not installed; warns when two or more sets are installed and none
  * is the project's, and for each installed set that was withdrawn, with why.
- * Icon sets are experimental (spec:AST-017 FR27): a project that has none
- * installed, found, or configured gets no check at all, so its report is
- * unchanged.
+ * Icon sets are experimental (spec:AST-017 FR27): only a project that sets
+ * `experimental.iconSet` gets the check, so every other report is unchanged.
  * @param {DoctorContext} ctx
  * @returns {DoctorCheck | null}
  */
@@ -841,9 +840,8 @@ export function checkIconSets(ctx) {
   const label = 'Icon sets';
   if (state == null) return null;
   const {sets, withdrawn, choice} = state;
-  if (sets.length === 0 && withdrawn.length === 0 && !choice.configured) {
-    return null;
-  }
+  // Only a project that opts in with `experimental.iconSet` gets the check.
+  if (!choice.configured) return null;
   if (choice.status === 'missing') {
     return {
       id,

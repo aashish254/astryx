@@ -27,21 +27,31 @@ async function iconCheckOf(options) {
 }
 
 describe('icon-sets check', () => {
-  it('a project with no icon set installed or configured has no check', async () => {
-    // Icon sets are experimental (spec:AST-017 FR27): the report is unchanged.
+  it('a project without experimental.iconSet has no check, sets installed or not', async () => {
+    // Icon sets are experimental (spec:AST-017 FR27): the report is unchanged
+    // until the project opts in.
     expect(await iconCheckOf({packages: []})).toBeUndefined();
+    expect(await iconCheckOf({})).toBeUndefined();
+    expect(
+      await iconCheckOf({packages: [{}, {name: '@acme/lines'}]}),
+    ).toBeUndefined();
   });
 
-  it('one installed set passes', async () => {
-    const check = await iconCheckOf({});
+  it('the configured set installed passes', async () => {
+    const check = await iconCheckOf({
+      config: {experimental: {iconSet: 'glyphs'}},
+    });
     expect(check).toMatchObject({status: 'pass'});
-    expect(check?.message).toMatch(/only installed icon set/);
+    expect(check?.message).toMatch(/experimental.iconSet names "glyphs"/);
   });
 
-  it('two sets without experimental.iconSet warn', async () => {
-    const check = await iconCheckOf({packages: [{}, {name: '@acme/lines'}]});
+  it('experimental.iconSet that two packages ship warns, naming the qualified form', async () => {
+    const check = await iconCheckOf({
+      packages: [{}, {name: '@acme/lines', set: 'glyphs'}],
+      config: {experimental: {iconSet: 'glyphs'}},
+    });
     expect(check).toMatchObject({status: 'warn'});
-    expect(check?.fix).toMatch(/iconSet/);
+    expect(check?.fix).toMatch(/experimental.iconSet/);
   });
 
   it('experimental.iconSet naming a set that is not installed fails', async () => {
@@ -53,7 +63,10 @@ describe('icon-sets check', () => {
   });
 
   it('an invalid data file warns with the reason', async () => {
-    const check = await iconCheckOf({packages: [{data: '{nope'}]});
+    const check = await iconCheckOf({
+      packages: [{}, {name: '@acme/lines', data: '{nope'}],
+      config: {experimental: {iconSet: 'glyphs'}},
+    });
     expect(check).toMatchObject({status: 'warn'});
     expect(check?.message).toMatch(/not valid JSON/);
   });

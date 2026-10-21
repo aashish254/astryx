@@ -23,7 +23,10 @@ let cwd;
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'astryx-discover-icons-'));
   cwd = writeIconSetProject(tmp, {
-    config: {integrations: ['@acme/glyphs']},
+    config: {
+      integrations: ['@acme/glyphs'],
+      experimental: {iconSet: 'glyphs'},
+    },
   });
 });
 afterEach(() => {

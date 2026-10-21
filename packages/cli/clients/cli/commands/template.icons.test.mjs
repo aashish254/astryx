@@ -27,7 +27,9 @@ const TEMPLATE = 'ai-chat';
 
 describe('template icon mapping', () => {
   it('printed source maps icons; the report goes to stderr', async () => {
-    const cwd = writeIconSetProject(tmp);
+    const cwd = writeIconSetProject(tmp, {
+      config: {experimental: {iconSet: 'glyphs'}},
+    });
     const res = await runCli(['template', TEMPLATE], cwd);
     expect(res.code).toBe(0);
     expect(res.stdout).toContain("import {XIcon} from '@acme/glyphs';");
@@ -42,7 +44,9 @@ describe('template icon mapping', () => {
   });
 
   it('the JSON and the copy receipt report mapped and kept icons; kept libraries stay needed', async () => {
-    const cwd = writeIconSetProject(tmp);
+    const cwd = writeIconSetProject(tmp, {
+      config: {experimental: {iconSet: 'glyphs'}},
+    });
     const shown = JSON.parse(
       (await runCli(['template', TEMPLATE, '--json'], cwd)).stdout,
     );
@@ -65,9 +69,11 @@ describe('template icon mapping', () => {
     expect(written).toBe(shown.data.source);
   });
 
-  it('two sets and no experimental.iconSet: source unchanged, status ambiguous', async () => {
+  it('experimental.iconSet that two packages ship: source unchanged, status ambiguous', async () => {
+    // A name both packages ship names no set.
     const cwd = writeIconSetProject(tmp, {
-      packages: [{}, {name: '@acme/lines'}],
+      packages: [{}, {name: '@acme/lines', set: 'glyphs'}],
+      config: {experimental: {iconSet: 'glyphs'}},
     });
     const res = await runCli(['template', TEMPLATE, '--json'], cwd);
     const data = JSON.parse(res.stdout).data;
@@ -81,9 +87,10 @@ describe('template icon mapping', () => {
     expect(text.stderr).toContain('icons: unchanged (ambiguous)');
   });
 
-  it('no set installed or configured: no report, and the output it always had', async () => {
-    // Icon sets are experimental (spec:AST-017 FR27): nothing changes.
-    const cwd = writeIconSetProject(path.join(tmp, 'none'), {packages: []});
+  it('a set installed but experimental.iconSet not set: no report, and the output it always had', async () => {
+    // Icon sets are experimental (spec:AST-017 FR27): nothing changes
+    // until the project opts in.
+    const cwd = writeIconSetProject(path.join(tmp, 'none'));
     const res = await runCli(['template', TEMPLATE, '--json'], cwd);
     const data = JSON.parse(res.stdout).data;
     expect(data).not.toHaveProperty('icons');

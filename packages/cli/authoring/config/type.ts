@@ -124,10 +124,9 @@ export interface AstryxConfig {
     };
     /**
      * Experimental icon sets (spec:AST-084): the project's icon set, a set
-     * name (`"outline"`) or `"<package>/<set>"`. Without it, the only
-     * installed set is the project's set; with two or more installed and none
-     * named, the project has no icon set and Doctor warns. Copied templates
-     * use this set's icons.
+     * name (`"outline"`) or `"<package>/<set>"`, and the opt-in. Copied
+     * templates use its icons, and discover and Doctor report icon sets, only
+     * when it is set.
      * @experimental May change or be removed in a patch release.
      */
     iconSet?: string;

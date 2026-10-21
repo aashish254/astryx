@@ -36,6 +36,7 @@ import * as path from 'node:path';
 import {assertWithin} from '../../foundation/fs/path-safety.mjs';
 import {integrationDocTypes} from '../docs/_adapter.mjs';
 import {iconSetIssues} from '../../foundation/discovery/icon-set-checks.mjs';
+import {docStabilityIssues} from '../../foundation/discovery/doc-stability.mjs';
 import {integrationDocConsistency} from '../../foundation/discovery/doc-consistency.mjs';
 import {
   THEME_SLUG_RE,
@@ -359,6 +360,20 @@ async function validateAtPackageDir(
     issues.push(
       ...(await findUnreachableContributionIssues(packageDir, loaded)),
     );
+  }
+  // Authoring only: a template or namespace doc that sets `stability` is
+  // dropped by a CLI before the release that reads it.
+  if (scanUnreachable) {
+    /** @type {any} */
+    let pkg = {};
+    try {
+      pkg = JSON.parse(
+        fs.readFileSync(path.join(packageDir, 'package.json'), 'utf-8'),
+      );
+    } catch {
+      // package.json problems are reported by their own check.
+    }
+    issues.push(...(await docStabilityIssues(loaded, pkg, packageDir)));
   }
 
   return result;

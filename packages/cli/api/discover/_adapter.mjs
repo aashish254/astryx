@@ -233,9 +233,11 @@ export async function describeInstalled(project, scanned) {
     });
     // Icon sets are listed the way every icon surface sees them: a set that
     // is invalid or whose module does not resolve answers nothing (FR9).
-    const {sets} = discoverIntegrationIconSets(integration, {
-      projectDir: project.cwd,
-    });
+    // They are experimental (spec:AST-017 FR27), so discover lists them only
+    // in a project that opts in with `experimental.iconSet`.
+    const {sets} = project.config?.experimental?.iconSet
+      ? discoverIntegrationIconSets(integration, {projectDir: project.cwd})
+      : {sets: []};
     installed.push({
       ...base,
       templates: identities.templates.map(t => t.id),

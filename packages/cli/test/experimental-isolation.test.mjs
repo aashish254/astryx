@@ -22,6 +22,7 @@ import {spawnSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {CLI_ROOT} from '../foundation/fs/paths.mjs';
+import {writeIconSetProject} from '../test-utils/icon-set-fixture.mjs';
 
 const REPO_ROOT = path.resolve(CLI_ROOT, '..', '..');
 const CLI_BIN = path.join(CLI_ROOT, 'clients', 'cli', 'bin', 'astryx.mjs');
@@ -34,15 +35,15 @@ let project;
  * Run the CLI in the project; machine paths become placeholders.
  * @param {string[]} args
  */
-function astryx(args) {
+function astryx(args, cwd = project) {
   const result = spawnSync(process.execPath, [CLI_BIN, ...args], {
-    cwd: project,
+    cwd,
     encoding: 'utf8',
     env: {...process.env, NO_COLOR: '1', FORCE_COLOR: '0', COLUMNS: '100'},
   });
   /** @param {string} text */
   const clean = text =>
-    text.split(project).join('<project>').split(REPO_ROOT).join('<repo>');
+    text.split(cwd).join('<project>').split(REPO_ROOT).join('<repo>');
   return {
     status: result.status,
     stdout: clean(result.stdout),
@@ -181,6 +182,58 @@ describe('with no icon set, stable output is unchanged', () => {
       expect(name.startsWith('experimental ')).toBe(true);
     }
     const res = astryx(['integration', 'add', 'icon-set', 'outline', '--json']);
+    expect(res.status).toBe(1);
+    expect(JSON.parse(res.stdout).code).toBe('ERR_INVALID_ARGUMENT');
+  });
+});
+
+describe('with an icon set installed and configured, search is unchanged', () => {
+  /** @type {string} */
+  let root;
+  /** @type {string} */
+  let withSet;
+  beforeAll(() => {
+    root = fs.mkdtempSync(path.join(REPO_ROOT, '.astryx-icon-set-search-'));
+    withSet = writeIconSetProject(root, {
+      config: {experimental: {iconSet: 'glyphs'}},
+    });
+    fs.mkdirSync(path.join(withSet, 'node_modules', '.bin'), {recursive: true});
+    fs.writeFileSync(path.join(withSet, 'node_modules', '.bin', 'astryx'), '');
+  });
+  afterAll(() => {
+    fs.rmSync(root, {recursive: true, force: true});
+  });
+
+  it('the set is loaded', () => {
+    const list = JSON.parse(
+      astryx(['experimental', 'icon', '--list', '--json'], withSet).stdout,
+    );
+    expect(list.data.projectSet).toBe('@acme/glyphs/glyphs');
+  });
+
+  // Icon words: icon lookup by meaning is only `astryx experimental icon`;
+  // `astryx search` joins it only at promotion (spec:AST-084 FR8).
+  it.each(['delete', 'close', 'trash can'])(
+    'search %s equals the output without icon sets, text and JSON',
+    async query => {
+      const slug = query.replace(/\s+/g, '-');
+      const json = astryx(['search', ...query.split(' '), '--json'], withSet);
+      expect(json.status).toBe(0);
+      await expect(json.stdout).toMatchFileSnapshot(
+        path.join(GOLDEN, `search-${slug}.json`),
+      );
+      const text = astryx(['search', ...query.split(' ')], withSet);
+      await expect(text.stdout).toMatchFileSnapshot(
+        path.join(GOLDEN, `search-${slug}.txt`),
+      );
+    },
+  );
+
+  it('search --type icon stays an unknown type', () => {
+    const res = astryx(
+      ['search', 'trash', '--type', 'icon', '--json'],
+      withSet,
+    );
     expect(res.status).toBe(1);
     expect(JSON.parse(res.stdout).code).toBe('ERR_INVALID_ARGUMENT');
   });

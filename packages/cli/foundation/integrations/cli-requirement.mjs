@@ -71,7 +71,20 @@ export const THEMES_CLI = '0.6.4';
  */
 export const SECTION_IDS_CLI = '0.6.4';
 
-const VERSION_RE = /^v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+/**
+ * The first stable CLI release that reads `stability` on a doc
+ * (spec:AST-017 FR21, FR27). Published 0.7.1 refuses the field on a page or
+ * block template, which it drops, and on a namespace doc, which hides every
+ * doc topic the package ships; component docs and guides keep loading and
+ * ignore it.
+ *
+ * Tied to the next patch slot: it must equal the first stable release that
+ * reads the field.
+ */
+export const STABILITY_CLI = '0.7.2';
+
+const VERSION_RE =
+  /^v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 /**
  * A version or partial version as MAJOR.MINOR.PATCH, a wildcard part as 0.
@@ -291,4 +304,20 @@ export function withCliPeer(pkg, floor) {
  */
 export function withDocsTreeCli(pkg) {
   return withCliPeer(pkg, NAMESPACE_DOCS_CLI);
+}
+
+/**
+ * Why a package whose template or namespace doc sets `stability` would lose
+ * it on an older CLI, or null when its declared CLI range admits only CLIs
+ * that read the field.
+ * @param {any} pkg package.json
+ * @returns {string | null}
+ */
+export function stabilityCliProblem(pkg) {
+  return cliRangeProblem(
+    pkg,
+    'has a template or namespace doc that sets `stability`',
+    "rejects the field and drops that descriptor, and for a namespace doc hides the package's doc topics",
+    STABILITY_CLI,
+  );
 }

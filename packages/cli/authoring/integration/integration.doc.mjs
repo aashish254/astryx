@@ -73,7 +73,7 @@ export const doc = {
           type: 'string',
           stability: 'experimental',
           description:
-            "Experimental: may change or be removed in a patch release. The folder that holds your icon sets, relative to package.json, with one folder per set. Each set folder has a matching `<name>.doc.mjs` IconSetDoc and a `<name>.icons.json` data file. Installed sets answer `astryx experimental icon` and, in a project that has a set, `astryx search`; copied templates use the project set's icons.",
+            "Experimental: may change or be removed in a patch release. The folder that holds your icon sets, relative to package.json, with one folder per set. Each set folder has a matching `<name>.doc.mjs` IconSetDoc and a `<name>.icons.json` data file. Installed sets answer `astryx experimental icon`; a project that sets `experimental.iconSet` gets copied templates in that set's icons.",
           example: "'./icon-sets'",
         },
       ],
