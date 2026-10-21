@@ -255,6 +255,20 @@ depends only on runtimes it can maintain.
   optional peers of core and keeps resolved token values apart from the web theme
   compiler.
 
+- **FR17 — Icons share names and default to platform symbols.** Every
+  platform shares Astryx's semantic icon names, the built-in names plus
+  namespaced `<library>:<name>` names, carried by the portable entry. Each native
+  platform maps every built-in name to a default image from its own system set,
+  such as SF Symbols on Apple platforms and Material icons on Android, and a
+  native platform is supported only when its map covers every built-in name. An
+  icon the app or theme defines replaces the platform default. Native theme
+  configuration names platform icons as data inside a platform entry, such as
+  `icons: {close: {systemName: 'xmark.circle'}}`, so an icon that exists only on
+  some OS versions can be scoped like any other platform term; images an app
+  supplies are registered in code. A native platform has no default for a name it
+  does not map and never substitutes a web icon. Icon accessibility follows the
+  core contract: an icon is decorative unless it carries a label.
+
 ### Platform support
 
 - Supported feature/engine floor: the web floor is unchanged. Each native
@@ -282,6 +296,8 @@ depends only on runtimes it can maintain.
 - `@astryxdesign/native` does not exist yet, and `@astryxdesign/core` has no
   portable entry yet. Core peer-depends on `react-dom` and StyleX, and its theme entry includes
   the web theme compiler.
+- Built-in icon names are defined beside the web icon registry, which maps them to
+  React elements; the portable entry carries the names only when it ships.
 - No native platform is supported yet. Every shipped component supports the web
   only, and its props form its web contract.
 
@@ -302,6 +318,7 @@ depends only on runtimes it can maintain.
 | FR14     | Compiler and render output comparison, core dependency graph check, and a web type surface diff           | each maintained theme with and without the native package installed; runtime-mounted and built CSS; components; web types before and after                                                             | Any byte of CSS, mounted rules, or rendered web markup differs, core depends on native, or a web prop disappears outside a planned minor                                                   |
 | FR15     | Package metadata and release-channel checks                                                               | native package manifest; a stable release; a canary release                                                                                                                                            | The native package is publishable as a stable release before a platform is supported                                                                                                       |
 | FR16     | Package-boundary check, plus a native fixture app installed and bundled without `react-dom` or StyleX     | an import of the portable entry; an import of a core component or the web theme entry from native; a core import of native; a core contract change                                                     | Native resolves a DOM type, `react-dom`, StyleX, or a web module; either direction of the boundary is crossed; or a core contract change does not reach native contracts on the next build |
+| FR17     | Icon map coverage check per native platform, plus override resolution tests                               | every built-in name; a namespaced name; a theme platform icon with and without a version range; an app-registered icon                                                                                 | A built-in name has no platform default, a theme or app icon fails to replace the default, a scoped icon applies outside its range, or a web icon is substituted                           |
 
 ## Decision log
 
@@ -423,6 +440,19 @@ share logic rather than screens with their web app.
 
 Rejected: a shared component entry that resolves to core on the web and to
 native elsewhere, because it hides which platform's contract a call site gets.
+
+### DEC-10 — Native icons default to platform symbols
+
+**Reference:** `spec:AST-082/DEC-10`
+**Decider:** cixzhang, 2026-10-21
+
+An icon that sits beside system controls should look like the platform's own,
+so where neither the app nor the theme defines an icon, each native platform
+draws its system symbol for the shared name. Brand consistency remains a theme
+or app choice.
+
+Rejected: Astryx's web icons on every platform by default, because they look
+foreign next to system controls.
 
 ## Open questions
 
